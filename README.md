@@ -4,6 +4,12 @@
 
 ![首页](docs/screens/flutter-home.png)
 
+## 安装
+
+**macOS 1.0.0**：[下载 SeeWow-macos-1.0.zip](https://github.com/sevenaaaaaaaaa/SeeWow/releases/latest) → 解压 → 拖进「应用程序」→ 右键「打开」（本地 ad-hoc 签名，未公证；如提示已损坏执行 `xattr -dr com.apple.quarantine /Applications/SeeWow.app`）。需要 macOS 14+（Apple Silicon）。
+
+Windows / Linux / Android 由 CI 产物或本地 `flutter build` 生成，见下文「构建」。
+
 ## 一眼看全
 
 | | 能力 |
