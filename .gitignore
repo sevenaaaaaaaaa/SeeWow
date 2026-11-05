@@ -1,0 +1,47 @@
+# ── Repository scope ─────────────────────────────────────────────
+# Publishes the Flutter app (apps/seewow), its docs, screenshots and CI.
+# The legacy SwiftUI workspace and unrelated local projects sharing this
+# folder (Awake, prep scratch, build outputs) are not versioned.
+/*
+!/.gitignore
+!/README.md
+!/apps/
+!/docs/
+!/.github/
+
+apps/seewow_prep/
+docs/awake/
+docs/screens/*
+!docs/screens/flutter-*.png
+
+# ── Flutter / Dart ──────────────────────────────────────────────
+apps/seewow/.dart_tool/
+apps/seewow/build/
+apps/seewow/.flutter-plugins-dependencies
+apps/seewow/.idea/
+apps/seewow/*.iml
+apps/seewow/coverage/
+
+# Apple
+apps/seewow/macos/Pods/
+apps/seewow/macos/.symlinks/
+apps/seewow/macos/Flutter/ephemeral/
+apps/seewow/ios/Pods/
+apps/seewow/ios/.symlinks/
+apps/seewow/ios/Flutter/ephemeral/
+
+# Android
+apps/seewow/android/.gradle/
+apps/seewow/android/local.properties
+
+# Windows / Linux
+apps/seewow/windows/flutter/ephemeral/
+apps/seewow/linux/flutter/ephemeral/
+
+# ── Local artifacts ─────────────────────────────────────────────
+dist/
+.build/
+DemoMedia/
+DemoMusic/
+.DS_Store
+*.log
