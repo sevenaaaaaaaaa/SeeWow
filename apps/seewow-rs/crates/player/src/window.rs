@@ -44,6 +44,66 @@ impl std::fmt::Display for Frame {
     }
 }
 
+/// 候选窗口的纯数据描述（不碰 AppKit，便于单测）。
+#[derive(Clone, Debug, PartialEq)]
+pub struct CandidateWindow {
+    pub title: String,
+    pub class: String,
+    pub miniaturized: bool,
+}
+
+/// 从候选里挑出 mpv 的宿主窗口。
+///
+/// 定位键**必须与标题无关**：mpv 在 `loadfile` 之后会把窗口标题改成媒体名，
+/// 用 `title == "SeeWow Player"` 定位会在真在播的那两次失败（E4004）。
+/// 判据：class 是 mpv 的 AppKit 窗口类（`swift.Window`），且不是我们自己的 winit 窗口、未被最小化。
+pub fn pick_host_window(candidates: &[CandidateWindow]) -> Option<usize> {
+    // 主判据：类名。mpv 0.42 的 macOS 窗口类是 `swift.Window`；
+    // 我们自己的 Slint 窗口是 `WinitWindow`，任何情况下都不许选中。
+    let by_class = candidates
+        .iter()
+        .position(|candidate| !candidate.miniaturized && is_mpv_window_class(&candidate.class));
+    if by_class.is_some() {
+        return by_class;
+    }
+    // 退路：老版本 mpv 可能仍是普通 NSWindow，用标题兜底（仍然排除 winit 与最小化）
+    candidates.iter().position(|candidate| {
+        !candidate.miniaturized
+            && !is_our_own_window_class(&candidate.class)
+            && candidate.title == HOST_TITLE_FALLBACK
+    })
+}
+
+fn is_mpv_window_class(class: &str) -> bool {
+    // `swift.Window`（mpv 0.42）；其它 mpv 自建窗口也常以 .Window 结尾
+    class == "swift.Window" || (class.ends_with(".Window") && !is_our_own_window_class(class))
+}
+
+fn is_our_own_window_class(class: &str) -> bool {
+    class == "WinitWindow" || class.contains("Winit")
+}
+
+/// 按类名在 `NSApp.windows` 里找 mpv 的宿主窗口（标题仅用于日志：mpv 会在 loadfile 后改标题）。
+pub fn find_host_window() -> Option<Retained<NSWindow>> {
+    let mtm = main_thread()?;
+    let app = NSApplication::sharedApplication(mtm);
+    let windows: Retained<NSArray<NSWindow>> = app.windows();
+    let mut candidates = Vec::new();
+    let mut raw = Vec::new();
+    for index in 0..windows.count() {
+        let window = windows.objectAtIndex(index);
+        candidates.push(CandidateWindow {
+            title: window.title().to_string(),
+            class: class_name(&window),
+            miniaturized: window.isMiniaturized(),
+        });
+        raw.push(window);
+    }
+    pick_host_window(&candidates).map(|index| raw[index].clone())
+}
+
+const HOST_TITLE_FALLBACK: &str = "SeeWow Player";
+
 /// 一个窗口的自我介绍（V1 验证项：打印候选项的 title / class）。
 #[derive(Clone, Debug, PartialEq)]
 pub struct WindowInfo {
@@ -212,27 +272,96 @@ pub fn layer_state(window: &NSWindow, colorspace: &str) -> LayerState {
         let responds_pf: bool = msg_send![layer, respondsToSelector: pixel_format_sel];
         if responds_pf {
             let pixel_format: u64 = msg_send![layer, pixelFormat];
-            state.pixel_format = metal_pixel_format_name(pixel_format);
+            state.pixel_format = metal_format_name(pixel_format);
         }
     }
     state
 }
 
 /// `MTLPixelFormat` 数值 → 可读名字（只列 M1 会遇到的几个）。
-fn metal_pixel_format_name(format: u64) -> String {
+pub fn metal_format_name(format: u64) -> String {
+    // 数值对照 Metal 头文件的 MTLPixelFormat（评审逐条核对过）
     match format {
-        // 10-bit XR 族（ADR-0010 v3 认这一族；mpv 0.42 在 macOS 上实测是 BGR10A2Unorm）
-        94 => "bgr10a2Unorm".to_string(),
+        70 => "rgba8unorm".to_string(),
+        80 => "bgra8unorm".to_string(),
+        81 => "bgra8unorm_srgb".to_string(),
+        // RGB10A2Unorm 是 10-bit，但**不是 XR**：不能算进 HDR 表面族
+        90 => "rgb10a2unorm".to_string(),
+        // 10-bit XR 族（ADR-0010 v3 认这一族；mpv 0.42 在 macOS 实测是 BGR10A2Unorm）
+        94 => "bgr10a2unorm".to_string(),
         552 => "bgr10_xr".to_string(),
         553 => "bgr10_xr_srgb".to_string(),
         554 => "bgra10_xr".to_string(),
         555 => "bgra10_xr_srgb".to_string(),
-        // 16F
         115 => "rgba16float".to_string(),
-        // 8bit（用于证明「不成立」）
-        70 => "bgra8unorm".to_string(),
-        80 => "rgba8unorm".to_string(),
-        81 => "rgba8unorm_srgb".to_string(),
         other => format!("mtl#{other}"),
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn candidate(title: &str, class: &str, miniaturized: bool) -> CandidateWindow {
+        CandidateWindow {
+            title: title.to_string(),
+            class: class.to_string(),
+            miniaturized,
+        }
+    }
+
+    /// mpv 在 loadfile 后会把标题改成媒体名 —— 仍然必须定位得到。
+    #[test]
+    fn locates_host_window_after_mpv_renames_title() {
+        let list = vec![
+            candidate("SeeWow Overlay", "WinitWindow", false),
+            candidate("hdr10-sample", "swift.Window", false),
+        ];
+        assert_eq!(pick_host_window(&list), Some(1));
+    }
+
+    /// 自己的 Slint/winit 窗口绝不能被当成宿主。
+    #[test]
+    fn never_picks_our_own_winit_window() {
+        let list = vec![candidate("SeeWow Player", "WinitWindow", false)];
+        assert_eq!(pick_host_window(&list), None);
+    }
+
+    /// 最小化的宿主窗口不用（拿不到可用 frame）。
+    #[test]
+    fn skips_miniaturized_host_window() {
+        let list = vec![candidate("whatever", "swift.Window", true)];
+        assert_eq!(pick_host_window(&list), None);
+    }
+
+    /// 空列表不 panic，返回 None。
+    #[test]
+    fn empty_list_is_none() {
+        assert_eq!(pick_host_window(&[]), None);
+    }
+
+    /// MTLPixelFormat → 名字，喂 raw number（对照 Metal 头文件）。
+    #[test]
+    fn metal_pixel_format_table_matches_metal_header() {
+        assert_eq!(metal_format_name(70), "rgba8unorm");
+        assert_eq!(metal_format_name(80), "bgra8unorm");
+        assert_eq!(metal_format_name(81), "bgra8unorm_srgb");
+        assert_eq!(metal_format_name(90), "rgb10a2unorm");
+        assert_eq!(metal_format_name(94), "bgr10a2unorm");
+        assert_eq!(metal_format_name(115), "rgba16float");
+        assert_eq!(metal_format_name(552), "bgr10_xr");
+        assert_eq!(metal_format_name(553), "bgr10_xr_srgb");
+        assert_eq!(metal_format_name(554), "bgra10_xr");
+        assert_eq!(metal_format_name(555), "bgra10_xr_srgb");
+    }
+
+    /// 94/552/115 属于 XR/16F 族，80 与 90 不属于（90 是 RGB10A2Unorm，不是 XR）。
+    #[test]
+    fn surface_family_judgement_uses_raw_numbers() {
+        use crate::probe::is_10bit_xr_surface;
+        assert!(is_10bit_xr_surface(&metal_format_name(94)));
+        assert!(is_10bit_xr_surface(&metal_format_name(552)));
+        assert!(is_10bit_xr_surface(&metal_format_name(115)));
+        assert!(!is_10bit_xr_surface(&metal_format_name(80)));
+        assert!(!is_10bit_xr_surface(&metal_format_name(90)));
     }
 }

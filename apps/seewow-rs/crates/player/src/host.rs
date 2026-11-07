@@ -1,14 +1,15 @@
 //! M1 的 mpv 宿主。
 //!
-//! **所有 libmpv 调用都在主线程**（mpv 在「调用者就是主线程」时会把需要主线程的工作
-//! 就地执行，不需要再去 dispatch）。这条是实测结论：
+//! **只有 player 线程调 libmpv**（这条是实现纪律，不是偏好）：
 //!
-//! - 把 mpv 调用放到 player 线程时，mpv 的核心线程要用主线程做 VO 初始化，
-//!   而主线程那条 path 走的是 mpv 自己的 dispatch 队列 —— 在本进程里它没有被服务，
-//!   于是核心线程卡在 `mp_dispatch_lock`，`loadfile` 永远不生效（Q-02 有完整证据）。
-//! - 在**主线程**调用时 mpv 就地执行，不需要 dispatch，播放正常。
+//! - mpv 0.42 的 macOS 后端是 Swift，会用 `DispatchQueue.main.async` 做主线程上的
+//!   VO/图层工作；主线程必须在事件循环里保持可被主队列调度；
+//! - 主线程一旦去调 mpv（无论 `mpv_get_property` 还是 `loadfile`），就可能与
+//!   mpv 自己的主线程工作互相等（实测：`mp_dispatch_lock` 上互锁，事件循环停摆）；
+//! - 因此：命令走通道、属性在 player 线程读、主线程只用 `try_lock` 读快照，**永不等待**。
 //!
-//! 代价：`loadfile` 会让主线程停顿一下（M1 接受；M3 的 T-09 用 mpv 的异步命令面解决）。
+//! 另：**不要设 `force-window=yes`**（见 Q-02）：无文件时先建窗会让 macOS VO 在
+//! `swapBuffer` 上等，之后 `loadfile` 永不生效；窗口交给 mpv 在首帧自己创建。
 //!
 //! M3 的 T-09 会把这里的临时封装迁进 `mpv.rs` 并删掉（任务表 §0.3）。
 
@@ -71,6 +72,7 @@ pub struct MpvSnapshot {
 /// `~/Library/Logs/SeeWow/m1.log`。M1 自带，不依赖 T-02 的日志门面。
 pub struct M1Log {
     path: PathBuf,
+    file: Mutex<Option<std::fs::File>>,
 }
 
 impl M1Log {
@@ -78,8 +80,11 @@ impl M1Log {
         let dir = log_dir();
         std::fs::create_dir_all(&dir)?;
         let path = dir.join("m1.log");
-        OpenOptions::new().create(true).append(true).open(&path)?;
-        Ok(Self { path })
+        let file = OpenOptions::new().create(true).append(true).open(&path)?;
+        Ok(Self {
+            path,
+            file: Mutex::new(Some(file)),
+        })
     }
 
     pub fn path(&self) -> &Path {
@@ -90,11 +95,20 @@ impl M1Log {
     /// 不持锁，就不会被 panic 毒化，任何线程都能写。
     pub fn write(&self, level: &str, msg: &str) {
         let line = format!("{} {level} {msg}\n", utc_stamp());
-        let _ = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)
-            .and_then(|mut file| file.write_all(line.as_bytes()));
+        // 句柄复用；写锁被毒化也照写（一次 panic 不该让日志从此哑掉）
+        let Ok(mut slot) = self.file.lock().map_err(|poisoned| poisoned.into_inner()) else {
+            return;
+        };
+        let file = slot.get_or_insert_with(|| {
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.path)
+                .unwrap_or_else(|_| std::fs::File::create("/dev/null").expect("dev null"))
+        });
+        let _ = file.write_all(line.as_bytes());
+        // 每行 flush：进程 exit / 崩溃时也要留住证据
+        let _ = file.flush();
     }
 }
 
@@ -147,7 +161,6 @@ pub struct PlayerHost {
     log: Arc<M1Log>,
     commands: crossbeam_channel::Sender<HostCommand>,
     snapshot: Arc<Mutex<MpvSnapshot>>,
-    thread: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 /// 主线程 → player 线程的命令。
@@ -200,7 +213,8 @@ impl PlayerHost {
         let snapshot = Arc::new(Mutex::new(MpvSnapshot::default()));
         let thread_snapshot = snapshot.clone();
         let thread_log = log.clone();
-        let handle = std::thread::Builder::new()
+        // 线程句柄不需要保存：进程退出即结束；quit 只发命令、不在主线程等
+        std::thread::Builder::new()
             .name("seewow-player".to_string())
             .spawn(move || mpv_worker(mpv, command_rx, thread_snapshot, thread_log))
             .map_err(|err| format!("player 线程起不来：{err}"))?;
@@ -209,7 +223,6 @@ impl PlayerHost {
             log,
             commands: command_tx,
             snapshot,
-            thread: Mutex::new(Some(handle)),
         })
     }
 
@@ -247,16 +260,10 @@ impl PlayerHost {
             .send(HostCommand::SetOutputCsp(csp.to_string()));
     }
 
+    /// 关闭：只发命令，**不在主线程 sleep 等**（退出路径要快；进程退出由 app 负责）。
     pub fn quit(&self) {
         self.log.write("info", "mpv: 请求 quit");
         let _ = self.commands.send(HostCommand::Quit);
-        // 给 worker 一点时间把「播放结束」写进日志（不 join 太久，退出路径要快）
-        if let Some(handle) = self.thread.lock().ok().and_then(|mut slot| slot.take()) {
-            let deadline = Instant::now() + std::time::Duration::from_millis(400);
-            while !handle.is_finished() && Instant::now() < deadline {
-                std::thread::sleep(std::time::Duration::from_millis(20));
-            }
-        }
     }
 }
 

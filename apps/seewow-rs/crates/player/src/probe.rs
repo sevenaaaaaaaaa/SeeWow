@@ -64,6 +64,40 @@ pub struct ProbeSeed {
     pub pixel_readback_max: Option<f64>,
 }
 
+/// 探针证据行要不要写：**播放中每秒至少一条**，静止时只在关键字段变化时写。
+///
+/// 这条门独立于 UI —— 面板拿不到（`ui.upgrade()` 失败）也必须能留证据。
+pub fn should_log_probe(playing: bool, changed: bool, since_last: std::time::Duration) -> bool {
+    let slow_enough = since_last >= std::time::Duration::from_millis(1000);
+    if playing {
+        // 播放中：每秒至少一条（验收要看 target.* 到底有没有值），与字段是否变化无关
+        slow_enough
+    } else {
+        // 静止：只在关键字段变化时写，避免刷屏
+        changed && slow_enough
+    }
+}
+
+/// 一行写进 m1.log 的证据（与 UI 无关，测试可直接驱动）。
+pub fn probe_log_line(seed: &ProbeSeed, verdict: &Verdict) -> String {
+    format!(
+        "probe: target.gamma={} target.primaries={} target.max-luma={} cd/m² target.pixfmt={} | surface.pixfmt={} wantsEDR={} csp(opt)={} | screen.potentialEDR={:.3} currentEDR={:.3} | {}",
+        dash(&seed.target.gamma),
+        dash(&seed.target.primaries),
+        seed.target
+            .max_luma
+            .map(|value| format!("{value:.1}"))
+            .unwrap_or_else(|| "n/a".into()),
+        dash(&seed.target.pixelformat),
+        dash(&seed.layer.pixel_format),
+        seed.layer.wants_edr,
+        dash(&seed.layer.colorspace),
+        seed.screen.max_potential_edr,
+        seed.screen.max_current_edr,
+        verdict.log_line(),
+    )
+}
+
 /// 单条证据。面板逐条显示，失败项一眼可见。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Check {
@@ -136,7 +170,7 @@ pub fn judge(seed: &ProbeSeed) -> Verdict {
         },
         Check {
             // ADR-0010 v3：10-bit XR 族都算（本机 mpv 实测 bgr10a2Unorm，不是 16F）
-            label: "layer.pixelFormat ∈ 10-bit XR 族 {bgr10a2Unorm, rgba16Float}",
+            label: "surface.pixelFormat ∈ 10-bit XR 族 {bgr10a2Unorm, rgba16Float}",
             ok: is_10bit_xr_surface(&render_format),
             detail: format!("{render_source} = {}", dash(&render_format)),
         },
@@ -146,9 +180,11 @@ pub fn judge(seed: &ProbeSeed) -> Verdict {
             detail: format!("layer.wantsEDR = {}", layer.wants_edr),
         },
         Check {
-            label: "layer.colorspace ∈ PQ/HLG 族",
+            // 这条不是图层实测：值来自我们自己设的 mpv 选项读回（cocoa-cb-output-csp），
+            // 标签必须写明，否则是自证。
+            label: "cocoa-cb-output-csp（选项读回，非图层实测）∈ PQ/HLG 族",
             ok: is_pq_or_hlg(&layer.colorspace),
-            detail: format!("layer.colorspace = {}", dash(&layer.colorspace)),
+            detail: format!("csp(opt) = {}", dash(&layer.colorspace)),
         },
     ];
 
@@ -158,8 +194,18 @@ pub fn judge(seed: &ProbeSeed) -> Verdict {
     let on_screen_hdr =
         pipeline_hdr && screen.max_potential_edr > 1.0 && screen.max_current_edr > 1.0;
 
-    // 1 = 像素回读（screenshot-raw 给 16F），2 = 管线状态。M1 只能拿到 2。
-    let evidence_source = if seed.pixel_readback_max.is_some() {
+    // 1 = 像素回读（screenshot-raw 给 16F 浮点），2 = 管线状态。M1 只能拿到 2。
+    // 8bit 回读（bgra8unorm 之类）不能算「像素回读证据」，只能落到 2 —— 否则会把
+    // 「8bit 回读拿到 0.9」说成像素证据，验收时会吵。
+    let float_surface = matches!(
+        render_format
+            .trim()
+            .to_ascii_lowercase()
+            .replace(['_', '-'], "")
+            .as_str(),
+        "rgba16float" | "rgba16f" | "rgba16" | "rgba64f"
+    );
+    let evidence_source = if seed.pixel_readback_max.is_some() && float_surface {
         1
     } else {
         2
@@ -271,4 +317,93 @@ pub fn is_10bit_xr_surface(value: &str) -> bool {
         // 10-bit XR 族（mpv 报 bgr10a2Unorm；Metal 的 BGRA10_XR 变体也归这里）
         | "bgr10a2unorm" | "bgra10_xr" | "bgra10xr" | "bgra10xrsrgb" | "bgr10xr" | "bgr10xrsrgb"
     )
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn seed_with_values() -> ProbeSeed {
+        ProbeSeed {
+            target: TargetParams {
+                gamma: "pq".to_string(),
+                primaries: "bt.2020".to_string(),
+                max_luma: Some(1000.0),
+                min_luma: Some(0.005),
+                pixelformat: "rgba16f".to_string(),
+            },
+            layer: LayerState {
+                pixel_format: "bgr10a2Unorm".to_string(),
+                wants_edr: true,
+                colorspace: "bt.2100-pq".to_string(),
+            },
+            screen: ScreenState {
+                max_potential_edr: 2.0,
+                max_current_edr: 1.0,
+                name: "Built-in Retina Display".to_string(),
+                scale: 2.0,
+            },
+            pixel_readback_max: None,
+        }
+    }
+
+    /// 播放中必须每秒留一条证据 —— 即使关键字段没变（这是验收要看的 target.* 来源）。
+    #[test]
+    fn playing_always_logs_at_least_once_per_second() {
+        assert!(should_log_probe(true, false, Duration::from_millis(1000)));
+        assert!(!should_log_probe(true, false, Duration::from_millis(300)));
+    }
+
+    /// 静止时只在字段变化时写（不刷屏）。
+    #[test]
+    fn idle_logs_only_on_change() {
+        assert!(should_log_probe(false, true, Duration::from_millis(1000)));
+        assert!(!should_log_probe(false, false, Duration::from_millis(5000)));
+    }
+
+    /// 证据行与 UI 无关：给定 seed + verdict 就能出完整一行，target.* 必须有值。
+    #[test]
+    fn probe_log_line_carries_target_values_without_ui() {
+        let seed = seed_with_values();
+        let verdict = judge(&seed);
+        let line = probe_log_line(&seed, &verdict);
+
+        assert!(line.starts_with("probe: "));
+        assert!(line.contains("target.gamma=pq"), "实际：{line}");
+        assert!(line.contains("target.primaries=bt.2020"), "实际：{line}");
+        assert!(
+            line.contains("target.max-luma=1000.0 cd/m²"),
+            "实际：{line}"
+        );
+        assert!(line.contains("surface.pixfmt=bgr10a2Unorm"), "实际：{line}");
+        assert!(line.contains("csp(opt)=bt.2100-pq"), "实际：{line}");
+        assert!(line.contains("currentEDR=1.000"), "实际：{line}");
+        assert!(line.contains("pipeline_hdr=true"), "实际：{line}");
+    }
+
+    /// 8bit 像素回读不能算「像素回读证据」。
+    #[test]
+    fn eight_bit_readback_still_reports_pipeline_evidence_source() {
+        let mut seed = seed_with_values();
+        seed.layer.pixel_format = "bgra8unorm".to_string();
+        seed.target.pixelformat = "bgra".to_string();
+        seed.pixel_readback_max = Some(0.9);
+        assert_eq!(judge(&seed).evidence_source, 2, "8bit 回读只能算管线证据");
+    }
+
+    /// 色彩空间那条不能写成「图层实测」——它是我们设的选项读回。
+    #[test]
+    fn colorspace_check_is_labelled_as_option_readback() {
+        let verdict = judge(&seed_with_values());
+        let check = verdict
+            .checks
+            .iter()
+            .find(|check| check.label.to_lowercase().contains("csp"))
+            .expect("必须有一条色彩空间证据");
+        assert!(
+            check.label.contains("选项读回"),
+            "标签必须写明是选项读回，实际：{}",
+            check.label
+        );
+    }
 }

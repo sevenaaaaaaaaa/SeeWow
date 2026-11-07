@@ -92,6 +92,12 @@ impl Region {
             Region::Traffic | Region::HeaderActions | Region::Controls | Region::Probe
         )
     }
+
+    /// 是否要关掉穿透。**没在播放时画面区也交给 Slint** ——
+    /// 否则壳中央那个「打开文件」按钮永远点不到（评审 P2：死控件）。
+    pub fn interactive_given(self, playing: bool) -> bool {
+        self.interactive() || (!playing && matches!(self, Region::Picture))
+    }
 }
 
 pub fn region_at(x: f32, y: f32, layout: &Layout, flags: &Flags) -> Region {
@@ -250,7 +256,13 @@ fn handle(
         let (x, y) = pointer_position(event, overlay, &layout);
         shared.set_pointer(x, y);
         let region = region_at(x, y, &layout, &flags);
-        super::overlay::set_interactive(overlay, region.interactive());
+        let interactive = region.interactive_given(flags.playing);
+        // 离开交互区要把 key 交还宿主窗口，否则键盘焦点一直挂在叠层上（评审 P2）
+        let was_interactive = !overlay.ignoresMouseEvents();
+        super::overlay::set_interactive(overlay, interactive);
+        if was_interactive && !interactive {
+            host.makeKeyWindow();
+        }
         sink.note_activity();
         return false;
     }
@@ -258,16 +270,20 @@ fn handle(
     if kind == NSEventType::LeftMouseDown {
         let (x, y) = pointer_position(event, overlay, &layout);
         let region = region_at(x, y, &layout, &flags);
-        super::overlay::set_interactive(overlay, region.interactive());
+        super::overlay::set_interactive(overlay, region.interactive_given(flags.playing));
         sink.note_activity();
         match region {
-            Region::Picture => {
+            Region::Picture if flags.playing => {
                 if event.clickCount() >= 2 {
                     sink.toggle_fullscreen();
                 } else {
                     sink.toggle_pause();
                 }
                 return true;
+            }
+            Region::Picture => {
+                // 未播放：画面区归 Slint（中央按钮/提示可点）
+                return false;
             }
             Region::HeaderDrag => {
                 // 页头拖窗：AppKit 自己跑拖动循环，子窗口跟着父窗口走。
@@ -290,6 +306,11 @@ fn handle(
     }
 
     if kind == NSEventType::KeyDown {
+        // 模态面板（NSOpenPanel）或文本输入期间一律放行：否则打开文件的对话框里
+        // 空格/Esc/方向键会被我们吞掉（评审 P1-6）
+        if modal_or_text_input_active() {
+            return false;
+        }
         let key = event.keyCode();
         let mods = event.modifierFlags();
         let command = mods.contains(NSEventModifierFlags::Command);
@@ -333,6 +354,31 @@ fn handle(
     }
 
     false
+}
+
+/// `NSApp` 是否处于模态 / 当前焦点是不是文本输入。
+fn modal_or_text_input_active() -> bool {
+    use objc2_app_kit::NSApplication;
+    let Some(mtm) = objc2::MainThreadMarker::new() else {
+        return false;
+    };
+    let app = NSApplication::sharedApplication(mtm);
+    if app.modalWindow().is_some() {
+        return true;
+    }
+    // 文本焦点：first responder 的类名里带 Text/FieldEditor 就放行
+    let Some(window) = app.keyWindow() else {
+        return false;
+    };
+    let Some(responder) = window.firstResponder() else {
+        return false;
+    };
+    let class: *const objc2::runtime::AnyClass = unsafe { objc2::msg_send![&*responder, class] };
+    if class.is_null() {
+        return false;
+    }
+    let name = unsafe { (*class).name().to_string_lossy().into_owned() };
+    name.contains("Text") || name.contains("FieldEditor")
 }
 
 /// 事件坐标 → 叠层窗口的左上角原点逻辑坐标。

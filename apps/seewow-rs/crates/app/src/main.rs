@@ -2,8 +2,8 @@
 //!
 //! 顺序按 HLD §9.2：
 //! 1. Slint 组件先建、**不 show**（避免改窗口属性时闪白）；
-//! 2. 拉起 mpv（`force-window=yes` + `title=SeeWow Player`），把 `Mpv` 交给 player 线程；
-//! 3. 0.1s 的 tick 在 `NSApp.windows` 里按标题定位宿主窗口（不阻塞）；
+//! 2. 拉起 mpv（窗口由 mpv 在首帧自己创建；**不设 force-window**），把 `Mpv` 交给 player 线程；
+//! 3. 0.1s 的 tick 在 `NSApp.windows` 里按 **类名 `swift.Window`** 定位宿主窗口（标题会被 mpv 改成媒体名）；
 //! 4. show 叠层 → 透明加固 → 挂成宿主窗口的子窗口 → 装 `NSEvent` 监视器；
 //! 5. 播放 / 探针 / 全屏 / 换屏全部由 tick 维护；**主线程从不直接调 libmpv**。
 //!
@@ -62,6 +62,7 @@ struct Core {
     last_probe_log_at: Mutex<Instant>,
     last_screen: Mutex<String>,
     last_snapshot: Mutex<seewow_player::host::MpvSnapshot>,
+    last_screen_state: Mutex<seewow_player::probe::ScreenState>,
     last_logged_frame: Mutex<Option<(f64, f64, f64, f64)>>,
     last_probe_key: Mutex<String>,
     selftest: bool,
@@ -221,7 +222,7 @@ impl Core {
             return;
         }
 
-        let Some(host) = host_window::find_by_title(HOST_WINDOW_TITLE) else {
+        let Some(host) = host_window::find_host_window() else {
             // 还没有 mpv 窗口：先把壳自己显示出来（用户要能看见界面、点「打开文件」）
             self.show_standalone_shell();
             let tries = self.locate_tries.fetch_add(1, Ordering::SeqCst) + 1;
@@ -229,7 +230,7 @@ impl Core {
                 self.log.write(
                     "warn",
                     &format!(
-                        "E4004: 定位宿主窗口失败（按 title=\"{HOST_WINDOW_TITLE}\" 扫了 {tries} 次）。已知降级：叠层作独立浮动窗口。"
+                        "E4004: 定位宿主窗口失败（按 class=swift.Window 扫了 {tries} 次）。已知降级：叠层作独立浮动窗口。"
                     ),
                 );
             }
@@ -420,10 +421,18 @@ impl Core {
         {
             ui.set_progress((position / duration).clamp(0.0, 1.0) as f32);
         }
+        // 状态行不许写死 headroom：本机 potentialEDR = 2.000、currentEDR = 1.000
+        let screen_state = self
+            .last_screen_state
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default();
         ui.set_status_line(
             format!(
-                "M1 · {} · SDR 屏 headroom 1.00",
-                if playing { "播放中" } else { "待播放" }
+                "M1 · {} · EDR headroom {:.2}（潜力 {:.2}）",
+                if playing { "播放中" } else { "待播放" },
+                screen_state.max_current_edr,
+                screen_state.max_potential_edr
             )
             .into(),
         );
@@ -488,33 +497,12 @@ impl Core {
         };
         let verdict = judge(&seed);
 
-        let Some(ui) = self.ui.upgrade() else { return };
-        ui.set_probe_mpv(snapshot.rows.clone().into());
-        ui.set_probe_mac(mac_rows(&seed).into());
-        ui.set_probe_verdict(verdict_rows(&verdict).into());
-        ui.set_probe_headline(verdict.headline.clone().into());
-        ui.set_probe_pipeline(verdict.pipeline_hdr);
-        ui.set_probe_onscreen(verdict.on_screen_hdr);
-
-        let previous_screen = self
-            .last_screen
-            .lock()
-            .map(|s| s.clone())
-            .unwrap_or_default();
-        if previous_screen != seed.screen.name {
-            if let Ok(mut last) = self.last_screen.lock() {
-                *last = seed.screen.name.clone();
-            }
-            self.log.write(
-                "info",
-                &format!(
-                    "screen: 屏幕（重新）读取 → name=\"{}\" potentialEDR={:.3} currentEDR={:.3}",
-                    seed.screen.name, seed.screen.max_potential_edr, seed.screen.max_current_edr
-                ),
-            );
+        // 屏幕状态留一份给状态行（不许把 headroom 写死）
+        if let Ok(mut last) = self.last_screen_state.lock() {
+            *last = seed.screen.clone();
         }
 
-        // 证据行只在关键字段变化时写，且最多 1 秒一条（面板照常每 250ms 刷新）
+        // **证据先落盘，UI 后更新**：面板拿不到也必须有 target.*（评审 P0-2）
         let key = format!(
             "{}|{}|{}|{}|{}|{}|{}|{:.3}|{:.3}|{}|{}",
             dash(&seed.target.gamma),
@@ -537,38 +525,52 @@ impl Core {
             .lock()
             .map(|last| *last != key)
             .unwrap_or(true);
-        let due = self
+        let since_last = self
             .last_probe_log_at
             .lock()
-            .map(|last| last.elapsed() >= Duration::from_millis(1000))
-            .unwrap_or(true);
-        if changed && due {
+            .map(|last| last.elapsed())
+            .unwrap_or(Duration::from_secs(3600));
+        let playing = self.playing.load(Ordering::SeqCst);
+        if seewow_player::probe::should_log_probe(playing, changed, since_last) {
+            if let Ok(mut last) = self.last_probe_log_at.lock() {
+                *last = Instant::now();
+            }
             if let Ok(mut last) = self.last_probe_key.lock() {
                 *last = key;
             }
-            if let Ok(mut last) = self.last_probe_log_at.lock() {
-                *last = Instant::now();
+            self.log.write(
+                "info",
+                &seewow_player::probe::probe_log_line(&seed, &verdict),
+            );
+        }
+
+        // 屏变了单独记一行（换屏不崩的证据）
+        let previous_screen = self
+            .last_screen
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_default();
+        if previous_screen != seed.screen.name {
+            if let Ok(mut last) = self.last_screen.lock() {
+                *last = seed.screen.name.clone();
             }
             self.log.write(
                 "info",
                 &format!(
-                    "probe: target.gamma={} target.primaries={} target.max-luma={} cd/m² target.pixfmt={} | layer.pixfmt={} wantsEDR={} csp={} | screen.potentialEDR={:.3} currentEDR={:.3} | {}",
-                    dash(&seed.target.gamma),
-                    dash(&seed.target.primaries),
-                    seed.target
-                        .max_luma
-                        .map(|v| format!("{v:.1}"))
-                        .unwrap_or_else(|| "n/a".into()),
-                    dash(&seed.target.pixelformat),
-                    dash(&seed.layer.pixel_format),
-                    seed.layer.wants_edr,
-                    dash(&seed.layer.colorspace),
-                    seed.screen.max_potential_edr,
-                    seed.screen.max_current_edr,
-                    verdict.log_line(),
+                    "screen: 屏幕（重新）读取 → name=\"{}\" potentialEDR={:.3} currentEDR={:.3}",
+                    seed.screen.name, seed.screen.max_potential_edr, seed.screen.max_current_edr
                 ),
             );
         }
+
+        // 面板更新（拿不到 UI 就直接跳过，绝不影响上面已经写好的证据）
+        let Some(ui) = self.ui.upgrade() else { return };
+        ui.set_probe_mpv(snapshot.rows.clone().into());
+        ui.set_probe_mac(mac_rows(&seed).into());
+        ui.set_probe_verdict(verdict_rows(&verdict).into());
+        ui.set_probe_headline(verdict.headline.clone().into());
+        ui.set_probe_pipeline(verdict.pipeline_hdr);
+        ui.set_probe_onscreen(verdict.on_screen_hdr);
     }
 
     fn selftest_step(&self) {
@@ -812,6 +814,7 @@ fn main() {
         last_probe_log_at: Mutex::new(Instant::now() - Duration::from_secs(1)),
         last_screen: Mutex::new(String::new()),
         last_snapshot: Mutex::new(seewow_player::host::MpvSnapshot::default()),
+        last_screen_state: Mutex::new(seewow_player::probe::ScreenState::default()),
         last_logged_frame: Mutex::new(None),
         last_probe_key: Mutex::new(String::new()),
         selftest,
@@ -838,34 +841,6 @@ fn main() {
             unsafe { NSTimer::scheduledTimerWithTimeInterval_repeats_block(0.1, true, &block) };
         std::mem::forget(timer);
         std::mem::forget(block);
-    }
-
-    // 诊断：主队列（libdispatch）在这个进程里到底会不会被抽干
-    if std::env::var("SEEWOW_MAINQ_TEST")
-        .map(|value| value == "1")
-        .unwrap_or(false)
-    {
-        std::thread::spawn(|| {
-            let mut hits = 0u32;
-            loop {
-                std::thread::sleep(Duration::from_millis(300));
-                hits += 1;
-                let hits = hits;
-                dispatch2::DispatchQueue::main().exec_async(move || {
-                    let _ = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open("/tmp/seewow-mainq.log")
-                        .and_then(|mut file| {
-                            std::io::Write::write_all(
-                                &mut file,
-                                format!("mainq {hits}\n").as_bytes(),
-                            )
-                        });
-                });
-            }
-        });
-        log.write("info", "diag: 主队列测试线程已起");
     }
 
     log.write("info", "app: 进入 Slint 事件循环");
