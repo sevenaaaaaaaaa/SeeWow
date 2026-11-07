@@ -98,6 +98,52 @@ pub fn probe_log_line(seed: &ProbeSeed, verdict: &Verdict) -> String {
     )
 }
 
+/// `target.*` 不可用时的分项诊断：属性「不存在」与「存在但为空」要分开。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct VoDiagnostics {
+    pub current_vo: String,
+    pub video_params: String,
+    pub target_params: String,
+}
+
+/// target 不可用时写清原因：属性不存在 / 存在但为空，以及锁屏时这是「预期」。
+pub fn target_unavailable_note(diag: &VoDiagnostics, locked: Option<bool>) -> String {
+    let (lock_text, verdict_text) = match locked {
+        Some(true) => ("锁屏", "VO 未呈现，target 不可用（属预期）"),
+        Some(false) => ("未锁屏", "VO 未呈现属异常，需查 mpv 的 VO 日志"),
+        None => ("锁屏状态未知", "无法判定，需查 mpv 的 VO 日志"),
+    };
+    format!(
+        "target-diag: current-vo={} video-params={} video-target-params={} | {lock_text} → {verdict_text}",
+        dash(&diag.current_vo),
+        dash(&diag.video_params),
+        dash(&diag.target_params),
+    )
+}
+
+/// 面板 MACOS 列。**色彩空间那行必须写明是选项读回**，不许写成图层实测。
+pub fn mac_rows(seed: &ProbeSeed) -> String {
+    format!(
+        "screen {}
+potentialEDR {:.3}
+currentEDR {:.3}
+scale {:.2}
+
+surface
+pixelFormat {}
+wantsEDR {}
+
+cocoa-cb-output-csp（选项读回） {}",
+        dash(&seed.screen.name),
+        seed.screen.max_potential_edr,
+        seed.screen.max_current_edr,
+        seed.screen.scale,
+        dash(&seed.layer.pixel_format),
+        seed.layer.wants_edr,
+        dash(&seed.layer.colorspace),
+    )
+}
+
 /// 单条证据。面板逐条显示，失败项一眼可见。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Check {
@@ -389,6 +435,42 @@ mod tests {
         seed.target.pixelformat = "bgra".to_string();
         seed.pixel_readback_max = Some(0.9);
         assert_eq!(judge(&seed).evidence_source, 2, "8bit 回读只能算管线证据");
+    }
+
+    /// target.* 为 n/a 时必须写清原因：属性不存在 vs 存在但为空，以及锁屏时的「预期」。
+    #[test]
+    fn target_unavailable_note_separates_missing_from_empty_and_marks_locked_screen() {
+        let diag = VoDiagnostics {
+            current_vo: "gpu-next".to_string(),
+            video_params: "存在且非空".to_string(),
+            target_params: "不存在".to_string(),
+        };
+        let note = target_unavailable_note(&diag, Some(true));
+        assert!(note.contains("video-params=存在且非空"), "实际：{note}");
+        assert!(note.contains("video-target-params=不存在"), "实际：{note}");
+        assert!(
+            note.contains("锁屏") && note.contains("预期"),
+            "锁屏时必须写明「预期」，实际：{note}"
+        );
+
+        let unlocked = target_unavailable_note(&diag, Some(false));
+        assert!(unlocked.contains("未锁屏"), "实际：{unlocked}");
+        assert!(
+            !unlocked.contains("属预期"),
+            "未锁屏时不许赖给锁屏，实际：{unlocked}"
+        );
+    }
+
+    /// 面板 MACOS 列不许把选项读回写成图层实测。
+    #[test]
+    fn mac_rows_labels_option_readback_not_layer_snapshot() {
+        let seed = seed_with_values();
+        let rows = mac_rows(&seed);
+        assert!(
+            rows.contains("cocoa-cb-output-csp（选项读回）"),
+            "实际：{rows}"
+        );
+        assert!(!rows.contains("layer.colorspace"), "实际：{rows}");
     }
 
     /// 色彩空间那条不能写成「图层实测」——它是我们设的选项读回。

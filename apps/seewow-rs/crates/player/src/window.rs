@@ -104,6 +104,83 @@ pub fn find_host_window() -> Option<Retained<NSWindow>> {
 
 const HOST_TITLE_FALLBACK: &str = "SeeWow Player";
 
+/// 扫描失败时的窗口清单（含可见性与最小化，供一行诊断）。
+#[derive(Clone, Debug, PartialEq)]
+pub struct WindowDetail {
+    pub title: String,
+    pub class: String,
+    pub visible: bool,
+    pub miniaturized: bool,
+}
+
+/// 扫描失败诊断行：一行打完「锁屏状态 + 每个窗口的 title/class/可见性/最小化」。
+///
+/// 定位失败时**必须能自证**（评审要求）：不是静默重试，也不是猜「大概是锁屏」。
+pub fn windows_diagnostic_line(windows: &[WindowDetail], locked: Option<bool>) -> String {
+    let lock_text = match locked {
+        Some(true) => "locked=true",
+        Some(false) => "locked=false",
+        None => "locked=unknown",
+    };
+    let mut line = format!("window-diag: {lock_text} | {} 个窗口", windows.len());
+    for window in windows {
+        line.push_str(&format!(
+            " | title={:?} class={} visible={} mini={}",
+            window.title, window.class, window.visible, window.miniaturized
+        ));
+    }
+    line
+}
+
+/// 当前会话是否锁屏（`CGSessionCopyCurrentDictionary` 的 `CGSSessionScreenIsLocked`）。
+/// 读不到时返回 `None`（写日志时显示 unknown，不猜）。
+pub fn screen_locked() -> Option<bool> {
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::{NSNumber, NSString};
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    unsafe extern "C" {
+        fn CGSessionCopyCurrentDictionary() -> *const core::ffi::c_void;
+    }
+
+    unsafe {
+        let dict = CGSessionCopyCurrentDictionary();
+        if dict.is_null() {
+            return None;
+        }
+        let dict: &AnyObject = &*(dict as *const AnyObject);
+        let key = NSString::from_str("CGSSessionScreenIsLocked");
+        let value: *mut AnyObject = objc2::msg_send![dict, objectForKey: &*key];
+        if value.is_null() {
+            return Some(false);
+        }
+        let value: Retained<AnyObject> = Retained::retain(value)?;
+        let number = value.downcast::<NSNumber>().ok()?;
+        Some(number.boolValue())
+    }
+}
+
+/// 全表（含可见性与最小化），供诊断行使用。
+pub fn list_detailed() -> Vec<WindowDetail> {
+    let Some(mtm) = main_thread() else {
+        return Vec::new();
+    };
+    let app = NSApplication::sharedApplication(mtm);
+    let windows: Retained<NSArray<NSWindow>> = app.windows();
+    let mut out = Vec::new();
+    for index in 0..windows.count() {
+        let window = windows.objectAtIndex(index);
+        out.push(WindowDetail {
+            title: window.title().to_string(),
+            class: class_name(&window),
+            visible: window.isVisible(),
+            miniaturized: window.isMiniaturized(),
+        });
+    }
+    out
+}
+
 /// 一个窗口的自我介绍（V1 验证项：打印候选项的 title / class）。
 #[derive(Clone, Debug, PartialEq)]
 pub struct WindowInfo {
@@ -289,10 +366,10 @@ pub fn metal_format_name(format: u64) -> String {
         90 => "rgb10a2unorm".to_string(),
         // 10-bit XR 族（ADR-0010 v3 认这一族；mpv 0.42 在 macOS 实测是 BGR10A2Unorm）
         94 => "bgr10a2unorm".to_string(),
-        552 => "bgr10_xr".to_string(),
-        553 => "bgr10_xr_srgb".to_string(),
-        554 => "bgra10_xr".to_string(),
-        555 => "bgra10_xr_srgb".to_string(),
+        552 => "bgra10_xr".to_string(),
+        553 => "bgra10_xr_srgb".to_string(),
+        554 => "bgr10_xr".to_string(),
+        555 => "bgr10_xr_srgb".to_string(),
         115 => "rgba16float".to_string(),
         other => format!("mtl#{other}"),
     }
@@ -339,6 +416,45 @@ mod tests {
         assert_eq!(pick_host_window(&[]), None);
     }
 
+    /// 扫描失败时必须能自证：全表 + 可见性 + 是否锁屏，一行打完。
+    #[test]
+    fn scan_failure_line_lists_every_window_with_visibility_and_lock_state() {
+        let windows = vec![
+            WindowDetail {
+                title: "SeeWow Overlay".to_string(),
+                class: "WinitWindow".to_string(),
+                visible: true,
+                miniaturized: false,
+            },
+            WindowDetail {
+                title: "hdr10-sample".to_string(),
+                class: "swift.Window".to_string(),
+                visible: false,
+                miniaturized: true,
+            },
+        ];
+        let line = windows_diagnostic_line(&windows, Some(true));
+
+        assert!(line.contains("locked=true"), "要写明锁屏状态，实际：{line}");
+        assert!(line.contains("2 个窗口"), "要写明窗口数，实际：{line}");
+        assert!(
+            line.contains(r#"title="SeeWow Overlay" class=WinitWindow visible=true mini=false"#),
+            "实际：{line}"
+        );
+        assert!(
+            line.contains(r#"title="hdr10-sample" class=swift.Window visible=false mini=true"#),
+            "实际：{line}"
+        );
+    }
+
+    /// 没有窗口时也要出一行（不是静默失败）。
+    #[test]
+    fn scan_failure_line_handles_empty_list() {
+        let line = windows_diagnostic_line(&[], None);
+        assert!(line.contains("0 个窗口"), "实际：{line}");
+        assert!(line.contains("locked=unknown"), "实际：{line}");
+    }
+
     /// MTLPixelFormat → 名字，喂 raw number（对照 Metal 头文件）。
     #[test]
     fn metal_pixel_format_table_matches_metal_header() {
@@ -348,10 +464,10 @@ mod tests {
         assert_eq!(metal_format_name(90), "rgb10a2unorm");
         assert_eq!(metal_format_name(94), "bgr10a2unorm");
         assert_eq!(metal_format_name(115), "rgba16float");
-        assert_eq!(metal_format_name(552), "bgr10_xr");
-        assert_eq!(metal_format_name(553), "bgr10_xr_srgb");
-        assert_eq!(metal_format_name(554), "bgra10_xr");
-        assert_eq!(metal_format_name(555), "bgra10_xr_srgb");
+        assert_eq!(metal_format_name(552), "bgra10_xr");
+        assert_eq!(metal_format_name(553), "bgra10_xr_srgb");
+        assert_eq!(metal_format_name(554), "bgr10_xr");
+        assert_eq!(metal_format_name(555), "bgr10_xr_srgb");
     }
 
     /// 94/552/115 属于 XR/16F 族，80 与 90 不属于（90 是 RGB10A2Unorm，不是 XR）。

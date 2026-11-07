@@ -65,6 +65,8 @@ struct Core {
     last_screen_state: Mutex<seewow_player::probe::ScreenState>,
     last_logged_frame: Mutex<Option<(f64, f64, f64, f64)>>,
     last_probe_key: Mutex<String>,
+    last_scan_diag_at: Mutex<Instant>,
+    last_target_diag_at: Mutex<Instant>,
     selftest: bool,
     selftest_step: AtomicU32,
     ticks: AtomicU32,
@@ -226,6 +228,26 @@ impl Core {
             // 还没有 mpv 窗口：先把壳自己显示出来（用户要能看见界面、点「打开文件」）
             self.show_standalone_shell();
             let tries = self.locate_tries.fetch_add(1, Ordering::SeqCst) + 1;
+            let due = self
+                .last_scan_diag_at
+                .lock()
+                .map(|last| last.elapsed() >= Duration::from_millis(1000))
+                .unwrap_or(true);
+            if due {
+                if let Ok(mut last) = self.last_scan_diag_at.lock() {
+                    *last = Instant::now();
+                }
+                self.log.write(
+                    "warn",
+                    &format!(
+                        "{} | shell=standalone（未退出，等 mpv 窗口出现）| try={tries}",
+                        host_window::windows_diagnostic_line(
+                            &host_window::list_detailed(),
+                            host_window::screen_locked()
+                        )
+                    ),
+                );
+            }
             if tries == LOCATE_TRIES && self.load_requested.load(Ordering::SeqCst) {
                 self.log.write(
                     "warn",
@@ -563,10 +585,31 @@ impl Core {
             );
         }
 
+        // target.* 不可用时写清原因（不存在 / 存在但为空 / 锁屏属预期），5 秒最多一条
+        if seed.target.gamma.trim().is_empty() || seed.target.gamma.trim() == "n/a" {
+            let due = self
+                .last_target_diag_at
+                .lock()
+                .map(|last| last.elapsed() >= Duration::from_millis(5000))
+                .unwrap_or(true);
+            if due {
+                if let Ok(mut last) = self.last_target_diag_at.lock() {
+                    *last = Instant::now();
+                }
+                self.log.write(
+                    "warn",
+                    &seewow_player::probe::target_unavailable_note(
+                        &snapshot.vo,
+                        host_window::screen_locked(),
+                    ),
+                );
+            }
+        }
+
         // 面板更新（拿不到 UI 就直接跳过，绝不影响上面已经写好的证据）
         let Some(ui) = self.ui.upgrade() else { return };
         ui.set_probe_mpv(snapshot.rows.clone().into());
-        ui.set_probe_mac(mac_rows(&seed).into());
+        ui.set_probe_mac(seewow_player::probe::mac_rows(&seed).into());
         ui.set_probe_verdict(verdict_rows(&verdict).into());
         ui.set_probe_headline(verdict.headline.clone().into());
         ui.set_probe_pipeline(verdict.pipeline_hdr);
@@ -705,19 +748,6 @@ fn dash(value: &str) -> &str {
     }
 }
 
-fn mac_rows(seed: &ProbeSeed) -> String {
-    format!(
-        "screen {}\npotentialEDR {:.3}\ncurrentEDR {:.3}\nscale {:.2}\n\nlayer\npixfmt {}\nwantsEDR {}\ncolorspace {}",
-        dash(&seed.screen.name),
-        seed.screen.max_potential_edr,
-        seed.screen.max_current_edr,
-        seed.screen.scale,
-        dash(&seed.layer.pixel_format),
-        seed.layer.wants_edr,
-        dash(&seed.layer.colorspace),
-    )
-}
-
 fn verdict_rows(verdict: &Verdict) -> String {
     let mut out = String::new();
     for check in &verdict.checks {
@@ -817,6 +847,8 @@ fn main() {
         last_screen_state: Mutex::new(seewow_player::probe::ScreenState::default()),
         last_logged_frame: Mutex::new(None),
         last_probe_key: Mutex::new(String::new()),
+        last_scan_diag_at: Mutex::new(Instant::now() - Duration::from_secs(10)),
+        last_target_diag_at: Mutex::new(Instant::now() - Duration::from_secs(10)),
         selftest,
         selftest_step: AtomicU32::new(0),
         ticks: AtomicU32::new(0),

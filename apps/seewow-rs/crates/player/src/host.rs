@@ -67,6 +67,8 @@ pub struct MpvSnapshot {
     pub target: TargetParams,
     /// 面板「MPV」列的文本
     pub rows: String,
+    /// target.* 不可用时的分项诊断（属性不存在 / 存在但为空）
+    pub vo: crate::probe::VoDiagnostics,
 }
 
 /// `~/Library/Logs/SeeWow/m1.log`。M1 自带，不依赖 T-02 的日志门面。
@@ -367,6 +369,11 @@ fn refresh(mpv: &Mpv, snapshot: &Arc<Mutex<MpvSnapshot>>) {
     let csp = prop_str(mpv, "options/cocoa-cb-output-csp");
     let source_gamma = prop_str(mpv, "video-params/gamma");
     let rows = build_rows(mpv);
+    let vo = crate::probe::VoDiagnostics {
+        current_vo: prop_str(mpv, "current-vo"),
+        video_params: prop_state(mpv, "video-params"),
+        target_params: prop_state(mpv, "video-target-params"),
+    };
 
     if let Ok(mut slot) = snapshot.lock() {
         slot.pause = pause;
@@ -378,6 +385,16 @@ fn refresh(mpv: &Mpv, snapshot: &Arc<Mutex<MpvSnapshot>>) {
         slot.source_gamma = source_gamma;
         slot.target = target;
         slot.rows = rows;
+        slot.vo = vo;
+    }
+}
+
+/// 一个属性到底是「不存在」「存在但为空」还是「存在且非空」——诊断用，别混成 n/a。
+fn prop_state(mpv: &Mpv, name: &str) -> String {
+    match mpv.get_property::<String>(name) {
+        Err(_) => "不存在".to_string(),
+        Ok(value) if value.trim().is_empty() || value.trim() == "no" => "存在但为空".to_string(),
+        Ok(_) => "存在且非空".to_string(),
     }
 }
 

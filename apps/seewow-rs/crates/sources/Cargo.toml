@@ -8,3 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+
+# 依赖说明：HLD §3.4 现在只冻结 player / ui / app 三个 crate 的直接依赖。
+# core / library / sources 的空清单是**有意为之**，不是漏写：各自任务（T-02 起）
+# 在实现里补依赖时按任务表 §0.3 授权表 / CRD 走。
