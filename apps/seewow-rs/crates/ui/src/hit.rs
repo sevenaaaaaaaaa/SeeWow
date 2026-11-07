@@ -102,7 +102,8 @@ impl Region {
 
 pub fn region_at(x: f32, y: f32, layout: &Layout, flags: &Flags) -> Region {
     if flags.header_visible && y <= layout.header_h {
-        if x < layout.traffic_w && y < layout.header_h {
+        // 热区高度是 traffic_h（DoD 的 32），不是页头高度：否则 (40,33) 会被判成红绿灯
+        if x < layout.traffic_w && y < layout.traffic_h {
             return Region::Traffic;
         }
         if x >= layout.width - layout.gutter - layout.header_actions_w {
@@ -137,13 +138,15 @@ pub fn controls_visible(idle: Duration) -> bool {
     idle < IDLE_HIDE
 }
 
-/// 红绿灯：全屏一律不显示；窗口化时悬停（有活动）或指针在左上热区才显示。
-pub fn traffic_visible(fullscreen: bool, idle: Duration, x: f32, y: f32, layout: &Layout) -> bool {
+/// 红绿灯：**只有「窗口化 + 非全屏 + 指针在左上热区（traffic_w × traffic_h）」才显示**。
+///
+/// `_idle` 保留在签名里只是为了兼容 QA 的 harness（它按这个签名断言）；
+/// 显示与否与「静止多久」无关 —— 评审 case-05 就是被「跟着页头可见走」判失败的。
+pub fn traffic_visible(fullscreen: bool, _idle: Duration, x: f32, y: f32, layout: &Layout) -> bool {
     if fullscreen {
         return false;
     }
-    let in_hotspot = x < layout.traffic_w && y < layout.header_h;
-    in_hotspot || idle < IDLE_HIDE
+    x >= 0.0 && y >= 0.0 && x < layout.traffic_w && y < layout.traffic_h
 }
 
 /// 面板/播放状态由 app 实现；hit 只管「事件该变成哪个动作」。
@@ -390,4 +393,117 @@ fn pointer_position(event: &NSEvent, overlay: &NSWindow, layout: &Layout) -> (f3
         overlay.frame().size.height
     };
     (point.x as f32, (height - point.y) as f32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn layout() -> Layout {
+        Layout {
+            width: 1200.0,
+            height: 760.0,
+            header_h: 56.0,
+            gutter: 34.0,
+            controls_h: 72.0,
+            traffic_w: 80.0,
+            traffic_h: 32.0,
+            probe_w: 420.0,
+            probe_h: 352.0,
+            top_edge: 8.0,
+            header_actions_w: 182.0,
+        }
+    }
+
+    fn flags() -> Flags {
+        Flags {
+            header_visible: true,
+            ..Default::default()
+        }
+    }
+
+    /// 热区内（40,20）显示；热区右侧 1px（81,31）不显示。
+    #[test]
+    fn traffic_only_inside_hotspot_width() {
+        assert!(traffic_visible(
+            false,
+            Duration::from_secs(10),
+            40.0,
+            20.0,
+            &layout()
+        ));
+        assert!(!traffic_visible(
+            false,
+            Duration::from_secs(10),
+            81.0,
+            31.0,
+            &layout()
+        ));
+    }
+
+    /// 热区下方 1px（40,33）不显示 —— 热区高度是 32，不是页头高度 56。
+    #[test]
+    fn traffic_only_inside_hotspot_height() {
+        assert!(!traffic_visible(
+            false,
+            Duration::from_secs(10),
+            40.0,
+            33.0,
+            &layout()
+        ));
+    }
+
+    /// 指针不在热区时，静止多久都不显示（默认隐藏）。
+    #[test]
+    fn traffic_hidden_when_pointer_outside_hotspot_regardless_of_idle() {
+        assert!(!traffic_visible(
+            false,
+            Duration::from_millis(0),
+            900.0,
+            500.0,
+            &layout()
+        ));
+        assert!(!traffic_visible(
+            false,
+            Duration::from_secs(30),
+            900.0,
+            500.0,
+            &layout()
+        ));
+    }
+
+    /// 全屏一律不显示。
+    #[test]
+    fn traffic_never_visible_in_fullscreen() {
+        assert!(!traffic_visible(
+            true,
+            Duration::from_millis(0),
+            1.0,
+            1.0,
+            &layout()
+        ));
+    }
+
+    /// (40,33) 是页头拖动区，(40,20) 才是红绿灯区。
+    #[test]
+    fn region_split_uses_hotspot_height() {
+        assert_eq!(region_at(40.0, 20.0, &layout(), &flags()), Region::Traffic);
+        assert_eq!(
+            region_at(40.0, 33.0, &layout(), &flags()),
+            Region::HeaderDrag
+        );
+    }
+
+    /// 页头空白处是拖动区，最右侧是按钮区。
+    #[test]
+    fn header_middle_drags_and_right_edge_is_actions() {
+        assert_eq!(
+            region_at(600.0, 10.0, &layout(), &flags()),
+            Region::HeaderDrag
+        );
+        assert_eq!(
+            region_at(1180.0, 10.0, &layout(), &flags()),
+            Region::HeaderActions
+        );
+    }
 }
