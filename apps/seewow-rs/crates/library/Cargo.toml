@@ -1,0 +1,10 @@
+[package]
+name = "seewow-library"
+description = "SeeWow 片库：SQLite、扫描、查询、海报、进度（M1 只登记 crate；实现见 T-03 起）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]

@@ -40,6 +40,7 @@ apps/seewow/linux/flutter/ephemeral/
 
 # ── Local artifacts ─────────────────────────────────────────────
 dist/
+target/
 .build/
 DemoMedia/
 DemoMusic/

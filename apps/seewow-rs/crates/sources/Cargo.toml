@@ -1,0 +1,10 @@
+[package]
+name = "seewow-sources"
+description = "SeeWow 网络片源：SMB / WebDAV / IPTV、M3U / XMLTV、地址收敛、Range 桥（M1 只登记 crate）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]

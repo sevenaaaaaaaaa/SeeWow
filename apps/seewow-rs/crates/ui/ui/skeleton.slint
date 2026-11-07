@@ -1,0 +1,351 @@
+// M1 的窗口壳：页头（序号 + 衬线标题 + 等宽小标签 + 两个磁吸按钮）、底部控制条、
+// 画面区的打开提示、探针面板、自绘红绿灯。
+//
+// 页头就做在这个文件里（不新建 header.slint）：M6 的 T-30 再按授权表把它拆出去。
+// 红绿灯是自绘的：窗口是 borderless（`no-frame`），系统没有 titlebar，
+// 也就没有 `standardWindowButton` 可显示 —— 外观与行为按负责人的要求在这里实现。
+import { ProbePanel } from "probe_panel.slint";
+
+export component Skeleton inherits Window {
+    title: "SeeWow Overlay";
+    no-frame: true;
+    background: transparent;
+    preferred-width: 1280px;
+    preferred-height: 760px;
+    min-width: 720px;
+    min-height: 420px;
+    default-font-family: "Helvetica Neue";
+    default-font-size: 13px;
+
+    // ---------- 几何契约：hit.rs 从这里读，Rust 不写死坐标 ----------
+    out property <length> header-h: 56px;
+    out property <length> gutter: 34px;
+    out property <length> controls-h: 72px;
+    out property <length> traffic-w: 84px;
+    out property <length> traffic-h: 28px;
+    out property <length> probe-w: 420px;
+    out property <length> probe-h: 352px;
+    out property <length> top-edge: 8px;
+    out property <length> header-actions-w: 182px;
+
+    // ---------- 状态（由 Rust 写） ----------
+    in-out property <bool> playing: false;
+    in-out property <bool> header-visible: true;
+    in-out property <bool> traffic-visible: false;
+    in-out property <bool> controls-visible: false;
+    in-out property <bool> probe-visible: false;
+    in-out property <bool> fullscreen: false;
+    in-out property <string> index-label: "01";
+    in-out property <string> media-title: "SeeWow";
+    in-out property <string> media-subtitle: "HOME / 首页";
+    in-out property <string> status-line: "";
+    in-out property <string> clock-label: "00:00 / 00:00";
+    in-out property <float> progress: 0.0;
+    in-out property <string> probe-mpv: "";
+    in-out property <string> probe-mac: "";
+    in-out property <string> probe-verdict: "";
+    in-out property <string> probe-headline: "";
+    in-out property <bool> probe-pipeline: false;
+    in-out property <bool> probe-onscreen: false;
+
+    // ---------- 回调（由 Rust 接） ----------
+    callback open-file();
+    callback toggle-probe();
+    callback toggle-pause();
+    callback toggle-fullscreen();
+    callback traffic-close();
+    callback traffic-minimize();
+    callback traffic-zoom();
+
+    // ============ 自绘红绿灯：窗口化 + 悬停/左上热区才出现 ============
+    Rectangle {
+        x: 1px;
+        y: 1px;
+        width: root.width;
+        height: root.height;
+        opacity: 1.0;
+        background: transparent;
+        z: -1;
+    }
+
+    HorizontalLayout {
+        x: 18px;
+        y: 22px;
+        width: 72px;
+        height: 12px;
+        spacing: 18px;
+        opacity: root.traffic-visible ? 1.0 : 0.0;
+        animate opacity { duration: 220ms; easing: ease-out; }
+
+        Rectangle {
+            width: 12px; height: 12px; border-radius: 6px;
+            background: close-dot.has-hover ? #F27B6E : #C9C2B4CC;
+            close-dot := TouchArea {
+                clicked => { root.traffic-close(); }
+            }
+        }
+        Rectangle {
+            width: 12px; height: 12px; border-radius: 6px;
+            background: mini-dot.has-hover ? #E8C27A : #C9C2B4CC;
+            mini-dot := TouchArea {
+                clicked => { root.traffic-minimize(); }
+            }
+        }
+        Rectangle {
+            width: 12px; height: 12px; border-radius: 6px;
+            background: zoom-dot.has-hover ? #8FCB9B : #C9C2B4CC;
+            zoom-dot := TouchArea {
+                clicked => { root.traffic-zoom(); }
+            }
+        }
+    }
+
+    // ============ 页头 ============
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.header-h;
+        // 不是独立 bar：只压一层极淡的 scrim 让文字可读，靠 1px hairline 收边
+        background: @linear-gradient(180deg, #08080A6E 0%, #08080A00 100%);
+        opacity: root.header-visible ? 1.0 : 0.0;
+        animate opacity { duration: 220ms; easing: ease-out; }
+
+        HorizontalLayout {
+            padding-left: root.traffic-visible ? root.traffic-w + 18px : root.gutter;
+            padding-right: root.gutter;
+            spacing: 18px;
+            animate padding-left { duration: 200ms; easing: ease-out; }
+
+            HorizontalLayout {
+                spacing: 14px;
+                alignment: center;
+                Text {
+                    text: root.index-label;
+                    color: #C9BFA8;
+                    font-family: "Songti SC";
+                    font-size: 22px;
+                    letter-spacing: 1px;
+                    vertical-alignment: center;
+                }
+                VerticalLayout {
+                    spacing: 2px;
+                    alignment: center;
+                    Text {
+                        text: root.media-title;
+                        color: #F4EFE6;
+                        font-family: "Songti SC";
+                        font-size: 17px;
+                        letter-spacing: 0.6px;
+                    }
+                    Text {
+                        text: root.media-subtitle;
+                        color: #A79D8C;
+                        font-family: "Menlo";
+                        font-size: 9.5px;
+                        letter-spacing: 1.8px;
+                    }
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+
+            // 右侧：只有两个磁吸按钮
+            HorizontalLayout {
+                width: 182px;
+                spacing: 10px;
+                alignment: end;
+
+                Rectangle {
+                    width: 104px;
+                    height: 30px;
+                    border-radius: 15px;
+                    border-width: 1px;
+                    border-color: open-touch.has-hover ? #D8CDB6AA : #FFFFFF24;
+                    background: open-touch.has-hover ? #FFFFFF1F : #FFFFFF0A;
+                    animate background { duration: 140ms; }
+                    animate border-color { duration: 140ms; }
+                    Text {
+                        text: "打开文件";
+                        color: #F0EADC;
+                        font-size: 12px;
+                        letter-spacing: 0.5px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    open-touch := TouchArea {
+                        clicked => { root.open-file(); }
+                    }
+                }
+
+                Rectangle {
+                    width: 68px;
+                    height: 30px;
+                    border-radius: 15px;
+                    border-width: 1px;
+                    border-color: probe-touch.has-hover ? #D8CDB6AA : #FFFFFF24;
+                    background: root.probe-visible ? #FFFFFF26 : (probe-touch.has-hover ? #FFFFFF1F : #FFFFFF0A);
+                    animate background { duration: 140ms; }
+                    animate border-color { duration: 140ms; }
+                    Text {
+                        text: "探针";
+                        color: #F0EADC;
+                        font-size: 12px;
+                        letter-spacing: 0.5px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    probe-touch := TouchArea {
+                        clicked => { root.toggle-probe(); }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            x: 0;
+            y: root.header-h - 1px;
+            width: root.width;
+            height: 1px;
+            background: #FFFFFF1A;
+        }
+    }
+
+    // ============ 画面区提示（未播放时） ============
+    VerticalLayout {
+        y: root.header-h;
+        width: root.width;
+        height: root.height - root.header-h;
+        alignment: center;
+        spacing: 14px;
+        opacity: root.playing ? 0.0 : 1.0;
+        animate opacity { duration: 260ms; easing: ease-out; }
+
+        Text {
+            text: "SeeWow";
+            color: #F4EFE6D9;
+            font-family: "Songti SC";
+            font-size: 42px;
+            letter-spacing: 3px;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: root.status-line;
+            color: #A79D8C;
+            font-family: "Menlo";
+            font-size: 10px;
+            letter-spacing: 1.6px;
+            horizontal-alignment: center;
+        }
+        Rectangle {
+            width: 148px;
+            height: 30px;
+            border-radius: 15px;
+            border-width: 1px;
+            border-color: hint-touch.has-hover ? #FFFFFF4D : #FFFFFF26;
+            background: hint-touch.has-hover ? #FFFFFF14 : transparent;
+            Text {
+                text: "打开文件";
+                color: #E4DCCB;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            hint-touch := TouchArea {
+                clicked => { root.open-file(); }
+            }
+        }
+    }
+
+    // ============ 底部控制条 ============
+    Rectangle {
+        x: 0;
+        y: root.height - root.controls-h;
+        width: root.width;
+        height: root.controls-h;
+        background: @linear-gradient(0deg, #08080AB8 0%, #08080A00 100%);
+        opacity: root.controls-visible ? 1.0 : 0.0;
+        animate opacity { duration: 180ms; easing: ease-out; }
+
+        HorizontalLayout {
+            padding-left: root.gutter;
+            padding-right: root.gutter;
+            spacing: 16px;
+            alignment: center;
+
+            Rectangle {
+                width: 36px;
+                height: 36px;
+                border-radius: 18px;
+                background: play-touch.has-hover ? #FFFFFF2E : #FFFFFF16;
+                animate background { duration: 140ms; }
+                Text {
+                    text: root.playing ? "❚❚" : "▶";
+                    color: #F4EFE6;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                play-touch := TouchArea {
+                    clicked => { root.toggle-pause(); }
+                }
+            }
+
+            Text {
+                text: root.clock-label;
+                color: #CFC7B7;
+                font-family: "Menlo";
+                font-size: 10.5px;
+                letter-spacing: 0.8px;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                height: 2px;
+                horizontal-stretch: 1;
+                border-radius: 1px;
+                background: #FFFFFF26;
+                Rectangle {
+                    x: 0;
+                    y: 0;
+                    height: parent.height;
+                    width: parent.width * root.progress;
+                    border-radius: 1px;
+                    background: #E8DCC2;
+                }
+            }
+
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 15px;
+                background: fs-touch.has-hover ? #FFFFFF1F : transparent;
+                Text {
+                    text: root.fullscreen ? "⤡" : "⤢";
+                    color: #E4DCCB;
+                    font-size: 15px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                fs-touch := TouchArea {
+                    clicked => { root.toggle-fullscreen(); }
+                }
+            }
+        }
+    }
+
+    // ============ 探针面板 ============
+    if root.probe-visible : ProbePanel {
+        x: root.width - root.probe-w - root.gutter;
+        y: root.header-h + 14px;
+        width: root.probe-w;
+        height: root.probe-h;
+        mpv-rows: root.probe-mpv;
+        mac-rows: root.probe-mac;
+        verdict-rows: root.probe-verdict;
+        headline: root.probe-headline;
+        pipeline: root.probe-pipeline;
+        onscreen: root.probe-onscreen;
+        close-clicked => { root.toggle-probe(); }
+    }
+}

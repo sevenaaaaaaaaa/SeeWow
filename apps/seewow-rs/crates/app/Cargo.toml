@@ -1,0 +1,26 @@
+[package]
+name = "seewow-app"
+description = "SeeWow 入口：composition root（M1 走通骨架）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "seewow-app"
+path = "src/main.rs"
+
+[dependencies]
+seewow-core = { path = "../core" }
+seewow-library = { path = "../library" }
+seewow-player = { path = "../player" }
+seewow-sources = { path = "../sources" }
+seewow-ui = { path = "../ui" }
+crossbeam-channel.workspace = true
+slint.workspace = true
+objc2.workspace = true
+objc2-app-kit = { workspace = true, features = ["NSWindow", "NSApplication", "NSEvent", "NSGraphics", "NSOpenPanel", "NSSavePanel", "NSPanel", "objc2-core-foundation"] }
+objc2-foundation = { workspace = true, features = ["NSString", "NSGeometry", "NSTimer", "NSRunLoop"] }
+block2.workspace = true
+dispatch2 = "0.3.1"

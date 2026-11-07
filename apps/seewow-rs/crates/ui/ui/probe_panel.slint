@@ -1,0 +1,178 @@
+// M1 的调试探针面板：三列（mpv / macOS / 判定）+ 两个布尔徽标 + 一句话结论。
+// 数据由 Rust 侧拼成多行字符串塞进来（HLD §9.2 step 7）。
+
+export component ProbePanel inherits Rectangle {
+    in property <string> mpv-rows: "";
+    in property <string> mac-rows: "";
+    in property <string> verdict-rows: "";
+    in property <string> headline: "";
+    in property <bool> pipeline: false;
+    in property <bool> onscreen: false;
+    callback close-clicked();
+
+    background: #0A0A0DF0;
+    border-radius: 14px;
+    border-width: 1px;
+    border-color: #FFFFFF1F;
+    clip: true;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+
+        // 标题行
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            Text {
+                text: "PROBE / 探针";
+                color: #E9E0CC;
+                font-family: "Menlo";
+                font-size: 10px;
+                letter-spacing: 2px;
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; height: 1px; background: #FFFFFF1A; }
+            // pipeline 徽标
+            Rectangle {
+                height: 20px;
+                width: 96px;
+                border-radius: 10px;
+                background: root.pipeline ? #2F4A3A : #4A2F2A;
+                Text {
+                    text: root.pipeline ? "PIPELINE ✓" : "PIPELINE ✗";
+                    color: root.pipeline ? #9FD8B4 : #E0A08A;
+                    font-family: "Menlo";
+                    font-size: 9px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            Rectangle {
+                height: 20px;
+                width: 92px;
+                border-radius: 10px;
+                background: root.onscreen ? #2F4A3A : #2A2F3F;
+                Text {
+                    text: root.onscreen ? "ON SCREEN ✓" : "ON SCREEN ✗";
+                    color: root.onscreen ? #9FD8B4 : #A8B4CC;
+                    font-family: "Menlo";
+                    font-size: 9px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            Rectangle {
+                height: 20px;
+                width: 20px;
+                border-radius: 10px;
+                background: close-touch.has-hover ? #FFFFFF26 : #FFFFFF10;
+                Text {
+                    text: "×";
+                    color: #C9C2B4;
+                    font-size: 12px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                close-touch := TouchArea {
+                    clicked => { root.close-clicked(); }
+                }
+            }
+        }
+
+        // 结论
+        Text {
+            text: root.headline;
+            color: #F0EADC;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+
+        // 三列
+        HorizontalLayout {
+            spacing: 12px;
+            vertical-stretch: 1;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                vertical-stretch: 1;
+                background: #FFFFFF08;
+                border-radius: 8px;
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 6px;
+                    Text {
+                        text: "MPV";
+                        color: #8E8578;
+                        font-family: "Menlo";
+                        font-size: 9px;
+                        letter-spacing: 1.6px;
+                    }
+                    Text {
+                        text: root.mpv-rows;
+                        color: #D6CFC2;
+                        font-family: "Menlo";
+                        font-size: 8.5px;
+                        wrap: word-wrap;
+                        vertical-alignment: top;
+                        vertical-stretch: 1;
+                    }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                vertical-stretch: 1;
+                background: #FFFFFF08;
+                border-radius: 8px;
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 6px;
+                    Text {
+                        text: "MACOS";
+                        color: #8E8578;
+                        font-family: "Menlo";
+                        font-size: 9px;
+                        letter-spacing: 1.6px;
+                    }
+                    Text {
+                        text: root.mac-rows;
+                        color: #D6CFC2;
+                        font-family: "Menlo";
+                        font-size: 8.5px;
+                        wrap: word-wrap;
+                        vertical-alignment: top;
+                        vertical-stretch: 1;
+                    }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                vertical-stretch: 1;
+                background: #FFFFFF0C;
+                border-radius: 8px;
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 6px;
+                    Text {
+                        text: "判定";
+                        color: #8E8578;
+                        font-family: "Menlo";
+                        font-size: 9px;
+                        letter-spacing: 1.6px;
+                    }
+                    Text {
+                        text: root.verdict-rows;
+                        color: #D6CFC2;
+                        font-family: "Menlo";
+                        font-size: 8.5px;
+                        wrap: word-wrap;
+                        vertical-alignment: top;
+                        vertical-stretch: 1;
+                    }
+                }
+            }
+        }
+    }
+}
