@@ -8,7 +8,7 @@
 //!       video-target-params/gamma ∈ {pq, hlg}
 //!    && video-target-params/max-luma > 100.0            # 单位 cd/m²
 //!    && video-target-params/primaries == bt.2020
-//!    && layer.pixelFormat == RGBA16Float
+//!    && layer.pixelFormat ∈ 10-bit XR 族 {bgr10a2Unorm, rgba16Float}   // ADR-0010 v3
 //!    && layer.wantsExtendedDynamicRangeContent == true
 //!    && layer.colorspace ∈ PQ/HLG 族
 //!
@@ -135,8 +135,9 @@ pub fn judge(seed: &ProbeSeed) -> Verdict {
             ),
         },
         Check {
-            label: "layer.pixelFormat == RGBA16Float",
-            ok: is_16f(&render_format),
+            // ADR-0010 v3：10-bit XR 族都算（本机 mpv 实测 bgr10a2Unorm，不是 16F）
+            label: "layer.pixelFormat ∈ 10-bit XR 族 {bgr10a2Unorm, rgba16Float}",
+            ok: is_10bit_xr_surface(&render_format),
             detail: format!("{render_source} = {}", dash(&render_format)),
         },
         Check {
@@ -253,10 +254,21 @@ pub fn is_bt2020(value: &str) -> bool {
     )
 }
 
-/// 渲染目标是不是 16 位半浮点。
-pub fn is_16f(value: &str) -> bool {
+/// 渲染目标是不是「10-bit XR 族」——ADR-0010 v3 的口径。
+///
+/// 本机实测 mpv 0.42 的 cocoa-cb 层是 `bgr10a2Unorm`（10-bit BGRA XR），
+/// 不是 `RGBA16Float`；写死 16F 会让本机恒假，把「管线正常」误判成「未直通」。
+/// 两个都算合格，8bit 一律不合格。
+pub fn is_10bit_xr_surface(value: &str) -> bool {
     matches!(
-        value.trim().to_ascii_lowercase().replace('_', "").as_str(),
+        value
+            .trim()
+            .to_ascii_lowercase()
+            .replace(['_', '-'], "")
+            .as_str(),
+        // 16F 半浮点
         "rgba16float" | "rgba16f" | "rgba16" | "rgba64f"
+        // 10-bit XR 族（mpv 报 bgr10a2Unorm；Metal 的 BGRA10_XR 变体也归这里）
+        | "bgr10a2unorm" | "bgra10_xr" | "bgra10xr" | "bgra10xrsrgb" | "bgr10xr" | "bgr10xrsrgb"
     )
 }

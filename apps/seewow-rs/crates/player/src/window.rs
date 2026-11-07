@@ -221,12 +221,18 @@ pub fn layer_state(window: &NSWindow, colorspace: &str) -> LayerState {
 /// `MTLPixelFormat` 数值 → 可读名字（只列 M1 会遇到的几个）。
 fn metal_pixel_format_name(format: u64) -> String {
     match format {
+        // 10-bit XR 族（ADR-0010 v3 认这一族；mpv 0.42 在 macOS 上实测是 BGR10A2Unorm）
+        94 => "bgr10a2Unorm".to_string(),
+        552 => "bgr10_xr".to_string(),
+        553 => "bgr10_xr_srgb".to_string(),
+        554 => "bgra10_xr".to_string(),
+        555 => "bgra10_xr_srgb".to_string(),
+        // 16F
         115 => "rgba16float".to_string(),
+        // 8bit（用于证明「不成立」）
         70 => "bgra8unorm".to_string(),
         80 => "rgba8unorm".to_string(),
         81 => "rgba8unorm_srgb".to_string(),
-        90 => "bgra10_xr_srgb".to_string(),
-        552 => "rgba16float_xr".to_string(),
         other => format!("mtl#{other}"),
     }
 }

@@ -62,6 +62,8 @@ struct Core {
     last_probe_log_at: Mutex<Instant>,
     last_screen: Mutex<String>,
     last_snapshot: Mutex<seewow_player::host::MpvSnapshot>,
+    last_logged_frame: Mutex<Option<(f64, f64, f64, f64)>>,
+    last_probe_key: Mutex<String>,
     selftest: bool,
     selftest_step: AtomicU32,
     ticks: AtomicU32,
@@ -187,13 +189,32 @@ impl Core {
 
         // 已经挂好了就只跟 frame（子窗口不随父窗口 resize/全屏自动改尺寸）
         if let Some(handle) = self.overlay_handle() {
-            if overlay::sync_frame(&handle.overlay, &handle.host) {
-                let frame = overlay::frame(&handle.overlay);
+            overlay::sync_frame(&handle.overlay, &handle.host);
+            // 只在宿主 frame 真的变了时写一行（子窗口的取整差异会让 setFrame 反复触发，
+            // 之前每 100ms 一行把 m1.log 刷到上万行）
+            let host = overlay::frame(&handle.host);
+            let changed = self
+                .last_logged_frame
+                .lock()
+                .map(|last| match *last {
+                    Some((x, y, w, h)) => {
+                        (host.0 - x).abs() > 1.0
+                            || (host.1 - y).abs() > 1.0
+                            || (host.2 - w).abs() > 1.0
+                            || (host.3 - h).abs() > 1.0
+                    }
+                    None => true,
+                })
+                .unwrap_or(true);
+            if changed {
+                if let Ok(mut last) = self.last_logged_frame.lock() {
+                    *last = Some(host);
+                }
                 self.log.write(
                     "info",
                     &format!(
                         "overlay: frame 跟随宿主 → {{{:.0},{:.0} {:.0}x{:.0}}}",
-                        frame.0, frame.1, frame.2, frame.3
+                        host.0, host.1, host.2, host.3
                     ),
                 );
             }
@@ -493,13 +514,38 @@ impl Core {
             );
         }
 
-        // 每秒一条完整证据（面板是给人看的，日志是给验收看的）
+        // 证据行只在关键字段变化时写，且最多 1 秒一条（面板照常每 250ms 刷新）
+        let key = format!(
+            "{}|{}|{}|{}|{}|{}|{}|{:.3}|{:.3}|{}|{}",
+            dash(&seed.target.gamma),
+            dash(&seed.target.primaries),
+            seed.target
+                .max_luma
+                .map(|v| format!("{v:.1}"))
+                .unwrap_or_else(|| "n/a".into()),
+            dash(&seed.target.pixelformat),
+            dash(&seed.layer.pixel_format),
+            seed.layer.wants_edr,
+            dash(&seed.layer.colorspace),
+            seed.screen.max_potential_edr,
+            seed.screen.max_current_edr,
+            verdict.pipeline_hdr,
+            verdict.on_screen_hdr,
+        );
+        let changed = self
+            .last_probe_key
+            .lock()
+            .map(|last| *last != key)
+            .unwrap_or(true);
         let due = self
             .last_probe_log_at
             .lock()
             .map(|last| last.elapsed() >= Duration::from_millis(1000))
             .unwrap_or(true);
-        if due {
+        if changed && due {
+            if let Ok(mut last) = self.last_probe_key.lock() {
+                *last = key;
+            }
             if let Ok(mut last) = self.last_probe_log_at.lock() {
                 *last = Instant::now();
             }
@@ -766,6 +812,8 @@ fn main() {
         last_probe_log_at: Mutex::new(Instant::now() - Duration::from_secs(1)),
         last_screen: Mutex::new(String::new()),
         last_snapshot: Mutex::new(seewow_player::host::MpvSnapshot::default()),
+        last_logged_frame: Mutex::new(None),
+        last_probe_key: Mutex::new(String::new()),
         selftest,
         selftest_step: AtomicU32::new(0),
         ticks: AtomicU32::new(0),

@@ -142,16 +142,56 @@ fn max_luma_must_exceed_sdr_white() {
     );
 }
 
-/// 渲染目标不是 16F（例如 8bit）→ 不成立。
+/// ADR-0010 v3：10-bit XR 族也算合格 —— 本机实测 mpv 的 cocoa-cb 层就是 `bgr10a2Unorm`。
+/// 写死 `RGBA16Float` 会让本机恒假，把「管线正常」误判成「未直通」。
 #[test]
-fn layer_pixel_format_must_be_16f() {
-    let mut seed = complete_pipeline(edr_screen());
+fn bgr10a2unorm_surface_is_accepted() {
+    let mut seed = complete_pipeline(sdr_screen());
+    seed.layer.pixel_format = "bgr10a2Unorm".to_string();
+
+    let v = judge(&seed);
+
+    assert!(
+        v.pipeline_hdr,
+        "bgr10a2Unorm（10-bit XR）必须算表面格式合格"
+    );
+    let surface = v
+        .checks
+        .iter()
+        .find(|check| check.label.contains("pixelFormat"))
+        .expect("必须有一条表面格式的证据");
+    assert!(surface.ok, "表面格式这条证据应当 ok，实际：{surface:?}");
+    assert!(
+        surface.detail.contains("bgr10a2Unorm"),
+        "证据里要如实写出读到的格式，实际：{}",
+        surface.detail
+    );
+}
+
+/// 16F 仍然合格（旧口径不能倒退）。
+#[test]
+fn rgba16float_surface_is_still_accepted() {
+    let mut seed = complete_pipeline(sdr_screen());
+    seed.layer.pixel_format = "rgba16float".to_string();
+    assert!(judge(&seed).pipeline_hdr, "rgba16float 必须继续算合格");
+}
+
+/// 8bit 表面（bgra8unorm 之类）仍然不合格。
+#[test]
+fn eight_bit_surface_is_rejected() {
+    let mut seed = complete_pipeline(sdr_screen());
     seed.layer.pixel_format = "bgra8unorm".to_string();
     seed.target.pixelformat = "bgra".to_string();
 
     let v = judge(&seed);
 
     assert!(!v.pipeline_hdr, "8bit 渲染目标不可能是 HDR 管线");
+    let surface = v
+        .checks
+        .iter()
+        .find(|check| check.label.contains("pixelFormat"))
+        .expect("必须有一条表面格式的证据");
+    assert!(!surface.ok, "8bit 时表面格式这条必须失败");
 }
 
 /// 图层没有请求 EDR → 不成立。
