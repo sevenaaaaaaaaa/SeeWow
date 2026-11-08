@@ -45,6 +45,16 @@ pub struct LayerState {
     pub colorspace: String,
 }
 
+/// 源侧 video-params/* —— 只作证据（判定不用它），但日志里必须能复核「源是不是 PQ」。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SourceParams {
+    pub gamma: String,
+    pub primaries: String,
+    pub pixelformat: String,
+    pub width: i64,
+    pub height: i64,
+}
+
 /// 屏幕的 EDR 能力（`NSScreen`，只读）。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ScreenState {
@@ -78,20 +88,40 @@ pub fn should_log_probe(playing: bool, changed: bool, since_last: std::time::Dur
     }
 }
 
+/// 证据字段：空 / `n/a` / `no` 一律写成 `missing`，不许省略字段。
+fn field(value: &str) -> &str {
+    match value.trim() {
+        "" | "n/a" | "no" | "unknown" => "missing",
+        other => other,
+    }
+}
+
 /// 一行写进 m1.log 的证据（与 UI 无关，测试可直接驱动）。
-pub fn probe_log_line(seed: &ProbeSeed, verdict: &Verdict) -> String {
+///
+/// **源侧与目标侧必须同时出现**：只看目标侧无法复核「源是不是 PQ」，
+/// 第三方复核时需要 `source.*` 与 `target.*` 在一行里对得上。
+pub fn probe_log_line(seed: &ProbeSeed, source: &SourceParams, verdict: &Verdict) -> String {
+    let source_size = if source.width > 0 && source.height > 0 {
+        format!("{}x{}", source.width, source.height)
+    } else {
+        "missing".to_string()
+    };
     format!(
-        "probe: target.gamma={} target.primaries={} target.max-luma={} cd/m² target.pixfmt={} | surface.pixfmt={} wantsEDR={} csp(opt)={} | screen.potentialEDR={:.3} currentEDR={:.3} | {}",
-        dash(&seed.target.gamma),
-        dash(&seed.target.primaries),
+        "probe: target.gamma={} target.primaries={} target.max-luma={} cd/m² target.pixfmt={} | surface.pixfmt={} wantsEDR={} csp(opt)={} | source.gamma={} source.primaries={} source.pixfmt={} source.size={} | screen.potentialEDR={:.3} currentEDR={:.3} | {}",
+        field(&seed.target.gamma),
+        field(&seed.target.primaries),
         seed.target
             .max_luma
             .map(|value| format!("{value:.1}"))
-            .unwrap_or_else(|| "n/a".into()),
-        dash(&seed.target.pixelformat),
-        dash(&seed.layer.pixel_format),
+            .unwrap_or_else(|| "missing".into()),
+        field(&seed.target.pixelformat),
+        field(&seed.layer.pixel_format),
         seed.layer.wants_edr,
         dash(&seed.layer.colorspace),
+        field(&source.gamma),
+        field(&source.primaries),
+        field(&source.pixelformat),
+        source_size,
         seed.screen.max_potential_edr,
         seed.screen.max_current_edr,
         verdict.log_line(),
@@ -369,6 +399,16 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
+    fn source_fixture() -> SourceParams {
+        SourceParams {
+            gamma: "pq".to_string(),
+            primaries: "bt.2020".to_string(),
+            pixelformat: "p010".to_string(),
+            width: 1920,
+            height: 1080,
+        }
+    }
+
     fn seed_with_values() -> ProbeSeed {
         ProbeSeed {
             target: TargetParams {
@@ -412,7 +452,7 @@ mod tests {
     fn probe_log_line_carries_target_values_without_ui() {
         let seed = seed_with_values();
         let verdict = judge(&seed);
-        let line = probe_log_line(&seed, &verdict);
+        let line = probe_log_line(&seed, &source_fixture(), &verdict);
 
         assert!(line.starts_with("probe: "));
         assert!(line.contains("target.gamma=pq"), "实际：{line}");
@@ -471,6 +511,50 @@ mod tests {
             "实际：{rows}"
         );
         assert!(!rows.contains("layer.colorspace"), "实际：{rows}");
+    }
+
+    /// 证据行必须同时给出源侧与目标侧：没有源侧，就没法复核「源是不是 PQ」。
+    #[test]
+    fn probe_log_line_carries_source_and_target_side_by_side() {
+        let seed = seed_with_values();
+        let verdict = judge(&seed);
+        let source = source_fixture();
+        let line = probe_log_line(&seed, &source, &verdict);
+
+        // 源侧
+        assert!(line.contains("source.gamma=pq"), "实际：{line}");
+        assert!(line.contains("source.primaries=bt.2020"), "实际：{line}");
+        assert!(line.contains("source.pixfmt=p010"), "实际：{line}");
+        assert!(line.contains("source.size=1920x1080"), "实际：{line}");
+        // 目标侧
+        assert!(line.contains("target.gamma=pq"), "实际：{line}");
+        assert!(line.contains("target.primaries=bt.2020"), "实际：{line}");
+        assert!(
+            line.contains("target.max-luma=1000.0 cd/m²"),
+            "实际：{line}"
+        );
+    }
+
+    /// 任一侧缺失时必须明写 missing，不许省略字段。
+    #[test]
+    fn probe_log_line_marks_missing_side_explicitly() {
+        let seed = seed_with_values();
+        let verdict = judge(&seed);
+        let line = probe_log_line(&seed, &SourceParams::default(), &verdict);
+        assert!(line.contains("source.gamma=missing"), "实际：{line}");
+        assert!(line.contains("source.pixfmt=missing"), "实际：{line}");
+        assert!(line.contains("source.size=missing"), "实际：{line}");
+        assert!(
+            line.contains("target.gamma="),
+            "目标侧仍要出现，实际：{line}"
+        );
+
+        let mut seed = seed_with_values();
+        seed.target = TargetParams::default();
+        let verdict = judge(&seed);
+        let line = probe_log_line(&seed, &source_fixture(), &verdict);
+        assert!(line.contains("target.gamma=missing"), "实际：{line}");
+        assert!(line.contains("target.primaries=missing"), "实际：{line}");
     }
 
     /// 色彩空间那条不能写成「图层实测」——它是我们设的选项读回。

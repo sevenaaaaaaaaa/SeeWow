@@ -13,7 +13,6 @@
 //!
 //! M3 的 T-09 会把这里的临时封装迁进 `mpv.rs` 并删掉（任务表 §0.3）。
 
-use std::fmt::Write as _;
 use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -63,6 +62,8 @@ pub struct MpvSnapshot {
     pub csp: String,
     /// 源侧 `video-params/gamma`
     pub source_gamma: String,
+    /// 源侧 video-params/*（证据用：判定不看它，但日志要能复核「源是不是 PQ」）
+    pub source: crate::probe::SourceParams,
     /// 目标侧 `video-target-params/*`（判定只用这一组）
     pub target: TargetParams,
     /// 面板「MPV」列的文本
@@ -277,6 +278,7 @@ fn mpv_worker(
     log: Arc<M1Log>,
 ) {
     let mut playback: Option<(PathBuf, Instant)> = None;
+    let mut pending_begin: Option<(PathBuf, Instant)> = None;
     let mut last_refresh = Instant::now() - std::time::Duration::from_secs(1);
 
     loop {
@@ -286,27 +288,15 @@ fn mpv_worker(
                     let path_str = path.to_string_lossy().to_string();
                     match mpv.command("loadfile", &[&path_str]) {
                         Ok(()) => {
-                            let mut line = String::new();
-                            let _ = write!(
-                                line,
-                                "playback: begin format={} video={} {}x{} fps={} duration_ms={}",
-                                prop_str(&mpv, "file-format"),
-                                prop_str(&mpv, "video-format"),
-                                prop_i64(&mpv, "width", -1),
-                                prop_i64(&mpv, "height", -1),
-                                prop_f64(&mpv, "container-fps")
-                                    .map(|f| format!("{f:.3}"))
-                                    .unwrap_or_else(|| "n/a".into()),
-                                prop_f64(&mpv, "duration")
-                                    .map(|d| (d * 1000.0) as i64)
-                                    .unwrap_or(-1),
-                            );
-                            log.write("info", &line);
+                            // 此刻文件还没加载完，属性都是空的（以前的 format=n/a 就是这里打的）。
+                            // 真正的 begin 行等 file-format 有值后再打（见下面的 pending_begin）。
+                            pending_begin = Some((path.clone(), Instant::now()));
                             playback = Some((path, Instant::now()));
                         }
                         Err(err) => log.write("warn", &format!("playback: loadfile 失败 {err:?}")),
                     }
                 }
+
                 HostCommand::SetPause(paused) => match mpv.set_property("pause", paused) {
                     Ok(()) => log.write("info", &format!("playback: pause={paused}")),
                     Err(err) => log.write("warn", &format!("playback: set pause 失败 {err:?}")),
@@ -334,6 +324,7 @@ fn mpv_worker(
                     if let Err(err) = mpv.command("quit", &[]) {
                         log.write("warn", &format!("mpv: quit 失败 {err:?}"));
                     }
+                    // 不在 player 线程销毁 mpv（窗口销毁要主线程）；进程即将退出
                     std::mem::forget(mpv);
                     log.write("info", "mpv: player 线程退出");
                     return;
@@ -341,9 +332,39 @@ fn mpv_worker(
             }
         }
 
-        // 事件只用来做「活着」的判断（M1 不依赖事件驱动 UI）
         if let Some(Err(err)) = mpv.wait_event(0.02) {
             log.write("warn", &format!("mpv: wait_event 出错 {err:?}"));
+        }
+
+        // 等到「文件已加载」且「源侧参数已就绪」再打 begin；最多等 1.5 秒，
+        // 避免 format=n/a video=n/a，也避免源侧 source.* 还是 n/a（证据要能复核）。
+        if let Some((path, since)) = pending_begin.clone() {
+            let file_format = prop_str(&mpv, "file-format");
+            let source_gamma = prop_str(&mpv, "video-params/gamma");
+            let ready = file_format != "n/a" && source_gamma != "n/a";
+            if ready || since.elapsed() >= std::time::Duration::from_millis(1500) {
+                log.write(
+                    "info",
+                    &format!(
+                        "playback: begin file={} format={} video={} {}x{} fps={} duration_ms={} source.gamma={} source.primaries={} source.pixfmt={}",
+                        redact(&path),
+                        file_format,
+                        prop_str(&mpv, "video-format"),
+                        prop_i64(&mpv, "width", -1),
+                        prop_i64(&mpv, "height", -1),
+                        prop_f64(&mpv, "container-fps")
+                            .map(|f| format!("{f:.3}"))
+                            .unwrap_or_else(|| "n/a".into()),
+                        prop_f64(&mpv, "duration")
+                            .map(|d| (d * 1000.0) as i64)
+                            .unwrap_or(-1),
+                        prop_str(&mpv, "video-params/gamma"),
+                        prop_str(&mpv, "video-params/primaries"),
+                        prop_str(&mpv, "video-params/pixelformat"),
+                    ),
+                );
+                pending_begin = None;
+            }
         }
 
         if last_refresh.elapsed() >= std::time::Duration::from_millis(200) {
@@ -355,12 +376,19 @@ fn mpv_worker(
 
 /// 先把 mpv 的属性全部读出来（可能慢），再短暂持锁写入 —— 绝不持锁调 mpv。
 fn refresh(mpv: &Mpv, snapshot: &Arc<Mutex<MpvSnapshot>>) {
-    let target = TargetParams {
+    let target = crate::probe::TargetParams {
         gamma: prop_str(mpv, "video-target-params/gamma"),
         primaries: prop_str(mpv, "video-target-params/primaries"),
         max_luma: prop_f64(mpv, "video-target-params/max-luma"),
         min_luma: prop_f64(mpv, "video-target-params/min-luma"),
         pixelformat: prop_str(mpv, "video-target-params/pixelformat"),
+    };
+    let source = crate::probe::SourceParams {
+        gamma: prop_str(mpv, "video-params/gamma"),
+        primaries: prop_str(mpv, "video-params/primaries"),
+        pixelformat: prop_str(mpv, "video-params/pixelformat"),
+        width: prop_i64(mpv, "video-params/w", prop_i64(mpv, "width", 0)),
+        height: prop_i64(mpv, "video-params/h", prop_i64(mpv, "height", 0)),
     };
     let duration = prop_f64(mpv, "duration");
     let time_pos = prop_f64(mpv, "time-pos");
@@ -383,6 +411,7 @@ fn refresh(mpv: &Mpv, snapshot: &Arc<Mutex<MpvSnapshot>>) {
         slot.eof_reached = eof_reached;
         slot.csp = csp;
         slot.source_gamma = source_gamma;
+        slot.source = source;
         slot.target = target;
         slot.rows = rows;
         slot.vo = vo;
@@ -432,7 +461,7 @@ fn log_playback_end(mpv: &Mpv, log: &M1Log, path: &Path, started: Instant, reaso
 
 fn build_rows(mpv: &Mpv) -> String {
     let mut lines: Vec<String> = Vec::new();
-    let mut push = |label: &str, value: String| {
+    let push = |lines: &mut Vec<String>, label: &str, value: String| {
         if label.is_empty() {
             lines.push(String::new());
         } else if value.is_empty() {
@@ -441,42 +470,66 @@ fn build_rows(mpv: &Mpv) -> String {
             lines.push(format!("{label} {value}"));
         }
     };
-    push("mpv", prop_str(mpv, "mpv-version"));
-    push("vo", prop_str(mpv, "current-vo"));
-    push("gpu-api", prop_str(mpv, "gpu-api"));
-    push("hwdec", prop_str(mpv, "hwdec-current"));
-    push("file", prop_str(mpv, "file-format"));
-    push("video", prop_str(mpv, "video-format"));
-    push("", String::new());
-    push("video-params", String::new());
-    push("gamma", prop_str(mpv, "video-params/gamma"));
-    push("primaries", prop_str(mpv, "video-params/primaries"));
-    push("pixfmt", prop_str(mpv, "video-params/pixelformat"));
+    push(&mut lines, "mpv", prop_str(mpv, "mpv-version"));
+    push(&mut lines, "vo", prop_str(mpv, "current-vo"));
+    push(&mut lines, "gpu-api", prop_str(mpv, "gpu-api"));
+    push(&mut lines, "hwdec", prop_str(mpv, "hwdec-current"));
+    push(&mut lines, "file", prop_str(mpv, "file-format"));
+    push(&mut lines, "video", prop_str(mpv, "video-format"));
+    push(&mut lines, "", String::new());
+    push(&mut lines, "video-params", String::new());
+    push(&mut lines, "gamma", prop_str(mpv, "video-params/gamma"));
     push(
+        &mut lines,
+        "primaries",
+        prop_str(mpv, "video-params/primaries"),
+    );
+    push(
+        &mut lines,
+        "pixfmt",
+        prop_str(mpv, "video-params/pixelformat"),
+    );
+    push(
+        &mut lines,
         "max-luma",
         prop_f64(mpv, "video-params/max-luma")
             .map(|v| format!("{v:.1} cd/m²"))
             .unwrap_or_else(|| "n/a".into()),
     );
-    push("", String::new());
-    push("video-target-params", String::new());
-    push("gamma", prop_str(mpv, "video-target-params/gamma"));
-    push("primaries", prop_str(mpv, "video-target-params/primaries"));
-    push("pixfmt", prop_str(mpv, "video-target-params/pixelformat"));
+    push(&mut lines, "", String::new());
+    push(&mut lines, "video-target-params", String::new());
     push(
+        &mut lines,
+        "gamma",
+        prop_str(mpv, "video-target-params/gamma"),
+    );
+    push(
+        &mut lines,
+        "primaries",
+        prop_str(mpv, "video-target-params/primaries"),
+    );
+    push(
+        &mut lines,
+        "pixfmt",
+        prop_str(mpv, "video-target-params/pixelformat"),
+    );
+    push(
+        &mut lines,
         "max-luma",
         prop_f64(mpv, "video-target-params/max-luma")
             .map(|v| format!("{v:.1} cd/m²"))
             .unwrap_or_else(|| "n/a".into()),
     );
     push(
+        &mut lines,
         "min-luma",
         prop_f64(mpv, "video-target-params/min-luma")
             .map(|v| format!("{v:.4} cd/m²"))
             .unwrap_or_else(|| "n/a".into()),
     );
-    push("", String::new());
+    push(&mut lines, "", String::new());
     push(
+        &mut lines,
         "size",
         format!(
             "{}x{} @ {}",
@@ -487,7 +540,10 @@ fn build_rows(mpv: &Mpv) -> String {
                 .unwrap_or_else(|| "n/a".into())
         ),
     );
-    lines.join("\n")
+    lines.join(
+        "
+",
+    )
 }
 
 /// 日志里不出现完整用户路径（不变量 I7 的 M1 版本：只留文件名）。

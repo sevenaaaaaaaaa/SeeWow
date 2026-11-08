@@ -1,7 +1,0 @@
-  [ok]   cargo test -p seewow-player --test probe_verdict 退出码 0
-  [ok]   probe_verdict 实际通过 13 条
-  [ok]   cargo test --workspace 退出码 0
-  [ok]   workspace 里 14 个测试目标全绿
-
-case-02-cargo-tests: checks=4 failed=0
-RC2=0

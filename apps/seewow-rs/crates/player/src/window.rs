@@ -337,6 +337,33 @@ pub fn layer_state(window: &NSWindow, colorspace: &str) -> LayerState {
     if layer.is_null() {
         return state;
     }
+    // 真实图层可能不是 contentView 的直接 layer（mpv 的 Swift 后端会挂子图层），
+    // 所以向下找最多 4 层，取第一个响应 pixelFormat 的 CAMetalLayer。
+    let mut candidates: Vec<*mut AnyObject> = vec![layer];
+    unsafe {
+        let sublayers_sel = sel!(sublayers);
+        let mut index = 0;
+        while index < candidates.len() && candidates.len() < 32 {
+            let current = candidates[index];
+            index += 1;
+            let responds: bool = msg_send![current, respondsToSelector: sublayers_sel];
+            if !responds {
+                continue;
+            }
+            let sublayers: *mut AnyObject = msg_send![current, sublayers];
+            if sublayers.is_null() {
+                continue;
+            }
+            let count: usize = msg_send![sublayers, count];
+            for item in 0..count {
+                let child: *mut AnyObject = msg_send![sublayers, objectAtIndex: item];
+                if !child.is_null() {
+                    candidates.push(child);
+                }
+            }
+        }
+    }
+
     unsafe {
         let wants_edr_sel = sel!(wantsExtendedDynamicRangeContent);
         let responds_edr: bool = msg_send![layer, respondsToSelector: wants_edr_sel];
@@ -346,10 +373,19 @@ pub fn layer_state(window: &NSWindow, colorspace: &str) -> LayerState {
         }
 
         let pixel_format_sel = sel!(pixelFormat);
-        let responds_pf: bool = msg_send![layer, respondsToSelector: pixel_format_sel];
-        if responds_pf {
-            let pixel_format: u64 = msg_send![layer, pixelFormat];
-            state.pixel_format = metal_format_name(pixel_format);
+        for candidate in &candidates {
+            let responds_pf: bool = msg_send![*candidate, respondsToSelector: pixel_format_sel];
+            if responds_pf {
+                let pixel_format: u64 = msg_send![*candidate, pixelFormat];
+                let name = metal_format_name(pixel_format);
+                // 8bit 的中间图层不算目标层，继续找；找不到就把最后看到的记下来
+                if name != "mtl#0" {
+                    state.pixel_format = name;
+                    if crate::probe::is_10bit_xr_surface(&state.pixel_format) {
+                        break;
+                    }
+                }
+            }
         }
     }
     state

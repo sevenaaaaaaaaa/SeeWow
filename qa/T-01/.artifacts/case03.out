@@ -1,6 +1,0 @@
-  [info] clippy 运行中：log_bytes=72 alive=no
-  [ok]   cargo clippy --workspace --all-targets -- -D warnings 退出码 0
-  [ok]   clippy 日志没有 warning/error 行
-
-case-03-clippy: checks=2 failed=0
-RC3=0

@@ -562,7 +562,7 @@ impl Core {
             }
             self.log.write(
                 "info",
-                &seewow_player::probe::probe_log_line(&seed, &verdict),
+                &seewow_player::probe::probe_log_line(&seed, &snapshot.source, &verdict),
             );
         }
 
