@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../domain/media_item.dart';
 import 'artwork.dart';
 import 'pressable.dart';
+import 'skin.dart';
 import 'tokens.dart';
 
 class PosterTile extends StatefulWidget {
@@ -156,7 +157,7 @@ class _PosterTileState extends State<PosterTile> {
                                 value: widget.item.progress,
                                 minHeight: 2,
                                 backgroundColor: Colors.white.withValues(alpha: 0.14),
-                                valueColor: const AlwaysStoppedAnimation(WowColors.accent),
+                                valueColor: AlwaysStoppedAnimation(WowColors.accent),
                               ),
                             ),
                         ],
@@ -218,8 +219,9 @@ class _AtmospherePoster extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c1 = HSVColor.fromAHSV(1, hue, 0.32, 0.18).toColor();
-    final c2 = HSVColor.fromAHSV(1, (hue + 26) % 360, 0.42, 0.55).toColor();
+    final neutral = WowSkin.I.posterId == WowPosterId.neutral;
+    final c1 = neutral ? WowColors.panel : HSVColor.fromAHSV(1, hue, 0.32, 0.18).toColor();
+    final c2 = neutral ? WowColors.panel : HSVColor.fromAHSV(1, (hue + 26) % 360, 0.42, 0.55).toColor();
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -231,7 +233,7 @@ class _AtmospherePoster extends StatelessWidget {
           bottom: 60,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              gradient: RadialGradient(colors: [c2.withValues(alpha: 0.85), c2.withValues(alpha: 0)]),
+              gradient: RadialGradient(colors: [c2.withValues(alpha: neutral ? 0 : 0.85), c2.withValues(alpha: 0)]),
             ),
           ),
         ),
@@ -384,7 +386,7 @@ class _LandscapeTileState extends State<LandscapeTile> {
                               value: widget.item.progress,
                               minHeight: 2,
                               backgroundColor: Colors.white.withValues(alpha: 0.14),
-                              valueColor: const AlwaysStoppedAnimation(WowColors.accent),
+                              valueColor: AlwaysStoppedAnimation(WowColors.accent),
                             ),
                           ),
                       ],

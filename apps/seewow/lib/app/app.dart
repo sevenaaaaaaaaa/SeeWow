@@ -4,6 +4,7 @@ import '../data/iptv_store.dart';
 import '../data/library_store.dart';
 import '../sources/native_bridge.dart';
 import '../sources/source_scanner.dart';
+import '../design/skin.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import 'app_shell.dart';
@@ -26,6 +27,7 @@ class _SeeWowAppState extends State<SeeWowApp> {
   }
 
   Future<void> _boot() async {
+    await WowSkin.I.load();
     await _store.load();
     await _iptv.load();
     _store.scanner = SourceScanner().scan;
@@ -130,24 +132,27 @@ class _SeeWowAppState extends State<SeeWowApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'SeeWow',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: WowColors.ink,
-        colorScheme: const ColorScheme.dark(
-          primary: WowColors.accent,
-          secondary: WowColors.accent2,
-          surface: WowColors.panel,
+    return AnimatedBuilder(
+      animation: WowSkin.I,
+      builder: (context, _) => MaterialApp(
+        title: 'SeeWow',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          useMaterial3: true,
+          brightness: Brightness.dark,
+          scaffoldBackgroundColor: WowColors.ink,
+          colorScheme: ColorScheme.dark(
+            primary: WowColors.accent,
+            secondary: WowColors.accent2,
+            surface: WowColors.panel,
+          ),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          fontFamilyFallback: WowType.fallback,
         ),
-        splashFactory: NoSplash.splashFactory,
-        highlightColor: Colors.transparent,
-        hoverColor: Colors.transparent,
-        fontFamilyFallback: const ['PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'sans-serif'],
+        home: _ready ? AppShell(store: _store, iptv: _iptv) : const _BootScreen(),
       ),
-      home: _ready ? AppShell(store: _store, iptv: _iptv) : const _BootScreen(),
     );
   }
 }
@@ -167,7 +172,7 @@ class _BootScreen extends StatelessWidget {
             child: LinearProgressIndicator(
               minHeight: 1.5,
               backgroundColor: Colors.white.withValues(alpha: 0.06),
-              valueColor: const AlwaysStoppedAnimation(WowColors.accent),
+              valueColor: AlwaysStoppedAnimation(WowColors.accent),
             ),
           ),
         ]),

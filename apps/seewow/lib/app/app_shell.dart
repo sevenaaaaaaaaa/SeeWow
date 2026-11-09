@@ -8,6 +8,7 @@ import '../design/atmosphere.dart';
 import '../design/poster_tile.dart';
 import '../design/entrance.dart';
 import '../design/pressable.dart';
+import '../design/skin.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import '../playback/player_screen.dart';
@@ -227,11 +228,7 @@ class _Sidebar extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 20, 18, 26),
             child: Row(children: [
-              Container(
-                width: 30, height: 30,
-                decoration: BoxDecoration(borderRadius: BorderRadius.circular(9), gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [WowColors.accent, WowColors.accent2])),
-                child: const Icon(Icons.play_arrow_rounded, size: 19, color: Colors.white),
-              ),
+              const _LogoMark(size: 30, radius: 9, iconSize: 19),
               const SizedBox(width: 10),
               Text('SeeWow', style: WowType.display(20, FontWeight.w700, spacing: -0.4)),
             ]),
@@ -245,6 +242,34 @@ class _Sidebar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _LogoMark extends StatelessWidget {
+  const _LogoMark({required this.size, required this.radius, required this.iconSize});
+  final double size;
+  final double radius;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final legacy = WowSkin.I.legacyLogo;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        color: legacy ? null : WowColors.accent,
+        gradient: legacy
+            ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [WowColors.accent, WowColors.accent2],
+              )
+            : null,
+      ),
+      child: Icon(Icons.play_arrow_rounded, size: iconSize, color: WowColors.onAccent),
     );
   }
 }
@@ -562,11 +587,7 @@ class _NavRail extends StatelessWidget {
       child: Column(
         children: [
           const SizedBox(height: 16),
-          Container(
-            width: 34, height: 34,
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [WowColors.accent, WowColors.accent2])),
-            child: const Icon(Icons.play_arrow_rounded, size: 21, color: Colors.white),
-          ),
+          const _LogoMark(size: 34, radius: 10, iconSize: 21),
           const SizedBox(height: 18),
           for (final (s, icon, label, _) in _Sidebar._items)
             Padding(

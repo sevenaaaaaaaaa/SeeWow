@@ -1,31 +1,45 @@
 import 'package:flutter/material.dart';
 
+import 'skin.dart';
+
 /// Cinema Editorial design tokens, shared by every platform.
+///
+/// Every value here resolves through [WowSkin], so switching a preset in
+/// Settings repaints the whole app without any screen knowing about presets.
 class WowColors {
-  static const ink = Color(0xFF07080B);
-  static const shell = Color(0xFF0A0C11);
-  static const panel = Color(0xFF10131A);
-  static const line = Color(0x1AFFFFFF);
-  static const text = Color(0xFFF7F7FA);
-  static const muted = Color(0xFF9C9CA8);
-  static const faint = Color(0xFF5E5F6B);
-  static const accent = Color(0xFF8B7BFF);
-  static const accent2 = Color(0xFF54C8FF);
-  static const ambient = Color(0xFF8A6B3F);
+  static WowPalette get _p => WowSkin.I.palette;
+
+  static Color get ink => _p.ink;
+  static Color get shell => _p.shell;
+  static Color get panel => _p.panel;
+  static Color get line => _p.text.withValues(alpha: 0.10);
+  static Color get text => _p.text;
+  static Color get muted => _p.muted;
+  static Color get faint => _p.faint;
+  static Color get accent => WowSkin.I.accent;
+  static Color get accent2 => WowSkin.I.accent2;
+  static Color get onAccent => WowSkin.I.onAccent;
+  static Color get ambient => _p.ambient;
 }
 
 class WowType {
-  static const serif = 'SourceSerif4';
+  /// Display family for headings. Null means the platform default sans.
+  static String? get serif => WowSkin.I.voice.display;
+
+  /// Bundled mono stays fixed: metadata must look the same in every preset.
   static const mono = 'JetBrainsMono';
 
-  /// Chinese needs its own serif voice: Songti on macOS, Noto Serif CJK elsewhere.
-  static const serifFallback = <String>['Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', 'Noto Serif SC'];
+  static List<String> get serifFallback => WowSkin.I.voice.fallback;
+
+  /// Chinese needs its own voice; serif presets fall back to Songti, sans
+  /// presets to PingFang.
+  static List<String> get fallback => WowSkin.I.voice.fallback;
 
   static TextStyle display(
     double size,
     FontWeight weight, {
     double spacing = -0.8,
-    Color color = WowColors.text,
+    Color? color,
     double height = 1.02,
   }) =>
       TextStyle(
@@ -35,20 +49,32 @@ class WowType {
         fontWeight: weight,
         letterSpacing: spacing,
         height: height,
-        color: color,
+        color: color ?? WowColors.text,
       );
 
-  static TextStyle monoLabel(double size, {FontWeight weight = FontWeight.w500, Color color = WowColors.muted, double spacing = 1.4}) =>
-      TextStyle(fontFamily: mono, fontSize: size, fontWeight: weight, letterSpacing: spacing, color: color);
+  static TextStyle monoLabel(double size, {FontWeight weight = FontWeight.w500, Color? color, double spacing = 1.4}) =>
+      TextStyle(
+        fontFamily: mono,
+        fontSize: size,
+        fontWeight: weight,
+        letterSpacing: spacing,
+        color: color ?? WowColors.muted,
+      );
 
-  static TextStyle body(double size, {Color color = WowColors.text, double height = 1.6}) =>
-      TextStyle(fontSize: size, height: height, color: color, letterSpacing: 0.1);
+  static TextStyle body(double size, {Color? color, double height = 1.6}) => TextStyle(
+        fontFamilyFallback: fallback,
+        fontSize: size,
+        height: height,
+        color: color ?? WowColors.text,
+        letterSpacing: 0.1,
+      );
 }
 
 class WowMotion {
   static const page = Cubic(0.22, 1, 0.36, 1);
   static const modal = Cubic(0.16, 1, 0.3, 1);
   static const snappy = Cubic(0.2, 0.8, 0.2, 1);
+
   /// Editorial entrance: quick out, long settle.
   static const entrance = Cubic(0.16, 1, 0.3, 1);
   static const pageDuration = Duration(milliseconds: 320);

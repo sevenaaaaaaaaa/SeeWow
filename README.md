@@ -6,7 +6,7 @@
 
 ## 安装
 
-**macOS 1.0.0**：[下载 SeeWow-macos-1.0.zip](https://github.com/sevenaaaaaaaaa/SeeWow/releases/latest) → 解压 → 拖进「应用程序」→ 右键「打开」（本地 ad-hoc 签名，未公证；如提示已损坏执行 `xattr -dr com.apple.quarantine /Applications/SeeWow.app`）。需要 macOS 14+（Apple Silicon）。
+**macOS 1.1.0**：[下载 SeeWow-macos-1.1.0.zip](https://github.com/sevenaaaaaaaaa/SeeWow/releases/latest) → 解压 → 拖进「应用程序」→ 右键「打开」（本地 ad-hoc 签名，未公证；如提示已损坏执行 `xattr -dr com.apple.quarantine /Applications/SeeWow.app`）。需要 macOS 14+（Apple Silicon）。
 
 Windows / Linux / Android 由 CI 产物或本地 `flutter build` 生成，见下文「构建」。
 
@@ -57,6 +57,20 @@ SeeWow 不想做另一个 Infuse 皮肤，它借电影片头与编辑排版的�
 - **放映框**：Hero、详情头图、空状态四角都有 16px 细括号，像取景器边框。
 - **环境光**：全局叠两层低饱和径向光、细颗粒与暗角；Hero 与详情背景从标题散列出色相，再叠 14 秒缓慢推镜。
 - **留白节奏**：页面 gutter 随断点 20 / 34 / 56 变化，区块间距 52，标签与正文之间固定 22，避免手写魔法数字。
+
+### 外观可选（1.1.0 新增）
+
+设置 → 「01 外观」，五组即时切换，改动自动记住（`skin.json`），整站同步换肤：
+
+| 轴 | 选项 |
+|---|---|
+| 配色 | 古铜 · 暖墨 · 墨蓝 · 石墨 |
+| 强调色 | 紫 · 余烬橙 · 琥珀 · 冷青 |
+| 字体 | 宋衬线 · 人文衬线 · 无衬线 · 几何 |
+| 背景 | 彩色雾 · 中性暗角 · 中性微渐变 · 纯平 |
+| 海报占位 | 哈希色相 · 中性 |
+
+所有颜色经 `lib/design/skin.dart` → `WowColors` getter 下发，页面代码不感知预设。
 
 ### 交互
 
