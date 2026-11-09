@@ -380,7 +380,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   height: 3,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(2),
-                    gradient: const LinearGradient(colors: [WowColors.accent2, WowColors.accent]),
+                    gradient: LinearGradient(colors: [WowColors.accent2, WowColors.accent]),
                   ),
                 ),
               ),
@@ -474,7 +474,7 @@ class _RingState extends State<_Ring> with SingleTickerProviderStateMixin {
         angle: _c.value * 6.283,
         child: Container(
           width: 30, height: 30,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: SweepGradient(colors: [Colors.transparent, WowColors.accent, WowColors.accent2]),
           ),

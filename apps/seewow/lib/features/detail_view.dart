@@ -110,7 +110,7 @@ class _Header extends StatelessWidget {
           WowArt(
             url: backdrop,
             headers: item.httpHeaders,
-            fallback: const DecoratedBox(
+            fallback: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: RadialGradient(center: Alignment(0.4, -0.2), radius: 1.2, colors: [Color(0xFF3B2C1C), Color(0xFF0B0A0C), WowColors.ink]),
               ),

@@ -1,41 +1,78 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
+import 'skin.dart';
 import 'tokens.dart';
 
 /// Ambient light distilled from artwork + film grain + vignette.
+///
+/// The amount of colour is decided by the running backdrop preset: colour fog,
+/// neutral vignette, tonal wash or flat ink.
 class Atmosphere extends StatelessWidget {
-  const Atmosphere({super.key, this.hue = WowColors.ambient, this.child});
-  final Color hue;
+  const Atmosphere({super.key, this.hue, this.child});
+
+  final Color? hue;
   final Widget? child;
 
   @override
   Widget build(BuildContext context) {
-    final glow = Color.lerp(hue, Colors.white, 0.18)!;
+    final mode = WowSkin.I.backdropId;
+    final tint = hue ?? WowColors.ambient;
+    final glow = Color.lerp(tint, Colors.white, 0.18)!;
+
     return DecoratedBox(
-      decoration: const BoxDecoration(color: WowColors.ink),
+      decoration: BoxDecoration(color: WowColors.ink),
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Positioned(
-            left: -220,
-            top: -260,
-            child: _Glow(color: glow.withValues(alpha: 0.34), size: 760),
-          ),
-          Positioned(
-            right: -180,
-            bottom: -240,
-            child: _Glow(color: WowColors.accent.withValues(alpha: 0.18), size: 720),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: const Alignment(0, -0.2),
-                radius: 1.15,
-                colors: [Colors.transparent, Colors.black.withValues(alpha: 0.55)],
-                stops: const [0.55, 1],
+          if (mode == WowBackdropId.fog) ...[
+            Positioned(
+              left: -220,
+              top: -260,
+              child: _Glow(color: glow.withValues(alpha: 0.34), size: 760),
+            ),
+            Positioned(
+              right: -180,
+              bottom: -240,
+              child: _Glow(color: WowColors.accent.withValues(alpha: 0.18), size: 720),
+            ),
+          ],
+          if (mode == WowBackdropId.vignette)
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: const Alignment(0, -0.15),
+                  radius: 1.1,
+                  colors: [
+                    Color.lerp(WowColors.panel, WowColors.ambient, 0.10)!,
+                    WowColors.ink,
+                  ],
+                  stops: const [0, 0.7],
+                ),
               ),
             ),
-          ),
+          if (mode == WowBackdropId.tonal)
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color.lerp(WowColors.panel, WowColors.ambient, 0.08)!, WowColors.ink],
+                ),
+              ),
+            ),
+          if (mode != WowBackdropId.flat)
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: const Alignment(0, -0.2),
+                  radius: 1.15,
+                  colors: [Colors.transparent, Colors.black.withValues(alpha: 0.55)],
+                  stops: const [0.55, 1],
+                ),
+              ),
+            ),
           const IgnorePointer(child: RepaintBoundary(child: CustomPaint(painter: GrainPainter(), size: Size.infinite))),
           if (child != null) child!,
         ],

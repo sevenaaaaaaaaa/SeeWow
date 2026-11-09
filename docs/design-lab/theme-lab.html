@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SeeWow 主题实验室</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#05060A;color:#eee;font-family:-apple-system,"PingFang SC",system-ui,sans-serif}
+  /* ---------- palette ---------- */
+  body[data-palette="editorial"]{--ink:#07080B;--shell:#0A0C11;--panel:#10131A;--amb:#8A6B3F;--text:#F7F7FA;--muted:#9C9CA8;--faint:#5E5F6B}
+  body[data-palette="warm"]     {--ink:#12110F;--shell:#161513;--panel:#1C1A18;--amb:#C08A4A;--text:#EFE9DE;--muted:#AAA398;--faint:#6E665B}
+  body[data-palette="ink"]      {--ink:#07080D;--shell:#0B0D14;--panel:#11141C;--amb:#2B4A6F;--text:#EEF0F5;--muted:#A3A9B8;--faint:#6B7487}
+  body[data-palette="graphite"] {--ink:#0F0F10;--shell:#141415;--panel:#19191B;--amb:#6B6B72;--text:#EDEDED;--muted:#A1A1A6;--faint:#737373}
+  /* ---------- accent ---------- */
+  body[data-accent="ember"]  {--accent:#E0894A;--on-accent:#1A1208}
+  body[data-accent="amber"]  {--accent:#D8A24A;--on-accent:#1A1208}
+  body[data-accent="violet"] {--accent:#8B7BFF;--on-accent:#0B0820}
+  body[data-accent="cyan"]   {--accent:#54C8FF;--on-accent:#04141E}
+  /* ---------- fonts ---------- */
+  body[data-font="editorial"]{--fd:"Songti SC","Source Serif 4",Georgia,serif;--fb:"Songti SC",Georgia,serif;--tr:-0.02em}
+  body[data-font="humanist"] {--fd:"Palatino","Iowan Old Style","Songti SC",Georgia,serif;--fb:"Palatino","Songti SC",Georgia,serif;--tr:-0.01em}
+  body[data-font="sans"]     {--fd:"PingFang SC","SF Pro Display",-apple-system,system-ui,sans-serif;--fb:"PingFang SC","SF Pro Text",-apple-system,system-ui,sans-serif;--tr:-0.02em}
+  body[data-font="geometric"]{--fd:"Avenir Next","Avenir","PingFang SC",sans-serif;--fb:"Avenir Next","Avenir","PingFang SC",sans-serif;--tr:0}
+  :root{--mono:"SF Mono",Menlo,monospace}
+
+  /* ---------- control bar ---------- */
+  .bar{position:sticky;top:0;z-index:50;display:flex;gap:22px;align-items:center;flex-wrap:wrap;
+       padding:14px 22px;background:rgba(10,11,14,.92);border-bottom:1px solid rgba(255,255,255,.08);backdrop-filter:blur(18px)}
+  .grp{display:flex;align-items:center;gap:6px}
+  .grp>span.lbl{font-family:var(--mono);font-size:9px;letter-spacing:.18em;color:#6b6d78;text-transform:uppercase;margin-right:4px}
+  button.opt{font-family:var(--mono);font-size:11px;letter-spacing:.02em;color:#b9bbc6;background:rgba(255,255,255,.045);
+       border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:6px 10px;cursor:pointer;transition:background .2s,color .2s,border-color .2s}
+  button.opt:hover{background:rgba(255,255,255,.10);color:#fff}
+  button.opt[aria-pressed="true"]{background:#fff;color:#0a0b0e;border-color:#fff;font-weight:600}
+  .reset{margin-left:auto}
+  .readout{font-family:var(--mono);font-size:10px;color:#6b6d78;letter-spacing:.06em}
+  .readout b{color:#e8e9ee;font-weight:600}
+
+  /* ---------- window ---------- */
+  .stage{padding:26px 22px 60px;display:flex;justify-content:center}
+  .win{width:1430px;height:1010px;border-radius:12px;overflow:hidden;background:var(--ink);
+       box-shadow:0 40px 120px rgba(0,0,0,.75);display:flex;flex-direction:column;position:relative}
+  .titlebar{height:30px;display:flex;align-items:center;gap:7px;padding-left:18px;flex:0 0 auto}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#ED6A5E}.dot.y{background:#F5BF4F}.dot.g{background:#61C554}
+  .body{flex:1;display:flex;min-height:0}
+
+  /* ---------- sidebar ---------- */
+  .side{width:218px;margin:0 0 12px 12px;border-radius:16px;border:1px solid rgba(255,255,255,.055);
+        background:color-mix(in srgb,var(--shell) 42%,transparent);display:flex;flex-direction:column;flex:0 0 auto}
+  .brand{display:flex;align-items:center;gap:10px;padding:20px 18px 26px}
+  .mark{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--accent)}
+  body[data-legacy="1"] .mark{background:linear-gradient(135deg,#8B7BFF 0%,#54C8FF 100%)}
+  .mark i{width:0;height:0;border-left:9px solid var(--on-accent);border-top:6px solid transparent;border-bottom:6px solid transparent;margin-left:2px}
+  body[data-legacy="1"] .mark i{border-left-color:#fff}
+  .wordmark{font-family:var(--fd);font-size:20px;font-weight:600;letter-spacing:-0.02em;color:var(--text)}
+  .nav{display:flex;flex-direction:column;gap:3px;padding:0 10px}
+  .nav a{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:9px;color:var(--muted);
+         font-size:13.5px;text-decoration:none}
+  .nav a .ic{width:16px;height:16px;flex:0 0 16px;border:1.4px solid currentColor;border-radius:3px;opacity:.75}
+  .nav a .en{margin-left:auto;font-family:var(--mono);font-size:8px;letter-spacing:.16em;opacity:.55}
+  .nav a[aria-current="page"]{background:rgba(255,255,255,.065);color:var(--text)}
+  .nav a[aria-current="page"] .ic{opacity:1}
+  .stamp{margin-top:auto;padding:18px;font-family:var(--mono);font-size:7.5px;line-height:1.7;letter-spacing:.14em;color:var(--faint);white-space:pre-line;text-transform:uppercase}
+
+  /* ---------- main ---------- */
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .topbar{height:52px;display:flex;align-items:center;gap:14px;padding:0 22px;flex:0 0 auto;position:relative}
+  .crumb{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:9px;letter-spacing:.16em;color:var(--faint);text-transform:uppercase}
+  .crumb .pip{width:4px;height:4px;border-radius:50%;background:var(--accent)}
+  .search{margin-left:auto;display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;min-width:210px;
+          border-radius:15px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);
+          font-size:11.5px;color:var(--faint)}
+  .search .kbd{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--faint);opacity:.7}
+  .icbtn{width:30px;height:30px;border-radius:50%;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.05);
+         display:grid;place-items:center;color:var(--muted);font-size:12px;flex:0 0 auto}
+  .hairline{position:absolute;left:0;right:0;bottom:0;height:1px;
+            background:linear-gradient(90deg,rgba(255,255,255,.08),rgba(255,255,255,.015))}
+
+  /* ---------- hero ---------- */
+  .hero{position:relative;height:604px;flex:0 0 auto;overflow:hidden;isolation:isolate}
+  .bd{position:absolute;inset:0;z-index:0}
+  /* background modes */
+  body[data-bg="fog"] .bd{background:
+      radial-gradient(760px 760px at 8% -8%, color-mix(in srgb,var(--amb) 62%,#fff 8%) 0%, transparent 62%),
+      radial-gradient(720px 720px at 96% 108%, color-mix(in srgb,var(--accent) 26%,transparent) 0%, transparent 66%),
+      radial-gradient(130% 120% at 50% -20%, transparent 52%, rgba(0,0,0,.62) 100%),
+      var(--ink)}
+  body[data-bg="vignette"] .bd{background:
+      radial-gradient(130% 120% at 50% -20%, color-mix(in srgb,var(--panel) 88%,var(--amb) 12%) 0%, var(--ink) 62%),
+      radial-gradient(150% 130% at 50% 40%, transparent 40%, rgba(0,0,0,.66) 100%)}
+  body[data-bg="flat"] .bd{background:var(--ink)}
+  body[data-bg="tonal"] .bd{background:linear-gradient(168deg,
+      color-mix(in srgb,var(--panel) 92%,var(--amb) 8%) 0%, var(--ink) 58%, var(--ink) 100%)}
+  .scrim{position:absolute;inset:0;z-index:1;background:
+      linear-gradient(90deg,rgba(0,0,0,.95) 0%,rgba(0,0,0,.80) 34%,rgba(0,0,0,.35) 64%,transparent 100%),
+      linear-gradient(180deg,transparent 0%,rgba(0,0,0,.40) 62%,rgba(0,0,0,.90) 100%)}
+  .gate{position:absolute;inset:22px;z-index:2;pointer-events:none}
+  .gate b{position:absolute;width:16px;height:16px;border:1px solid rgba(255,255,255,.16)}
+  .gate b:nth-child(1){left:0;top:0;border-right:0;border-bottom:0}
+  .gate b:nth-child(2){right:0;top:0;border-left:0;border-bottom:0}
+  .gate b:nth-child(3){left:0;bottom:0;border-right:0;border-top:0}
+  .gate b:nth-child(4){right:0;bottom:0;border-left:0;border-top:0}
+
+  .hcontent{position:absolute;left:56px;bottom:44px;z-index:3;max-width:660px}
+  .eyebrow{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+  .eyebrow .tag{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.24em;color:var(--accent);text-transform:uppercase}
+  .eyebrow .rule{width:26px;height:1px;background:color-mix(in srgb,var(--accent) 45%,transparent)}
+  .eyebrow .idx{font-family:var(--mono);font-size:8.5px;letter-spacing:.20em;color:rgba(255,255,255,.42);text-transform:uppercase}
+  h1{font-family:var(--fd);font-size:68px;line-height:1.02;letter-spacing:var(--tr);font-weight:400;color:var(--text);margin-bottom:18px}
+  .meta{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--muted);margin-bottom:16px;flex-wrap:wrap}
+  .meta .sep{opacity:.35}
+  .meta .chip{border:1px solid rgba(255,255,255,.22);border-radius:3px;padding:1px 5px;font-size:9px}
+  .overview{font-family:var(--fb);font-size:13.5px;line-height:1.75;color:color-mix(in srgb,var(--text) 78%,transparent);max-width:610px;margin-bottom:20px}
+  .prog{display:flex;align-items:center;gap:26px;font-family:var(--mono);font-size:8.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;margin-bottom:22px}
+  .actions{display:flex;align-items:center;gap:12px}
+  .btn{border:0;cursor:pointer;font-family:var(--fb);font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:8px;
+       transition:transform .16s,background .2s,color .2s}
+  .btn-p{background:#fff;color:#0a0b0e;border-radius:999px;padding:13px 24px}
+  .btn-p:hover{transform:translateY(-1px)}
+  .btn-g{background:rgba(255,255,255,.05);color:var(--text);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:13px 22px}
+  .btn-g:hover{background:rgba(255,255,255,.10)}
+  .btn i{width:0;height:0;border-left:8px solid currentColor;border-top:5px solid transparent;border-bottom:5px solid transparent}
+
+  /* plate */
+  .plate{position:absolute;right:48px;top:50%;transform:translateY(-50%);width:262px;z-index:3}
+  .print{position:relative;width:262px;height:396px;border-radius:4px;padding:18px;
+         background:linear-gradient(158deg,color-mix(in srgb,var(--amb) 24%,#0c0a07) 0%,#0a0806 62%,#060504 100%);
+         box-shadow:0 26px 60px rgba(0,0,0,.7),inset 0 0 0 1px rgba(255,255,255,.10)}
+  .print .collection{font-family:var(--mono);font-size:7px;letter-spacing:.22em;color:rgba(255,255,255,.42);text-transform:uppercase;line-height:1.6}
+  .print .ptitle{position:absolute;left:18px;right:18px;bottom:56px;font-family:var(--fd);font-size:27px;line-height:1.06;
+                 letter-spacing:var(--tr);color:rgba(255,255,255,.94);text-transform:uppercase}
+  .print .pspec{position:absolute;left:18px;bottom:20px;font-family:var(--mono);font-size:7px;letter-spacing:.14em;color:rgba(255,255,255,.34)}
+  .nowshow{text-align:center;margin-top:14px;font-family:var(--mono);font-size:7.5px;letter-spacing:.24em;color:var(--faint);text-transform:uppercase}
+  .pager{display:flex;justify-content:center;gap:14px;margin-top:14px;font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--faint)}
+  .pager span.on{color:var(--text);border-bottom:1px solid var(--accent);padding-bottom:3px}
+  .auto{text-align:right;margin-top:10px;font-family:var(--mono);font-size:7px;letter-spacing:.22em;color:var(--faint);opacity:.8}
+
+  /* ---------- section ---------- */
+  .section{padding:52px 56px 56px;flex:1;min-height:0}
+  .sechead{display:flex;align-items:baseline;gap:14px;margin-bottom:24px}
+  .sechead .num{font-family:var(--fd);font-size:30px;color:var(--faint)}
+  .sechead h2{font-family:var(--fd);font-size:24px;font-weight:400;letter-spacing:var(--tr);color:var(--text)}
+  .sechead .rule{flex:1;height:1px;background:rgba(255,255,255,.10);margin:0 4px 6px}
+  .sechead .lbl{font-family:var(--mono);font-size:8px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase}
+  .cards{display:flex;gap:20px}
+  .card{width:325px;flex:0 0 auto}
+  .thumb{position:relative;width:325px;height:183px;border-radius:9px;overflow:hidden;border:1px solid rgba(255,255,255,.07)}
+  /* poster modes */
+  body[data-poster="hue"] .card:nth-child(1) .thumb{background:radial-gradient(120% 100% at 30% 20%,#7d5a2c 0%,#241a0c 62%,#0d0a06 100%)}
+  body[data-poster="hue"] .card:nth-child(2) .thumb{background:radial-gradient(120% 100% at 30% 20%,#6b4fb8 0%,#241a3f 62%,#0a0812 100%)}
+  body[data-poster="hue"] .card:nth-child(3) .thumb{background:radial-gradient(120% 100% at 30% 20%,#a3457f 0%,#33132a 62%,#10060d 100%)}
+  body[data-poster="neutral"] .card:nth-child(1) .thumb{background:linear-gradient(158deg,var(--panel) 0%,var(--ink) 100%)}
+  body[data-poster="neutral"] .card:nth-child(2) .thumb{background:linear-gradient(158deg,var(--panel) 0%,var(--ink) 100%)}
+  body[data-poster="neutral"] .card:nth-child(3) .thumb{background:linear-gradient(158deg,var(--panel) 0%,var(--ink) 100%)}
+  .thumb .tname{position:absolute;left:12px;bottom:10px;font-family:var(--fd);font-size:15px;color:rgba(255,255,255,.9);letter-spacing:var(--tr)}
+  .card .cap{display:flex;align-items:center;gap:8px;margin-top:9px;font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:var(--faint)}
+  .card .cap .sep{opacity:.4}
+
+  .note{max-width:1430px;margin:26px auto 0;padding:0 4px;font-size:12px;line-height:1.9;color:#8b8d99;max-width:1430px}
+  .note b{color:#d7d9e2;font-weight:600}
+  .note code{font-family:var(--mono);font-size:11px;color:#c9b98f}
+</style>
+</head>
+<body data-palette="editorial" data-accent="violet" data-font="editorial" data-bg="fog" data-poster="hue" data-legacy="1">
+
+<div class="bar">
+  <div class="grp"><span class="lbl">配色</span>
+    <button class="opt" data-k="palette" data-v="editorial">古铜（现状）</button>
+    <button class="opt" data-k="palette" data-v="warm">暖墨</button>
+    <button class="opt" data-k="palette" data-v="ink">墨蓝</button>
+    <button class="opt" data-k="palette" data-v="graphite">石墨</button>
+  </div>
+  <div class="grp"><span class="lbl">强调色</span>
+    <button class="opt" data-k="accent" data-v="violet">紫（现状）</button>
+    <button class="opt" data-k="accent" data-v="ember">余烬橙</button>
+    <button class="opt" data-k="accent" data-v="amber">琥珀</button>
+    <button class="opt" data-k="accent" data-v="cyan">冷青</button>
+  </div>
+  <div class="grp"><span class="lbl">字体</span>
+    <button class="opt" data-k="font" data-v="editorial">宋衬线（现状）</button>
+    <button class="opt" data-k="font" data-v="humanist">人文衬线</button>
+    <button class="opt" data-k="font" data-v="sans">无衬线</button>
+    <button class="opt" data-k="font" data-v="geometric">几何</button>
+  </div>
+  <div class="grp"><span class="lbl">背景</span>
+    <button class="opt" data-k="bg" data-v="fog">彩色雾（现状）</button>
+    <button class="opt" data-k="bg" data-v="vignette">中性暗角</button>
+    <button class="opt" data-k="bg" data-v="tonal">中性微渐变</button>
+    <button class="opt" data-k="bg" data-v="flat">纯平</button>
+  </div>
+  <div class="grp"><span class="lbl">海报占位</span>
+    <button class="opt" data-k="poster" data-v="hue">哈希色相（现状）</button>
+    <button class="opt" data-k="poster" data-v="neutral">中性</button>
+  </div>
+  <button class="opt reset" id="btnReset">↺ 回到现状</button>
+</div>
+
+<div class="stage">
+  <div class="win">
+    <div class="titlebar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+    <div class="body">
+
+      <aside class="side">
+        <div class="brand"><div class="mark"><i></i></div><div class="wordmark">SeeWow</div></div>
+        <nav class="nav">
+          <a href="#" aria-current="page"><span class="ic"></span>首页<span class="en">HOME</span></a>
+          <a href="#"><span class="ic"></span>电影</a>
+          <a href="#"><span class="ic"></span>剧集</a>
+          <a href="#"><span class="ic"></span>直播</a>
+          <a href="#"><span class="ic"></span>设置</a>
+        </nav>
+        <div class="stamp">SeeWow 1.0
+Cinema for every screen</div>
+      </aside>
+
+      <div class="main">
+        <div class="topbar">
+          <div class="crumb"><span class="pip"></span>01&nbsp;&nbsp;首页</div>
+          <div class="search">搜索影片、剧集…<span class="kbd">⌘K</span></div>
+          <div class="icbtn">↻</div>
+          <div class="icbtn">⚙</div>
+          <div class="hairline"></div>
+        </div>
+
+        <section class="hero">
+          <div class="bd"></div>
+          <div class="scrim"></div>
+          <div class="gate"><b></b><b></b><b></b><b></b></div>
+
+          <div class="hcontent">
+            <div class="eyebrow"><span class="tag">继续观看</span><span class="rule"></span><span class="idx">Featured 01 / 05</span></div>
+            <h1>Dune Part Two</h1>
+            <div class="meta"><span>2024</span><span class="sep">·</span><span>★ 8.5</span><span class="sep">·</span><span class="chip">4K</span><span class="sep">·</span><span>科幻</span><span class="sep">·</span><span>冒险</span><span class="sep">·</span><span>2 小时 46 分</span></div>
+            <p class="overview">保罗·厄崔迪与弗雷曼人并肩作战，在沙丘星球上向摧毁他家族的阴谋者展开复仇。权力、预言与牺牲在无尽的黄沙中交织。</p>
+            <div class="prog"><span>18% watched</span><span>2 小时 17 分 left</span></div>
+            <div class="actions">
+              <button class="btn btn-p"><i></i>继续播放</button>
+              <button class="btn btn-g">详情</button>
+            </div>
+          </div>
+
+          <div class="plate">
+            <div class="print">
+              <div class="collection">SeeWow<br>Collection</div>
+              <div class="ptitle">Dune<br>Part Two</div>
+              <div class="pspec">2024 · 4K DOLBY VISION</div>
+            </div>
+            <div class="nowshow">Now Showing</div>
+            <div class="pager"><span class="on">01</span><span>02</span><span>03</span><span>04</span><span>05</span></div>
+            <div class="auto">Auto</div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="sechead"><span class="num">01</span><h2>继续观看</h2><span class="rule"></span><span class="lbl">Pick up where you left off</span></div>
+          <div class="cards">
+            <div class="card"><div class="thumb"><div class="tname">Dune Part Two</div></div>
+              <div class="cap"><span>2024</span><span class="sep">/</span><span>4K</span><span class="sep">/</span><span>剩 137 分</span></div></div>
+            <div class="card"><div class="thumb"><div class="tname">Dark S01E02</div></div>
+              <div class="cap"><span>2017</span><span class="sep">/</span><span>1080P</span><span class="sep">/</span><span>剩 29 分</span></div></div>
+            <div class="card"><div class="thumb"><div class="tname">Dark S01E01</div></div>
+              <div class="cap"><span>2017</span><span class="sep">/</span><span>1080P</span><span class="sep">/</span><span>剩 29 分</span></div></div>
+          </div>
+        </section>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>怎么用：</b>上面五组随时点，画面立刻变。满意后把这一组念给我就行，例如「暖墨 + 余烬橙 + 人文衬线 + 中性暗角 + 中性海报」。<br>
+  <b>状态行：</b><span class="readout" id="readout"></span><br>
+  <b>说明：</b>本页只复刻你现有这一屏的视觉，用于比较配色 / 字体 / 背景 / 强调色 / 海报占位的差异。字体用系统已装字体近似（宋体 ↔ Palatino ↔ 苹方 ↔ Avenir），真实产品里可换成 Source Serif 4 / Geist / Instrument Serif 等。
+</div>
+
+<script>
+var body=document.body;
+function sync(){
+  document.querySelectorAll('button.opt[data-k]').forEach(function(b){
+    b.setAttribute('aria-pressed', body.dataset[b.dataset.k]===b.dataset.v ? 'true':'false');
+  });
+  body.dataset.legacy = (body.dataset.accent==='violet' && body.dataset.bg==='fog' && body.dataset.palette==='editorial') ? '1':'0';
+  var P={editorial:'古铜',warm:'暖墨',ink:'墨蓝',graphite:'石墨'};
+  var A={violet:'紫',ember:'余烬橙',amber:'琥珀',cyan:'冷青'};
+  var F={editorial:'宋衬线',humanist:'人文衬线',sans:'无衬线',geometric:'几何'};
+  var B={fog:'彩色雾',vignette:'中性暗角',tonal:'中性微渐变',flat:'纯平'};
+  var S={hue:'哈希色相',neutral:'中性'};
+  document.getElementById('readout').innerHTML =
+    '当前：<b>'+P[body.dataset.palette]+'</b> + <b>'+A[body.dataset.accent]+'</b> + <b>'+F[body.dataset.font]+'</b> + <b>'+B[body.dataset.bg]+'</b> + 海报 <b>'+S[body.dataset.poster]+'</b>';
+}
+document.addEventListener('click',function(e){
+  var b=e.target.closest('button.opt[data-k]'); if(!b) return;
+  body.dataset[b.dataset.k]=b.dataset.v; sync();
+});
+document.getElementById('btnReset').addEventListener('click',function(){
+  body.dataset.palette='editorial'; body.dataset.accent='violet'; body.dataset.font='editorial';
+  body.dataset.bg='fog'; body.dataset.poster='hue'; sync();
+});
+window.sync = sync;
+
+/* fit the app window into the viewport so nothing is cut off */
+function fit(){
+  var win = document.querySelector('.win');
+  var bar = document.querySelector('.bar');
+  var stage = document.querySelector('.stage');
+  var avail = window.innerHeight - bar.offsetHeight - 48;
+  var s = Math.min(1.0, avail / 1010);
+  win.style.transform = 'scale(' + s + ')';
+  win.style.transformOrigin = 'top center';
+  stage.style.height = (1010 * s + 48) + 'px';
+}
+window.addEventListener('resize', fit);
+fit();
+sync();
+</script>
+</body>
+</html>

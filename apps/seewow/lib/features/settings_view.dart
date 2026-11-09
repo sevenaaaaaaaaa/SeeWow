@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../data/library_store.dart';
 import '../design/pressable.dart';
+import '../design/skin.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import '../sources/native_bridge.dart';
@@ -110,6 +111,40 @@ class _SettingsViewState extends State<SettingsView> {
         const SizedBox(height: 30),
         _Card(
           index: 1,
+          title: '外观',
+          subtitle: '配色 · 强调色 · 字体 · 背景 · 海报占位',
+          children: [
+            _ChoiceRow(label: '配色', options: [
+              for (final v in WowPaletteId.values)
+                (wowPaletteLabel(v), WowSkin.I.paletteId == v, () => WowSkin.I.apply(palette: v)),
+            ]),
+            _ChoiceRow(label: '强调色', options: [
+              for (final v in WowAccentId.values)
+                (wowAccentLabel(v), WowSkin.I.accentId == v, () => WowSkin.I.apply(accent: v)),
+            ]),
+            _ChoiceRow(label: '字体', options: [
+              for (final v in WowFontId.values)
+                (wowFontLabel(v), WowSkin.I.fontId == v, () => WowSkin.I.apply(font: v)),
+            ]),
+            _ChoiceRow(label: '背景', options: [
+              for (final v in WowBackdropId.values)
+                (wowBackdropLabel(v), WowSkin.I.backdropId == v, () => WowSkin.I.apply(backdrop: v)),
+            ]),
+            _ChoiceRow(label: '海报占位', options: [
+              for (final v in WowPosterId.values)
+                (wowPosterLabel(v), WowSkin.I.posterId == v, () => WowSkin.I.apply(poster: v)),
+            ]),
+            const SizedBox(height: 4),
+            Row(children: [
+              Text('切换立刻生效，自动记住。', style: WowType.monoLabel(9, color: WowColors.faint, spacing: 0.4)),
+              const Spacer(),
+              _MiniButton(label: '恢复默认', onTap: WowSkin.I.reset),
+            ]),
+          ],
+        ),
+        const SizedBox(height: 18),
+        _Card(
+          index: 2,
           title: '片源',
           subtitle: '本地文件夹、NAS、WebDAV、Emby / Jellyfin / Plex、DLNA',
           children: [
@@ -147,7 +182,7 @@ class _SettingsViewState extends State<SettingsView> {
         ),
         const SizedBox(height: 18),
         _Card(
-          index: 2,
+          index: 3,
           title: '播放',
           subtitle: 'media_kit + libmpv 内核，HDR 由系统原生管线接管',
           children: [
@@ -158,7 +193,7 @@ class _SettingsViewState extends State<SettingsView> {
         ),
         const SizedBox(height: 18),
         _Card(
-          index: 3,
+          index: 4,
           title: '关于',
           subtitle: 'SeeWow 1.0 · Cinema for every screen',
           children: const [
@@ -167,6 +202,88 @@ class _SettingsViewState extends State<SettingsView> {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _ChoiceRow extends StatelessWidget {
+  const _ChoiceRow({required this.label, required this.options});
+  final String label;
+  final List<(String, bool, VoidCallback)> options;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+          width: 84,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 7),
+            child: Text(label, style: WowType.monoLabel(9.5, color: WowColors.faint, spacing: 1.6)),
+          ),
+        ),
+        Expanded(
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final (title, selected, onTap) in options)
+                _Chip(label: title, selected: selected, onTap: onTap),
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({required this.label, required this.selected, required this.onTap});
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? WowColors.accent.withValues(alpha: 0.16) : Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? WowColors.accent.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.07),
+          ),
+        ),
+        child: Text(
+          label,
+          style: WowType.body(12, color: selected ? WowColors.text : WowColors.muted, height: 1.2),
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniButton extends StatelessWidget {
+  const _MiniButton({required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(7),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        ),
+        child: Text(label, style: WowType.monoLabel(9, color: WowColors.muted, spacing: 0.6)),
+      ),
     );
   }
 }
@@ -296,7 +413,7 @@ class _WowSwitch extends StatelessWidget {
         padding: const EdgeInsets.all(2.5),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          gradient: value ? const LinearGradient(colors: [WowColors.accent, WowColors.accent2]) : null,
+          gradient: value ? LinearGradient(colors: [WowColors.accent, WowColors.accent2]) : null,
           color: value ? null : Colors.white.withValues(alpha: 0.10),
         ),
         child: AnimatedAlign(
@@ -442,7 +559,7 @@ class _NetworkSourceDialogState extends State<_NetworkSourceDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: WowColors.panel,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: const BorderSide(color: WowColors.line)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: BorderSide(color: WowColors.line)),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460),
         child: Padding(
@@ -486,7 +603,7 @@ class _NetworkSourceDialogState extends State<_NetworkSourceDialog> {
                   padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
                   decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), color: Colors.white),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.link_rounded, size: 15, color: WowColors.ink),
+                    Icon(Icons.link_rounded, size: 15, color: WowColors.ink),
                     const SizedBox(width: 7),
                     Text('连接并扫描', style: WowType.monoLabel(10, color: WowColors.ink, spacing: 0.6)),
                   ]),
@@ -548,7 +665,7 @@ class _Field extends StatelessWidget {
           fillColor: Colors.white.withValues(alpha: 0.04),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: BorderSide.none),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: WowColors.line)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: BorderSide(color: WowColors.line)),
           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: BorderSide(color: WowColors.accent.withValues(alpha: 0.6))),
         ),
       ),

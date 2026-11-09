@@ -558,7 +558,7 @@ class _EmptyLive extends StatelessWidget {
             shape: BoxShape.circle,
             gradient: RadialGradient(colors: [WowColors.accent.withValues(alpha: 0.35), Colors.transparent]),
           ),
-          child: const Icon(Icons.sensors_rounded, size: 30, color: WowColors.text),
+          child: Icon(Icons.sensors_rounded, size: 30, color: WowColors.text),
         ),
         const SizedBox(height: 22),
         Text('接上你的直播源', style: WowType.display(30, FontWeight.w500, spacing: -0.6)),
@@ -577,7 +577,7 @@ class _EmptyLive extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 22),
             decoration: BoxDecoration(color: WowColors.text, borderRadius: BorderRadius.circular(22)),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.add_rounded, size: 17, color: WowColors.ink),
+              Icon(Icons.add_rounded, size: 17, color: WowColors.ink),
               const SizedBox(width: 8),
               Text(loading ? '正在读取…' : '添加直播源',
                   style: WowType.monoLabel(10.5, color: WowColors.ink, spacing: 0.4).copyWith(fontWeight: FontWeight.w600)),

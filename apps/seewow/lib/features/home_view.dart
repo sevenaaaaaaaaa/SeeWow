@@ -521,7 +521,7 @@ class _Progress extends StatelessWidget {
               child: Stack(
                 children: [
                   Positioned.fill(child: ColoredBox(color: Colors.white.withValues(alpha: 0.16))),
-                  FractionallySizedBox(widthFactor: item.progress.clamp(0.0, 1.0), child: const ColoredBox(color: WowColors.accent)),
+                  FractionallySizedBox(widthFactor: item.progress.clamp(0.0, 1.0), child: ColoredBox(color: WowColors.accent)),
                 ],
               ),
             ),
@@ -764,7 +764,7 @@ class _EmptyHero extends StatelessWidget {
                     height: 76,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: const LinearGradient(colors: [WowColors.accent, WowColors.accent2]),
+                      gradient: LinearGradient(colors: [WowColors.accent, WowColors.accent2]),
                     ),
                     child: const Icon(Icons.movie_filter_outlined, color: Colors.white, size: 32),
                   ),
