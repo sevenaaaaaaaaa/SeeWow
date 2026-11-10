@@ -72,6 +72,8 @@ SeeWow 不想做另一个 Infuse 皮肤，它借电影片头与编辑排版的�
 
 所有颜色经 `lib/design/skin.dart` → `WowColors` getter 下发，页面代码不感知预设。
 
+完整规范（含 1.1.0 的五组外观轴与四套配色）见 [设计系统文档](docs/seewow/design-system/seewow/MASTER.md)，机器可读令牌在 [tokens.json](docs/seewow/design-system/seewow/tokens.json)；在本地打开 [preview.html](docs/seewow/design-system/seewow/preview.html) 可查看交互预览。
+
 ### 交互
 
 - **入场编排**：每个 Hero 元素按 40 / 90 / 150 / 200 / 240 / 290ms 依次升起（620ms 长尾曲线），页面切换时再整体重放。
