@@ -1,4 +1,5 @@
 import '../domain/media_item.dart';
+import '../domain/media_metadata.dart';
 import 'json_api.dart';
 
 /// Jellyfin / Emby read-only catalog + direct-play URLs. No server writes.
@@ -19,7 +20,7 @@ class MediaServerScanner {
         final json = await api.get(path, {
           'Recursive': 'true',
           'IncludeItemTypes': 'Movie,Episode',
-          'Fields': 'Overview,Genres,DateCreated,MediaStreams,MediaSources',
+          'Fields': 'Overview,Genres,DateCreated,MediaStreams,MediaSources,People,ProviderIds,OriginalTitle,ProductionLocations',
           'StartIndex': '$offset',
           'Limit': '$pageSize',
           'SortBy': 'SortName',
@@ -60,6 +61,45 @@ class MediaServerScanner {
             MediaItem(
               id: '${source.id}:$id',
               sourceId: source.id,
+              metadata: MediaMetadata(
+                id: 0,
+                provider: source.kind.name,
+                reviewed: false,
+                mediaType: episode ? 'episode' : 'movie',
+                title: raw['Name'] as String? ?? '未命名',
+                originalTitle: raw['OriginalTitle'] as String? ?? '',
+                countries: (raw['ProductionLocations'] as List? ?? [])
+                    .whereType<String>()
+                    .toList(),
+                people: (raw['People'] as List? ?? [])
+                    .whereType<Map>()
+                    .where((p) => p['Name'] is String)
+                    .map(
+                      (p) => MediaPerson(
+                        name: p['Name'],
+                        role: (p['Role'] ?? p['Type'] ?? '').toString(),
+                        department: p['Type'] == 'Actor' ? 'Cast' : 'Crew',
+                        id: p['Id']?.toString(),
+                      ),
+                    )
+                    .toList(),
+                ratings: [
+                  if (raw['CommunityRating'] is num)
+                    MediaRating(
+                      source: '${source.kind.name} community',
+                      value: (raw['CommunityRating'] as num).toDouble(),
+                    ),
+                  if (raw['CriticRating'] is num)
+                    MediaRating(
+                      source: '${source.kind.name} critics',
+                      value: (raw['CriticRating'] as num).toDouble(),
+                      scale: 100,
+                    ),
+                ],
+                externalIds: (raw['ProviderIds'] as Map? ?? {}).map(
+                  (k, v) => MapEntry(k.toString().toLowerCase(), v.toString()),
+                ),
+              ),
               kind: episode ? MediaKind.episode : MediaKind.movie,
               title: raw['Name'] as String? ?? '未命名',
               showTitle: episode ? raw['SeriesName'] as String? : null,

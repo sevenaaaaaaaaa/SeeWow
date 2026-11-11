@@ -33,7 +33,8 @@ class WebDavScanner {
       DavEntry? parentArt,
       NfoInfo? inheritedShow,
     ) async {
-      if (depth > maxDepth || visited > maxFiles) throw WebDavException('扫描范围超过限制，请缩小目录；原片库保留');
+      if (depth > maxDepth || visited > maxFiles)
+        throw WebDavException('扫描范围超过限制，请缩小目录；原片库保留');
       List<DavEntry> entries;
       try {
         entries = await client.list(dir);
@@ -59,7 +60,10 @@ class WebDavScanner {
         NfoInfo? result;
         if (entry != null && entry.size <= 2 * 1024 * 1024) {
           try {
-            result = NfoInfo.parse(await client.readText(entry.url));
+            result = NfoInfo.parse(
+              await client.readText(entry.url),
+              directory: dir,
+            );
           } catch (_) {}
         }
         return nfoCache[name] = result;
@@ -98,6 +102,11 @@ class WebDavScanner {
           MediaItem(
             id: sha1.convert(utf8.encode(url)).toString().substring(0, 20),
             sourceId: source.id,
+            metadata: (nfo ?? (isEpisode ? showNfo : null))?.asMetadata(
+              fallbackTitle: nfo?.title ?? parsed.title,
+              mediaType: isEpisode ? 'episode' : 'movie',
+              inherit: isEpisode ? showNfo : null,
+            ),
             kind: isEpisode ? MediaKind.episode : MediaKind.movie,
             title:
                 nfo?.title ??
@@ -121,8 +130,23 @@ class WebDavScanner {
             year:
                 nfo?.year ?? (isEpisode ? showNfo?.year : null) ?? parsed.year,
             quality: parsed.quality,
-            posterUrl: poster?.url.toString(),
-            backdropUrl: backdrop?.url.toString() ?? poster?.url.toString(),
+            posterUrl:
+                poster?.url.toString() ??
+                NfoInfo.artwork(
+                  nfo?.poster ?? showNfo?.poster,
+                  (nfo?.poster != null ? nfo?.directory : showNfo?.directory) ??
+                      dir,
+                ),
+            backdropUrl:
+                backdrop?.url.toString() ??
+                NfoInfo.artwork(
+                  nfo?.backdrop ?? showNfo?.backdrop,
+                  (nfo?.backdrop != null
+                          ? nfo?.directory
+                          : showNfo?.directory) ??
+                      dir,
+                ) ??
+                poster?.url.toString(),
             addedAt: entry.modified,
             fileSize: entry.size,
             container: ext,

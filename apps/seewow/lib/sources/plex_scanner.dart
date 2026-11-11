@@ -1,4 +1,5 @@
 import '../domain/media_item.dart';
+import '../domain/media_metadata.dart';
 import 'json_api.dart';
 
 class PlexScanner {
@@ -61,6 +62,49 @@ class PlexScanner {
               MediaItem(
                 id: '${source.id}:$id',
                 sourceId: source.id,
+                metadata: MediaMetadata(
+                  id: 0,
+                  provider: 'plex',
+                  reviewed: false,
+                  mediaType: episode ? 'episode' : 'movie',
+                  title: m['title'] as String? ?? '未命名',
+                  originalTitle: m['originalTitle'] as String? ?? '',
+                  people: [
+                    for (final field in ['Role', 'Director', 'Writer'])
+                      for (final person
+                          in (m[field] as List? ?? []).whereType<Map>())
+                        if (person['tag'] is String)
+                          MediaPerson(
+                            name: person['tag'],
+                            role: (person['role'] ?? field).toString(),
+                            department: field == 'Role' ? 'Cast' : 'Crew',
+                          ),
+                  ],
+                  ratings: [
+                    if (m['rating'] is num)
+                      MediaRating(
+                        source: 'Plex critics',
+                        value: (m['rating'] as num).toDouble(),
+                      ),
+                    if (m['audienceRating'] is num)
+                      MediaRating(
+                        source: 'Plex audience',
+                        value: (m['audienceRating'] as num).toDouble(),
+                      ),
+                  ],
+                  countries: (m['Country'] as List? ?? [])
+                      .whereType<Map>()
+                      .map((c) => c['tag'].toString())
+                      .toList(),
+                  externalIds: {
+                    for (final guid
+                        in (m['Guid'] as List? ?? []).whereType<Map>())
+                      if (guid['id'] is String &&
+                          Uri.tryParse(guid['id'])?.hasScheme == true)
+                        Uri.parse(guid['id']).scheme: Uri.parse(guid['id'])
+                            .host,
+                  },
+                ),
                 kind: episode ? MediaKind.episode : MediaKind.movie,
                 title: m['title'] as String? ?? '未命名',
                 showTitle: episode ? m['grandparentTitle'] as String? : null,

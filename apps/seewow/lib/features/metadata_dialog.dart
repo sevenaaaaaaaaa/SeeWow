@@ -6,6 +6,9 @@ import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import '../domain/media_metadata.dart';
 import '../metadata/tmdb_client.dart';
+import 'metadata_facts.dart';
+import 'metadata_languages_view.dart';
+import '../domain/metadata_languages.dart';
 
 Future<void> matchMetadata(
   BuildContext context,
@@ -37,7 +40,10 @@ class TmdbCredit extends StatelessWidget {
         alignment: Alignment.centerLeft,
         errorBuilder: (_, _, _) => Text(
           'TMDB',
-          style: TextStyle(color: WowColors.success, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: WowColors.success,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
       const SizedBox(height: 6),
@@ -56,12 +62,35 @@ class _MetadataConfig extends StatefulWidget {
 }
 
 class _MetadataConfigState extends State<_MetadataConfig> {
-  final _token = TextEditingController();
+  final _token = TextEditingController(),
+      _language = TextEditingController(text: 'zh-CN'),
+      _region = TextEditingController(),
+      _fallback = TextEditingController(text: 'en-US');
+  bool _includeAdult = false;
+  Set<String> _additional = MetadataLanguage.defaults.toSet();
+  @override
+  void initState() {
+    super.initState();
+    TmdbClient.readLocale().then((value) {
+      if (!mounted) return;
+      setState(() {
+        _language.text = value.language;
+        _region.text = value.region;
+        _fallback.text = value.fallback;
+        _includeAdult = value.includeAdult;
+        _additional = value.additionalLanguages.toSet();
+      });
+    });
+  }
+
   String? _error;
   bool _busy = false;
   @override
   void dispose() {
     _token.dispose();
+    _language.dispose();
+    _region.dispose();
+    _fallback.dispose();
     super.dispose();
   }
 
@@ -71,10 +100,24 @@ class _MetadataConfigState extends State<_MetadataConfig> {
       _error = null;
     });
     try {
-      await TmdbClient.configure(_token.text);
+      await TmdbClient.configure(
+        _token.text,
+        locale: MetadataLocale(
+          language: _language.text.trim(),
+          region: _region.text.trim().toUpperCase(),
+          fallback: _fallback.text.trim(),
+          includeAdult: _includeAdult,
+          additionalLanguages: _additional.toList(),
+        ),
+      );
       if (mounted) Navigator.pop(context);
-    } catch (_) {
-      if (mounted) setState(() => _error = '保存失败，请填写有效的 Read Access Token 后重试');
+    } catch (e) {
+      if (mounted)
+        setState(
+          () => _error = e is FormatException
+              ? e.message.toString()
+              : '保存失败，请检查配置后重试',
+        );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -106,9 +149,53 @@ class _MetadataConfigState extends State<_MetadataConfig> {
               enabled: !_busy,
               decoration: const InputDecoration(
                 labelText: 'TMDB Read Access Token',
-                hintText: '保存到本机凭据存储',
+                hintText: '保存到本机凭据存储；已有配置时留空保留',
               ),
             ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _language,
+              enabled: !_busy,
+              decoration: const InputDecoration(
+                labelText: '资料语言',
+                hintText: 'zh-CN / zh-TW / en-US / ja-JP …',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _region,
+              enabled: !_busy,
+              decoration: const InputDecoration(
+                labelText: '发行地区（可选）',
+                hintText: 'CN / US / JP / KR …',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _fallback,
+              enabled: !_busy,
+              decoration: const InputDecoration(
+                labelText: '缺失文字回退语言（留空关闭）',
+                hintText: 'en-US',
+              ),
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _includeAdult,
+              onChanged: _busy
+                  ? null
+                  : (v) => setState(() => _includeAdult = v ?? false),
+              title: const Text('搜索包含成人分类的条目'),
+            ),
+            const SizedBox(height: 12),
+            const Text('优先采集与展示的地区语言'),
+            MetadataLanguagePicker(
+              value: _additional,
+              enabled: !_busy,
+              onChanged: (value) => setState(() => _additional = value),
+            ),
+            const SizedBox(height: 12),
+            const Text('资料覆盖和译名取决于服务。商用项目需另行确认 TMDB 数据与图片授权；自填 Token 不代替商用授权。'),
             const SizedBox(height: 16),
             const TmdbCredit(),
             if (_error != null)
@@ -116,10 +203,7 @@ class _MetadataConfigState extends State<_MetadataConfig> {
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(
                   _error!,
-                  style: TextStyle(
-                    color: WowColors.error,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: WowColors.error, fontSize: 12),
                 ),
               ),
           ],
@@ -151,6 +235,13 @@ class _MetadataDialog extends StatefulWidget {
 
 class _MetadataDialogState extends State<_MetadataDialog> {
   late final TextEditingController _query;
+  final _language = TextEditingController(text: 'zh-CN'),
+      _region = TextEditingController(),
+      _year = TextEditingController();
+  String _mediaType = 'movie';
+  bool _currentEpisode = false, _localeEdited = false;
+  int _page = 1;
+  bool _regionalSearch = false;
   TmdbClient? _client;
   List<MediaMetadata> _candidates = [];
   MediaMetadata? _selected;
@@ -159,6 +250,17 @@ class _MetadataDialogState extends State<_MetadataDialog> {
   @override
   void initState() {
     super.initState();
+    _mediaType = widget.item.kind == MediaKind.episode ? 'tv' : 'movie';
+    _year.text = widget.item.kind == MediaKind.episode
+        ? ''
+        : widget.item.year?.toString() ?? '';
+    TmdbClient.readLocale().then((value) {
+      if (mounted && !_localeEdited)
+        setState(() {
+          _language.text = value.language;
+          _region.text = value.region;
+        });
+    });
     _query = TextEditingController(
       text: widget.item.showTitle ?? widget.item.title,
     );
@@ -168,10 +270,21 @@ class _MetadataDialogState extends State<_MetadataDialog> {
   void dispose() {
     _client?.close();
     _query.dispose();
+    _language.dispose();
+    _region.dispose();
+    _year.dispose();
     super.dispose();
   }
 
-  Future<void> _search() async {
+  void _invalidate() {
+    setState(() {
+      _selected = null;
+      _candidates = [];
+      _searched = false;
+    });
+  }
+
+  Future<void> _search({bool next = false}) async {
     setState(() {
       _busy = true;
       _error = null;
@@ -185,13 +298,36 @@ class _MetadataDialogState extends State<_MetadataDialog> {
         return;
       }
       _client = client;
-      final results = await _client!.search(
+      _client!.locale = MetadataLocale(
+        language: _language.text.trim(),
+        region: _region.text.trim().toUpperCase(),
+        fallback: client.locale.fallback,
+        includeAdult: client.locale.includeAdult,
+        additionalLanguages: client.locale.additionalLanguages,
+      );
+      final targetPage = next ? _page + 1 : 1;
+      final year = _year.text.trim();
+      if (year.isNotEmpty &&
+          (int.tryParse(year) == null ||
+              int.parse(year) < 1 ||
+              int.parse(year) > 9999))
+        throw const FormatException('年份需要为 1 到 9999');
+      final search = _regionalSearch
+          ? _client!.searchRegional
+          : _client!.search;
+      final results = await search(
         _query.text,
-        series: widget.item.kind == MediaKind.episode,
+        series: _mediaType == 'tv',
+        year: year.isEmpty ? null : int.parse(year),
+        page: targetPage,
       );
       if (mounted)
         setState(() {
-          _candidates = results;
+          _page = targetPage;
+          _candidates = {
+            for (final c in [if (next) ..._candidates, ...results])
+              '${c.mediaType}:${c.id}': c,
+          }.values.toList();
           _searched = true;
         });
     } catch (e) {
@@ -207,7 +343,17 @@ class _MetadataDialogState extends State<_MetadataDialog> {
       _error = null;
     });
     try {
-      final match = await _client!.details(candidate);
+      final match =
+          _currentEpisode &&
+              candidate.mediaType == 'tv' &&
+              widget.item.season != null &&
+              widget.item.episode != null
+          ? await _client!.episodeDetails(
+              candidate,
+              widget.item.season!,
+              widget.item.episode!,
+            )
+          : await _client!.details(candidate);
       if (mounted) setState(() => _selected = match);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -256,6 +402,7 @@ class _MetadataDialogState extends State<_MetadataDialog> {
                 controller: _query,
                 enabled: !_busy && !_applying,
                 onSubmitted: (_) => _search(),
+                onChanged: (_) => _invalidate(),
                 decoration: InputDecoration(
                   labelText: '电影或剧集名称',
                   suffixIcon: IconButton(
@@ -265,6 +412,86 @@ class _MetadataDialogState extends State<_MetadataDialog> {
                   ),
                 ),
               ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  Chip(label: Text(_mediaType == 'tv' ? '剧集／节目目录' : '电影／单片目录')),
+                  SizedBox(
+                    width: 130,
+                    child: TextField(
+                      controller: _language,
+                      enabled: !_busy && !_applying,
+                      onChanged: (_) {
+                        _localeEdited = true;
+                        _invalidate();
+                      },
+                      decoration: const InputDecoration(
+                        labelText: '资料语言',
+                        hintText: 'zh-CN',
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 90,
+                    child: TextField(
+                      controller: _region,
+                      enabled: !_busy && !_applying,
+                      onChanged: (_) {
+                        _localeEdited = true;
+                        _invalidate();
+                      },
+                      decoration: const InputDecoration(
+                        labelText: '发行地区',
+                        hintText: 'CN',
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 90,
+                    child: TextField(
+                      controller: _year,
+                      enabled: !_busy && !_applying,
+                      onChanged: (_) => _invalidate(),
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: '年份'),
+                    ),
+                  ),
+                ],
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _regionalSearch,
+                onChanged: _busy || _applying
+                    ? null
+                    : (value) {
+                        _regionalSearch = value ?? false;
+                        _invalidate();
+                      },
+                title: const Text('按所选地区语言同时搜索'),
+                subtitle: const Text('合并同一作品的 ID；当前仅查询资料目录，不获取播放源'),
+              ),
+              if (_client?.regionalErrors.isNotEmpty == true)
+                Text('部分语言查询未成功：${_client!.regionalErrors.join(', ')}'),
+              if (widget.item.kind == MediaKind.episode &&
+                  widget.item.season != null &&
+                  widget.item.episode != null &&
+                  _mediaType == 'tv')
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    '匹配当前集 S${widget.item.season}E${widget.item.episode}',
+                  ),
+                  subtitle: const Text('关闭时匹配整部剧；特别篇可匹配第 0 季'),
+                  value: _currentEpisode,
+                  onChanged: _busy || _applying
+                      ? null
+                      : (v) => setState(() {
+                          _currentEpisode = v;
+                          _selected = null;
+                        }),
+                ),
               const SizedBox(height: 10),
               TextButton.icon(
                 onPressed: _busy || _applying
@@ -279,10 +506,7 @@ class _MetadataDialogState extends State<_MetadataDialog> {
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Text(
                     _error!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: WowColors.error,
-                    ),
+                    style: TextStyle(fontSize: 12, color: WowColors.error),
                   ),
                 ),
               if (_searched && _candidates.isEmpty && !_busy)
@@ -310,6 +534,13 @@ class _MetadataDialogState extends State<_MetadataDialog> {
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _preview(c),
+                  ),
+                if (_client?.hasMore == true)
+                  TextButton(
+                    onPressed: _busy || _applying
+                        ? null
+                        : () => _search(next: true),
+                    child: const Text('加载更多结果'),
                   ),
               ] else ...[
                 const SizedBox(height: 14),
@@ -344,7 +575,7 @@ class _MetadataDialogState extends State<_MetadataDialog> {
                           const SizedBox(height: 8),
                           Text(
                             _selected!.overview.isEmpty
-                                ? '此作品暂无中文简介'
+                                ? '此作品暂缺所选语言的简介'
                                 : _selected!.overview,
                             maxLines: 8,
                             overflow: TextOverflow.ellipsis,
@@ -355,6 +586,55 @@ class _MetadataDialogState extends State<_MetadataDialog> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                MetadataFacts(metadata: _selected!, compact: true),
+                if (_selected!.artworks.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text('选择封面／背景图（语言为空表示无文字图）'),
+                  SizedBox(
+                    height: 130,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        for (final art in _selected!.artworks)
+                          SizedBox(
+                            width: 100,
+                            child: InkWell(
+                              onTap: _applying
+                                  ? null
+                                  : () => setState(() {
+                                      _selected = _selected!.withImages(
+                                        poster: art.type == 'poster'
+                                            ? art.url
+                                            : null,
+                                        backdrop: art.type == 'backdrop'
+                                            ? art.url
+                                            : null,
+                                      );
+                                      _replaceArt = true;
+                                    }),
+                              child: Column(
+                                children: [
+                                  Expanded(
+                                    child: WowArt(
+                                      url: art.url,
+                                      fallback: const Icon(
+                                        Icons.image_outlined,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    '${art.type == 'poster' ? '封面' : '背景'} · ${art.language.isEmpty ? '无文字' : art.language}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,

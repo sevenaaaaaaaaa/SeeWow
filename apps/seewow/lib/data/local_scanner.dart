@@ -119,6 +119,12 @@ class LocalScanner {
         MediaItem(
           id: id,
           sourceId: source.id,
+          aiAllowed: source.providerId != 'telegramLocal',
+          metadata: (nfo ?? showNfo)?.asMetadata(
+            fallbackTitle: title,
+            mediaType: isEpisode ? 'episode' : 'movie',
+            inherit: showNfo,
+          ),
           kind: isEpisode ? MediaKind.episode : MediaKind.movie,
           title: nfo?.title ?? title,
           locator: entity.path,
@@ -127,8 +133,21 @@ class LocalScanner {
           episode: nfo?.episode ?? parsed.episode,
           year: nfo?.year ?? showNfo?.year ?? parsed.year ?? demo?.year,
           quality: parsed.quality,
-          posterUrl: poster?.path,
-          backdropUrl: fanart?.path ?? poster?.path,
+          posterUrl:
+              poster?.path ??
+              NfoInfo.artwork(
+                nfo?.poster ?? showNfo?.poster,
+                (nfo?.poster != null ? nfo?.directory : showNfo?.directory) ??
+                    parent.uri,
+              ),
+          backdropUrl:
+              fanart?.path ??
+              NfoInfo.artwork(
+                nfo?.backdrop ?? showNfo?.backdrop,
+                (nfo?.backdrop != null ? nfo?.directory : showNfo?.directory) ??
+                    parent.uri,
+              ) ??
+              poster?.path,
           addedAt: stat.modified,
           fileSize: stat.size,
           container: ext.toUpperCase(),

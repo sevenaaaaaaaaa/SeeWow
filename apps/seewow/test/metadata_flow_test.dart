@@ -24,6 +24,8 @@ class _FixtureTmdb extends TmdbClient {
   Future<List<MediaMetadata>> search(
     String query, {
     bool series = false,
+    int? year,
+    int page = 1,
   }) async => [match];
   @override
   Future<MediaMetadata> details(MediaMetadata candidate) async => match;
