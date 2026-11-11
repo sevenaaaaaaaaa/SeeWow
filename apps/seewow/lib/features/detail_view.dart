@@ -5,6 +5,11 @@ import '../design/cinema_widgets.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import 'metadata_dialog.dart';
+import 'metadata_editor.dart';
+import 'metadata_facts.dart';
+import 'metadata_language_batch.dart';
+import 'custom_scraper_view.dart';
+import 'cover_generation_view.dart';
 
 class DetailView extends StatelessWidget {
   const DetailView({
@@ -220,11 +225,63 @@ class DetailView extends StatelessWidget {
                             ),
                           ),
                         ),
+                        if (current.metadata != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: MetadataFacts(metadata: current.metadata!),
+                          ),
+                        if (current.hasGeneratedCover)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(
+                              'AI 配图 · ${current.metadata!.generatedCover['model']} · 非官方海报',
+                            ),
+                          ),
                         const SizedBox(height: 20),
                         Wrap(
                           spacing: 12,
                           runSpacing: 8,
                           children: [
+                            if (current.kind != MediaKind.audio)
+                              TextButton.icon(
+                                onPressed: () => matchCustomMetadata(
+                                  context,
+                                  store,
+                                  current,
+                                ),
+                                icon: const Icon(Icons.api_outlined, size: 17),
+                                label: const Text('自定义 API 匹配'),
+                              ),
+                            if (current.kind != MediaKind.audio)
+                              TextButton.icon(
+                                onPressed: current.aiAllowed
+                                    ? () => generateMediaCover(
+                                        context,
+                                        store,
+                                        current,
+                                      )
+                                    : null,
+                                icon: const Icon(
+                                  Icons.auto_awesome_outlined,
+                                  size: 17,
+                                ),
+                                label: const Text('AI 生成封面'),
+                              ),
+                            TextButton.icon(
+                              onPressed: () => manageMetadataLanguages(
+                                context,
+                                store,
+                                [current],
+                              ),
+                              icon: const Icon(Icons.language, size: 17),
+                              label: const Text('多语言资料与本机补译'),
+                            ),
+                            TextButton.icon(
+                              onPressed: () =>
+                                  editMetadata(context, store, current),
+                              icon: const Icon(Icons.edit_outlined, size: 17),
+                              label: const Text('编辑媒体资料'),
+                            ),
                             TextButton.icon(
                               onPressed: () => store.markWatched([
                                 current,

@@ -1,12 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../domain/media_item.dart';
 import '../domain/media_metadata.dart';
+import '../domain/metadata_language_draft.dart';
 import '../domain/library_intelligence.dart';
+import '../metadata/cover_generator.dart';
 
 class LibraryStore extends ChangeNotifier {
   LibraryStore({this.directory});
@@ -188,17 +193,37 @@ class LibraryStore extends ChangeNotifier {
       final oldById = {for (final item in old.values) item.id: item};
       final seriesMetadata = {
         for (final previous in old.values)
-          if (previous.kind == MediaKind.episode && previous.metadata != null)
+          if (previous.kind == MediaKind.episode &&
+              previous.metadata?.reviewed == true &&
+              previous.metadata?.mediaType == 'tv')
             previous.showTitle ?? previous.title: previous.metadata!,
       };
       final merged = scanned.map((n) {
         final prev = old[n.locator] ?? oldById[n.id];
         final match =
-            prev?.metadata ??
+            (prev?.metadata?.reviewed == true ? prev?.metadata : null) ??
             (n.kind == MediaKind.episode
                 ? seriesMetadata[n.showTitle ?? n.title]
                 : null);
-        final incoming = match == null ? n : n.withMetadata(match);
+        var incoming = match == null ? n : n.withMetadata(match);
+        if (prev?.hasGeneratedCover == true &&
+            (incoming.posterUrl == null || incoming.posterUrl!.isEmpty)) {
+          incoming = incoming.copyWith(
+            posterUrl: prev!.posterUrl,
+            metadata: MediaMetadata.fromJson({
+              ...metadataForLanguages(incoming).toJson(),
+              'posterUrl': prev.posterUrl,
+              'generatedCover': prev.metadata!.generatedCover,
+            }),
+          );
+        }
+        if (prev?.metadata?.localized.isNotEmpty == true)
+          incoming = incoming.copyWith(
+            metadata: retainLanguages(
+              metadataForLanguages(incoming),
+              prev!.metadata,
+            ),
+          );
         return prev == null
             ? incoming
             : incoming.copyWith(
@@ -270,23 +295,158 @@ class LibraryStore extends ChangeNotifier {
     final index = items.indexWhere((i) => i.id == itemId);
     if (index < 0) throw StateError('此条目已移出片库，请刷新后重试');
     final item = items[index];
-    if (item.kind == MediaKind.movie && match.mediaType != 'movie' ||
-        item.kind == MediaKind.episode && match.mediaType != 'tv' ||
-        (item.kind == MediaKind.other || item.kind == MediaKind.audio))
+    if (match.provider == 'tmdb' &&
+        (item.kind == MediaKind.movie && match.mediaType != 'movie' ||
+            item.kind == MediaKind.episode &&
+                !['tv', 'episode'].contains(match.mediaType) ||
+            item.kind == MediaKind.audio ||
+            item.kind == MediaKind.other)) {
       throw const FormatException('元数据类型与媒体条目不一致');
-    if (item.kind == MediaKind.episode) {
+    }
+    if (item.kind == MediaKind.episode && match.mediaType == 'tv') {
       final show = item.showTitle ?? item.title;
       for (var n = 0; n < items.length; n++) {
         final episode = items[n];
         if (episode.kind == MediaKind.episode &&
             episode.sourceId == item.sourceId &&
             (episode.showTitle ?? episode.title) == show)
-          items[n] = episode.withMetadata(match);
+          items[n] = episode.withMetadata(
+            retainLanguages(match, episode.metadata),
+          );
       }
     } else {
-      items[index] = item.withMetadata(match);
+      items[index] = item.withMetadata(retainLanguages(match, item.metadata));
     }
     await _changed();
+  }
+
+  Future<void> applyLanguageDrafts(List<MetadataLanguageDraft> drafts) async {
+    final previous = <String, MediaMetadata?>{};
+    final next = <String, MediaMetadata>{};
+    for (final draft in drafts) {
+      final item = items.where((i) => i.id == draft.itemId).firstOrNull;
+      if (item == null || metadataSnapshot(item) != draft.before)
+        throw const FormatException('资料或来源已改变，请重新生成多语言预览');
+      if (draft.generatedByModel && !item.aiAllowed)
+        throw const FormatException('此来源不允许 AI 处理');
+      final base = metadataForLanguages(item);
+      for (final entry in draft.metadata.localized.entries) {
+        final old = base.localized[entry.key];
+        if (old == null) continue;
+        final value = entry.value;
+        if ((old.title.isNotEmpty &&
+                old.titleOrigin != 'machine' &&
+                value.titleOrigin == 'machine' &&
+                value.title != old.title) ||
+            (old.overview.isNotEmpty &&
+                old.overviewOrigin != 'machine' &&
+                value.overviewOrigin == 'machine' &&
+                value.overview != old.overview))
+          throw const FormatException('本机补译不能覆盖已有来源文字');
+      }
+      previous[item.id] = item.metadata;
+      next[item.id] = base.withLanguages(
+        draft.metadata.localized,
+        alternatives: draft.metadata.alternativeTitles,
+        preferred: draft.metadata.preferredLanguages,
+      );
+    }
+    for (var i = 0; i < items.length; i++) {
+      final metadata = next[items[i].id];
+      if (metadata != null) items[i] = items[i].copyWith(metadata: metadata);
+    }
+    try {
+      await _changed();
+    } catch (_) {
+      for (var i = 0; i < items.length; i++) {
+        if (previous.containsKey(items[i].id))
+          items[i] = items[i].copyWith(
+            metadata: previous[items[i].id],
+            clearMetadata: previous[items[i].id] == null,
+          );
+      }
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> applyGeneratedCover({
+    required String itemId,
+    required String before,
+    required Uint8List bytes,
+    required String model,
+    required DateTime createdAt,
+    bool replace = false,
+  }) async {
+    void validateCurrent() {
+      final item = items.where((i) => i.id == itemId).firstOrNull;
+      if (item == null || metadataSnapshot(item) != before)
+        throw const FormatException('媒体资料或封面已改变，请重新生成预览');
+      if (!item.aiAllowed) throw const FormatException('此来源不允许 AI 处理');
+      if (!replace &&
+          item.posterUrl?.isNotEmpty == true &&
+          !item.posterUrl!.startsWith('seewow:'))
+        throw const FormatException('此条目已有封面，请明确选择替换');
+    }
+
+    validateCurrent();
+    await validateCoverBytes(bytes);
+    final dir = Directory('${(await _dir()).path}/covers');
+    await dir.create(recursive: true);
+    final name = sha256.convert(
+      utf8.encode(
+        '$itemId:${DateTime.now().microsecondsSinceEpoch}:${sha256.convert(bytes)}',
+      ),
+    );
+    final file = File('${dir.path}/$name.image');
+    try {
+      await file.writeAsBytes(bytes, flush: true);
+      validateCurrent();
+      final index = items.indexWhere((i) => i.id == itemId);
+      final item = items[index];
+      final oldMetadata = item.metadata;
+      final base = metadataForLanguages(item);
+      items[index] = item.copyWith(
+        posterUrl: file.path,
+        metadata: MediaMetadata.fromJson({
+          ...base.toJson(),
+          'posterUrl': file.path,
+          'generatedCover': {
+            'path': file.path,
+            'model': model,
+            'createdAt': createdAt.toIso8601String(),
+          },
+        }),
+      );
+      final appliedMetadata = items[index].metadata;
+      try {
+        await _changed();
+      } catch (_) {
+        final currentIndex = items.indexWhere((i) => i.id == itemId);
+        if (currentIndex >= 0 &&
+            items[currentIndex].posterUrl == file.path &&
+            identical(items[currentIndex].metadata, appliedMetadata)) {
+          final current = items[currentIndex];
+          items[currentIndex] = MediaItem.fromJson({
+            ...current.toJson(),
+            'locator': current.locator,
+            'posterUrl': item.posterUrl,
+            'metadata': oldMetadata?.toJson(),
+          }).copyWith(httpHeaders: current.httpHeaders);
+        }
+        notifyListeners();
+        rethrow;
+      }
+    } catch (_) {
+      final referenced = items.any(
+        (i) =>
+            i.posterUrl == file.path ||
+            i.backdropUrl == file.path ||
+            i.metadata?.posterUrl == file.path,
+      );
+      if (!referenced && await file.exists()) await file.delete();
+      rethrow;
+    }
   }
 
   Future<void> setFavorite(MediaItem item, bool value) async {

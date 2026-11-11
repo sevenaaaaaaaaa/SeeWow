@@ -30,11 +30,15 @@ class MediaItem {
     this.sourceRef,
     this.artist = '',
     this.album = '',
+    this.aiAllowed = true,
   });
 
   final MediaMetadata? metadata;
   final String? sourceRef;
   final String artist, album;
+  final bool aiAllowed;
+  bool get hasGeneratedCover =>
+      posterUrl != null && posterUrl == metadata?.generatedCover['path'];
 
   final String id;
   final String sourceId;
@@ -73,8 +77,16 @@ class MediaItem {
   }
 
   MediaItem withMetadata(MediaMetadata match) => copyWith(
-    metadata: match,
-    title: kind == MediaKind.movie ? match.title : title,
+    metadata:
+        hasGeneratedCover && (!match.replaceArtwork || match.posterUrl == null)
+        ? MediaMetadata.fromJson({
+            ...match.toJson(),
+            'generatedCover': metadata!.generatedCover,
+          })
+        : match,
+    title: kind != MediaKind.episode || match.mediaType == 'episode'
+        ? match.title
+        : title,
     showTitle: showTitle,
     year: match.year,
     overview: match.overview.isEmpty ? overview : match.overview,
@@ -86,7 +98,10 @@ class MediaItem {
     backdropUrl: match.replaceArtwork || backdropUrl == null
         ? match.backdropUrl
         : backdropUrl,
-    duration: kind == MediaKind.movie && duration <= 0 && match.duration > 0
+    duration:
+        (kind == MediaKind.movie || match.mediaType == 'episode') &&
+            duration <= 0 &&
+            match.duration > 0
         ? match.duration
         : duration,
   );
@@ -100,16 +115,19 @@ class MediaItem {
     return container.toUpperCase();
   }
 
-  String get libraryTitle => metadata?.title ?? showTitle ?? title;
+  String get libraryTitle => kind == MediaKind.episode
+      ? (metadata?.mediaType == 'tv' ? metadata!.title : showTitle ?? title)
+      : metadata?.title ?? title;
 
   String get displayTitle {
     if (kind == MediaKind.episode && season != null && episode != null) {
-      return '${metadata?.title ?? showTitle ?? title}  S${season!.toString().padLeft(2, '0')}E${episode!.toString().padLeft(2, '0')}';
+      return '${metadata?.mediaType == 'tv' ? metadata!.title : showTitle ?? title}  S${season!.toString().padLeft(2, '0')}E${episode!.toString().padLeft(2, '0')}';
     }
     return title;
   }
 
   MediaItem copyWith({
+    bool clearMetadata = false,
     String? locator,
     String? title,
     String? showTitle,
@@ -133,11 +151,12 @@ class MediaItem {
     sourceRef: sourceRef,
     artist: artist,
     album: album,
+    aiAllowed: aiAllowed,
     showTitle: showTitle ?? this.showTitle,
     season: season,
     episode: episode,
     year: year ?? this.year,
-    metadata: metadata ?? this.metadata,
+    metadata: clearMetadata ? null : metadata ?? this.metadata,
     quality: quality,
     posterUrl: posterUrl ?? this.posterUrl,
     backdropUrl: backdropUrl ?? this.backdropUrl,
@@ -158,6 +177,7 @@ class MediaItem {
     'sourceRef': sourceRef,
     'artist': artist,
     'album': album,
+    'aiAllowed': aiAllowed,
     'sourceId': sourceId,
     'kind': kind.name,
     'title': title,
@@ -195,6 +215,7 @@ class MediaItem {
     sourceRef: j['sourceRef'] as String?,
     artist: j['artist'] as String? ?? '',
     album: j['album'] as String? ?? '',
+    aiAllowed: j['aiAllowed'] != false,
     metadata: j['metadata'] == null
         ? null
         : MediaMetadata.fromJson(j['metadata'] as Map<String, dynamic>),
