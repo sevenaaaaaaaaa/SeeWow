@@ -10,7 +10,7 @@
 
 | 平台 | 安装包 | 安装与签名状态 |
 | --- | --- | --- |
-| macOS Apple Silicon | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.7.0/SeeWow-macos-1.7.0-preview.zip) | 解压后将应用移到「应用程序」；临时签名、未公证 |
+| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.7.0/SeeWow-macos-1.7.0-preview.zip) | 解压后将应用移到「应用程序」；临时签名、未公证 |
 | Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.7.0/SeeWow-Android-1.7.0-preview.apk) | Android 7.0+；Release 编译、开发签名预览包 |
 | iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.7.0/SeeWow-iOS-1.7.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
 
