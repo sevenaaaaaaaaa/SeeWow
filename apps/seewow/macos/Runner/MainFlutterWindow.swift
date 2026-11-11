@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import CoreAudio
 
 class MainFlutterWindow: NSWindow {
   override func awakeFromNib() {
@@ -10,6 +11,7 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     NativeBridge.shared.register(messenger: flutterViewController.engine.binaryMessenger)
+    AudioRouteBridge.shared.register(messenger: flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
     self.minSize = NSSize(width: 900, height: 640)
@@ -182,5 +184,74 @@ final class NativeBridge: NSObject {
   private func join(_ subpath: String, to mountPath: String) -> String {
     let trimmed = subpath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     return trimmed.isEmpty ? mountPath : mountPath + "/" + trimmed
+  }
+}
+
+/// CoreAudio reports the selected default device, including the data source of
+/// built-in ports. A Bluetooth transport alone cannot prove private headphones.
+final class AudioRouteBridge {
+  static let shared = AudioRouteBridge()
+  private var channel: FlutterMethodChannel?
+  private var device: AudioDeviceID = 0
+  private let queue = DispatchQueue.main
+  private var defaultAddress = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+  private var sourceAddress = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyDataSource, mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
+  private var defaultListener: AudioObjectPropertyListenerBlock?
+  private var sourceListener: AudioObjectPropertyListenerBlock?
+  func register(messenger: FlutterBinaryMessenger) {
+    channel = FlutterMethodChannel(name: "seewow/playback", binaryMessenger: messenger)
+    channel?.setMethodCallHandler { [weak self] call, result in
+      guard let self else { result(nil); return }
+      switch call.method {
+      case "audio.route": result(self.route())
+      case "audio.volume": result(true) // libmpv owns the audio device.
+      default: result(FlutterMethodNotImplemented)
+      }
+    }
+    defaultListener = { [weak self] _, _ in self?.changed() }
+    if let listener = defaultListener { AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &defaultAddress, queue, listener) }
+    observeDevice()
+  }
+  private func selectedDevice() -> AudioDeviceID {
+    var value: AudioDeviceID = 0, size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &defaultAddress, 0, nil, &size, &value)
+    return value
+  }
+  private func observeDevice() {
+    if device != 0, let listener = sourceListener { AudioObjectRemovePropertyListenerBlock(device, &sourceAddress, queue, listener) }
+    device = selectedDevice()
+    sourceListener = { [weak self] _, _ in self?.changed() }
+    if device != 0, let listener = sourceListener { AudioObjectAddPropertyListenerBlock(device, &sourceAddress, queue, listener) }
+  }
+  private func changed() {
+    if selectedDevice() != device { observeDevice() }
+    channel?.invokeMethod("audio.routeChanged", arguments: route())
+  }
+  private func route() -> [String: String] {
+    let selected = selectedDevice()
+    var source: UInt32 = 0, size = UInt32(MemoryLayout<UInt32>.size)
+    let hasSource = selected != 0 && AudioObjectGetPropertyData(selected, &sourceAddress, 0, nil, &size, &source) == noErr
+    // CoreAudio source IDs used by the built-in speaker/headphone selector.
+    // For other devices inspect explicit terminal types, never product names.
+    var route = "unknown"
+    if hasSource && source == 0x6864706e { route = "headphones" } // 'hdpn'
+    else if hasSource && source == 0x6973706b { route = "speaker" } // 'ispk'
+    else if selected != 0 {
+      var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
+      var count: UInt32 = 0
+      if AudioObjectGetPropertyDataSize(selected, &address, 0, nil, &count) == noErr, count > 0 {
+        var streams = [AudioStreamID](repeating: 0, count: Int(count) / MemoryLayout<AudioStreamID>.size)
+        _ = streams.withUnsafeMutableBytes { AudioObjectGetPropertyData(selected, &address, 0, nil, &count, $0.baseAddress!) }
+        let terminals: [UInt32] = streams.map { stream in
+          var terminal: UInt32 = 0, bytes = UInt32(MemoryLayout<UInt32>.size)
+          var property = AudioObjectPropertyAddress(mSelector: kAudioStreamPropertyTerminalType, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+          AudioObjectGetPropertyData(stream, &property, 0, nil, &bytes, &terminal)
+          return terminal
+        }
+        if !terminals.isEmpty && terminals.allSatisfy({ $0 == kAudioStreamTerminalTypeHeadphones }) { route = "headphones" }
+        else if !terminals.isEmpty && terminals.allSatisfy({ $0 == kAudioStreamTerminalTypeSpeaker }) { route = "speaker" }
+      }
+    }
+    return ["route": route, "token": "\(selected):\(hasSource ? source : 0)"]
   }
 }

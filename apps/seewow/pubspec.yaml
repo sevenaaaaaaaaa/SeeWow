@@ -16,6 +16,7 @@ dependencies:
   media_kit_libs_video: ^1.0.7
   media_kit_video: ^2.0.1
   path_provider: ^2.1.6
+  window_manager: ^0.5.2
 
 dev_dependencies:
   flutter_test:
@@ -28,6 +29,12 @@ flutter:
     - assets/fonts/
     - assets/branding/
   fonts:
+    - family: NotoSerifTibetan
+      fonts:
+        - asset: assets/fonts/NotoSerifTibetan-Variable.ttf
+    - family: NotoSansArabic
+      fonts:
+        - asset: assets/fonts/NotoSansArabic-Variable.ttf
     - family: SourceSerif4
       fonts:
         - asset: assets/fonts/SourceSerif4-Regular.otf
