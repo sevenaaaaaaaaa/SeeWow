@@ -23,7 +23,7 @@ class WowArt extends StatelessWidget {
   Widget build(BuildContext context) {
     final u = url;
     final placeholder = fallback ?? const SizedBox.shrink();
-    if (u == null || u.isEmpty) return placeholder;
+    if (u == null || u.isEmpty || u.startsWith('seewow:')) return placeholder;
     if (u.startsWith('file://')) {
       final path = Uri.tryParse(u)?.toFilePath();
       if (path == null) return placeholder;

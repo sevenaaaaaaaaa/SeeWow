@@ -1,12 +1,13 @@
 name: seewow
 description: "SeeWow — Cinema for every screen. A cross-platform personal cinema player."
 publish_to: 'none'
-version: 1.1.0+2
+version: 1.6.0+7
 
 environment:
   sdk: ^3.13.7
 
 dependencies:
+  xml: ^7.0.1
   crypto: ^3.0.8
   file_picker: ^13.3.2
   flutter:
@@ -25,6 +26,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/fonts/
+    - assets/branding/
   fonts:
     - family: SourceSerif4
       fonts:

@@ -1,181 +1,148 @@
 # SeeWow
 
-**Cinema for every screen.** 一个跨平台私人影院播放器：macOS、Windows、Linux、iPadOS、Android 平板共用一套 Flutter 代码与一种视觉语言。本地片库、NAS、WebDAV、Emby / Jellyfin / Plex、DLNA 与 IPTV，最终收进同一个界面。
+**Cinema, made personal.** 一个以私人媒体库为中心的跨平台播放器，使用 Flutter + media_kit / libmpv。
 
-![首页](docs/screens/flutter-home.png)
+当前工作区为 **1.6.0 体验预览版**。新增默认关闭的 [AI 字幕与小映陪看](docs/ai-watch.md)：自行配置 API，翻译已有字幕，按需解释台词、情节与场景。支持三套主题、皮肤工作室和 design.md 生成，详见 [皮肤说明](skins/README.md) 与 [design.md 模板](design.md)。
 
-## 安装
+## 下载 1.6.0 体验预览版
 
-**macOS 1.1.0**：[下载 SeeWow-macos-1.1.0.zip](https://github.com/sevenaaaaaaaaa/SeeWow/releases/latest) → 解压 → 拖进「应用程序」→ 右键「打开」（本地 ad-hoc 签名，未公证；如提示已损坏执行 `xattr -dr com.apple.quarantine /Applications/SeeWow.app`）。需要 macOS 14+（Apple Silicon）。
+完整更新记录见 [1.6.0 发布说明](docs/releases/1.6.0.md)，安装包与 SHA-256 校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.6.0)。
 
-Windows / Linux / Android 由 CI 产物或本地 `flutter build` 生成，见下文「构建」。
+| 平台 | 安装包 | 安装与签名状态 |
+| --- | --- | --- |
+| macOS Apple Silicon | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.6.0/SeeWow-macos-1.6.0-preview.zip) | 解压后将应用移到「应用程序」；临时签名、未公证 |
+| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.6.0/SeeWow-Android-1.6.0-preview.apk) | Android 7.0+；Release 编译、开发签名预览包 |
+| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.6.0/SeeWow-iOS-1.6.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
 
-## 一眼看全
+Windows / Linux 本轮未提供 1.6.0 安装包。AI 功能默认关闭，需要用户自行配置 API；使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
 
-| | 能力 |
-|---|---|
-| **平台** | macOS · Windows · Linux · iPadOS · Android（Flutter 单代码库，响应式三档布局：侧边栏 / 图标栏 / 底部 Tab） |
-| **播放** | media_kit + libmpv 内核，软硬解自动协商；播放、暂停、±10s / +30s、音量、全屏、进度回写；直播流自动切换 LIVE 模式（无进度条、不写进度） |
-| **片源** | 本地文件夹（系统选择器添加、递归扫描、海报/剧照识别、电影与剧集自动分拣）；**SMB / NAS**（macOS 走 NetFS 系统挂载，Windows 走 `net use`，Linux 走 gio，统一收敛成 file:// 交给 libmpv）；**WebDAV**（PROPFIND 递归扫描 + Basic 鉴权，海报与播放全程带认证头和 Range 请求）；**IPTV**（M3U / M3U8、分组、搜索、XMLTV 节目单、收藏与最近观看）；Emby / Jellyfin / Plex / DLNA 在路线图中 |
-| **元数据** | 文件名解析（S01E02 / 1x02 / 第 x 季第 x 集 / 年份 / 4K / HDR / BluRay）、本地 poster / fanart 优先、演示片库内置评分与简介 |
-| **整理** | 继续观看、最近添加、电影 / 剧集分栏、搜索、收藏、播放进度持久化 |
-| **体验** | Cinema Editorial 视觉语言：中英双语衬线标题、等宽字元数据、编号式版面、海报版画与放映框、颗粒与暗角；620ms 入场编排、9 秒自动放映、指针光与磁吸按钮；三档响应式布局 |
+片源能力包括服务选择器、Plex / File Station / Navidrome 适配、OpenList / Alist API 扫描与动态直链，以及本地 / SMB / WebDAV 的中文 NFO 读取。以下区分已经实现与尚未支持的能力。
 
-## 截图
+## 从连接到观看
 
-| 电影详情 | 播放器 |
-|---|---|
-| ![详情](docs/screens/flutter-detail.png) | ![播放](docs/screens/flutter-player.png) |
+1. 在「片源与订阅」连接本地目录、SMB / NAS、WebDAV、Plex、Jellyfin / Emby、群晖 File Station、OpenList / Alist 或 M3U；Navidrome 曲目可在「音乐库」查看。
+2. 「媒体库」统一查看影片，按来源、类型、电影/剧集、观看状态筛选，按片名、年份、评分或入库时间排序。
+3. 首页「调整我的口味」选择偏好。影片菜单可以喜欢、不感兴趣、加入待看、标记已看。
+4. 在 Agent 中描述需求，查看逐步执行结果，把挑选结果保存到「我的片单」。
+5. 播放时每约 5 秒更新一次本机进度，退出时再保存一次。返回详情与首页可看到更新后的状态。
 
-| 电影库（编号页头 + 筛选） | 设置（编号卡片） |
-|---|---|
-| ![电影库](docs/screens/flutter-movies.png) | ![设置](docs/screens/flutter-settings.png) |
+iOS / iPadOS 已提供真机 ARM64 可重签 IPA，最低 iOS 15。包含钥匙串、Files 文件夹授权和手机播放控制适配；构建方式、签名状态及验证范围见 [iOS 构建说明](docs/ios-build.md)。
 
-| 直播：分组频道 + 正在播 | 直播播放（LIVE 模式） |
-|---|---|
-| ![直播](docs/screens/flutter-live-epg.png) | ![直播播放](docs/screens/flutter-live-player.png) |
+## 已实现
 
-| 直播：收藏筛选 | 平板 / 窄窗（图标栏） |
-|---|---|
-| ![收藏](docs/screens/flutter-live-favorites.png) | ![平板](docs/screens/flutter-tablet.png) |
-
-| 网络片源（SMB / WebDAV） | 添加网络位置 |
+| 能力 | 当前行为 |
 | --- | --- |
-| ![网络片源](docs/screens/flutter-network-sources.png) | ![添加网络位置](docs/screens/flutter-network-dialog.png) |
+| AI 字幕与陪看 | 默认关闭，用户自配 API；翻译内嵌文字字幕/外挂 SRT、VTT，原文译文同显；小映按当前台词与时间点解释，视觉分析需额外开启并按次附带单张缩小截图；上下文和请求有界，不保存会话到片库 |
+| 主题与皮肤 | 曜黑、素白、流光玻璃全局切换；颜色、字体、圆角、布局密度与材质编辑；社区 JSON / Markdown 本地导入导出；design.md 参数本地生成或用户模型 AI 生成，校验预览后应用 |
+| 导航与搜索 | 桌面侧栏 / 平板图标栏 / 手机底部导航；顶部搜索与 ⌘K / Ctrl+K 搜索真实片库并跳转功能 |
+| 首页 | 片库内推荐、继续观看、Agent 任务入口、可编辑的类型偏好；取消自动轮播和持续入场动效 |
+| 媒体库 | 多条件组合筛选、全文关键词匹配、排序、海报/列表视图、批量选择、已看/未看、结果保存为片单 |
+| 收藏与反馈 | 待看、喜欢、不感兴趣、类型偏好、观看时间和播放进度持久化；不感兴趣可从卡片菜单恢复 |
+| 推荐 | 本地可解释排序，使用明确偏好、喜欢、观看反馈；支持类型、部分心情词、分钟数上限；排除已看与不感兴趣，减少同剧及同片重复 |
+| 片单 | 保存搜索/筛选结果或 Agent 结果；重启后可重新打开；删除片单保留媒体文件 |
+| 影片信息匹配 | 详情页搜索 TMDB，选择同名/年份候选、预览并确认；中文简介、评分、类型、海报和剧照可补全；默认保留本地/服务器图片；剧集匹配应用到同源整部剧，新扫描的集数可继承 |
+| 媒体服务器 | Jellyfin / Emby API Key 接入，支持反向代理子路径、分页入库、电影/剧集、服务器海报与原文件直接播放；用户 ID 可选；分页中断保留旧片库 |
+| 片库体检 | 查找疑似同名同年份同集重复、缺少海报/简介的条目；只列出待检查结果，不自动删除或合并；信息补全从详情页主动匹配 |
+| 本地/NAS | 本地递归扫描；SMB 在 macOS 用 NetFS、Windows 用 net use、Linux 用 gio 挂载后扫描 |
+| WebDAV / 网盘 | PROPFIND 扫描，Basic 认证、HTTP Range 播放；网盘通过用户自己的 WebDAV 网关（如 Alist / OpenList）接入 |
+| OpenList / Alist API | 按挂载根目录递归建库；播放前调用网关获取新直链；云盘账号授权由网关维护；网关 Token 不跟随直链发送到云盘域名 |
+| Plex | Token 接入，电影及逐集目录、海报和原文件播放；不使用客户端转码 |
+| 群晖 File Station | DSM 账号只读列目录、扫描文件，播放前建立新会话；也可使用 SMB / WebDAV |
+| Navidrome | OpenSubsonic 账号认证、曲目扫描、独立音乐库与原音频播放；播放认证签名只在运行时生成 |
+| NFO 中文资料 | 本地 / SMB / WebDAV 自动读取同名 `.nfo`、`movie.nfo`、`tvshow.nfo`，解析中文标题、简介、类型、评分和时长；无效旁车回退文件名，不阻塞媒体播放 |
+| 编辑连接 | 更新名称、地址、挂载根目录、账号或凭据；保留来源 ID，按稳定条目 ID 合并仍在扫描范围内的进度、收藏和已确认元数据 |
+| 直播订阅 | M3U / M3U8 频道列表、XMLTV、分组、收藏、最近观看、订阅刷新 |
+| 链接收集 | 从用户粘贴的地址识别链接，读取最多 3 个页面并收集 M3U / DAV 候选；候选可编辑连接，测试后导入 |
+| 来源状态 | 显示扫描进度、上次成功时间、持久化错误；断网/扫描失败保留旧片库；同源并发扫描合并为一次 |
+| 播放 | 播放/暂停、音量、快进/快退、全屏、倍速、键盘控制、播放失败提示、断点续播、进度回写 |
 
-| WebDAV 播放（HTTP Range + 认证头） |
-| --- |
-| ![WebDAV 播放](docs/screens/flutter-webdav-player.png) |
+## Agent：规划 → 工具 → 可操作结果
 
-## 设计语言：Cinema Editorial
+Agent 工作区提供两种明确标注的模式：
 
-SeeWow 不想做另一个 Infuse 皮肤，它借电影片头与编辑排版的语汇，并要求每个页面都能过「获奖级网页」的八维自检（排版、留白、层级、色彩、动效、微交互、响应式、原创性）：
+- **本地规则**：无需密钥或模型。识别内置任务与部分偏好表达，调用本地推荐、搜索、体检、来源刷新和链接收集。它不是语言模型，也不理解任意自然语言。
+- **AI 模型**：在「影院 Agent → 接入 AI 模型」填写完整的 Chat Completions 兼容接口地址、模型名和可选密钥。远程服务需 HTTPS，本机服务支持 HTTP。模型规划最多 5 个步骤，应用验证后调用受限工具。
 
-- **双语衬线**：西文用 Source Serif 4，中文自动落到 Songti SC / Noto Serif CJK，标题在两种语言里都是同一种编辑气质；年份、规格、时间码、页码一律 JetBrains Mono 小字。
-- **编号规则**：每个区块由「衬线大号序号 + 标题 + 1px hairline + 大写小字标签」组成（`01 继续观看 ——— PICK UP WHERE YOU LEFT OFF`），把信息层级写成版面。
-- **海报版画**：首页 Hero 右侧把当前条目做成带描边与投影的纸上版画，背后压一枚巨大的幽灵序号，下方 `NOW SHOWING`；详情页右上角把发行年份压成浮雕水印。
-- **放映框**：Hero、详情头图、空状态四角都有 16px 细括号，像取景器边框。
-- **环境光**：全局叠两层低饱和径向光、细颗粒与暗角；Hero 与详情背景从标题散列出色相，再叠 14 秒缓慢推镜。
-- **留白节奏**：页面 gutter 随断点 20 / 34 / 56 变化，区块间距 52，标签与正文之间固定 22，避免手写魔法数字。
+工具集合为 `recommend`、`search_library`、`audit_library`、`refresh_sources`、`build_collection`。链接任务在本地单独路由到 `discover_sources`。刷新来源需要用户请求中明确包含扫描/刷新/同步意图；模型返回未知工具或片库外 ID 会使任务失败。片单先生成预览，再由用户保存；Agent 不删除原文件。
 
-### 外观可选（1.1.0 新增）
+每次任务显示步骤、成功/失败/取消、结果和重试入口；最近 30 次任务落盘。可以停止模型或页面请求；来源扫描开始后会完成当前扫描，再跳过后续步骤，已经导入的数据保留。已完成任务的片单被删除后，可再次保存结果。模型连接失败不会伪装成本地模式成功。目录最多提供前 250 个条目，结果仅能引用其中真实存在的 ID。
 
-设置 → 「01 外观」，五组即时切换，改动自动记住（`skin.json`），整站同步换肤：
+**数据去向：**使用模型模式执行任务，会把本次需求、类型偏好和影片摘要（名称、类型、年份、时长、观看/反馈状态、ID）发到配置的服务。摘要不包含文件路径、片源地址、HTTP 认证头或凭据。链接任务在本地处理。密钥按服务 origin 隔离保存；macOS 使用钥匙串，其他平台使用权限受限的本机文件。
 
-| 轴 | 选项 |
-|---|---|
-| 配色 | 古铜 · 暖墨 · 墨蓝 · 石墨 |
-| 强调色 | 紫 · 余烬橙 · 琥珀 · 冷青 |
-| 字体 | 宋衬线 · 人文衬线 · 无衬线 · 几何 |
-| 背景 | 彩色雾 · 中性暗角 · 中性微渐变 · 纯平 |
-| 海报占位 | 哈希色相 · 中性 |
+协议参考：[Chat Completions API](https://developers.openai.com/api/reference/resources/chat)。未绑定特定模型厂商，也不要求 OpenAI 账号。
 
-所有颜色经 `lib/design/skin.dart` → `WowColors` getter 下发，页面代码不感知预设。
+## 诚实的边界
 
-完整规范（含 1.1.0 的五组外观轴与四套配色）见 [设计系统文档](docs/seewow/design-system/seewow/MASTER.md)，机器可读令牌在 [tokens.json](docs/seewow/design-system/seewow/tokens.json)；在本地打开 [preview.html](docs/seewow/design-system/seewow/preview.html) 可查看交互预览。
+- **没有全网影片/订阅源搜索。**链接收集读取用户提供的网页；外部搜索引擎、资源质量验证和自动订阅策略尚未接入。
+- **网盘首轮使用网关。**夸克、百度、UC、OneDrive、Google Drive、MEGA、123、115 提供明确的服务入口，通过 OpenList / Alist API 或 WebDAV 接入；需要先在网关配置对应驱动并完成授权。尚未提供这些网盘的原生 OAuth，也不能把分享链接直接当媒体库。
+- **媒体服务器只读接入。**Jellyfin / Emby 使用 API Key，Plex 使用 Token；读取目录、已有元数据和原文件流，不回写服务端观看状态，不支持 Quick Connect / Plex 账号授权、转码协商或 DLNA。飞牛通过共享协议接入，飞牛影视专有接口仍待实现。
+- **群晖会话限制。**File Station 账号需具有读取权限；需要二步验证的账号可先走 SMB / WebDAV。扫描结束注销扫描会话，播放时重新登录的会话由 DSM 超时回收。
+- **音乐支持范围。**Navidrome 当前提供曲目目录、播放和本机进度；不包含歌词、专辑封面授权加载、服务端播放记录回写、转码、离线下载或完整音乐管理。
+- **刮削范围。**NFO 是已有资料的导入，不等同于直接抓取豆瓣 / 时光网；当前在线匹配仍为 TMDB，媒体服务器沿用它们已有的刮削结果。NFO 读取支持本地、SMB 和 WebDAV；OpenList API / File Station 本轮只扫描媒体文件。
+- **TMDB 需用户配置 Token。**在「影院偏好 → 影片信息补全」保存自己的 API Read Access Token，然后从详情页匹配。只在主动搜索/预览时发送片名和 TMDB ID；没有后台批量刮削、离线图片缓存或自动猜测匹配。匹配保留本地文件、进度与片单关系，并随重扫保留。
+- 推荐仍受片库元数据质量影响。本地模式仅支持部分心情/类型表达；模型模式的挑选质量依赖用户配置的模型，目前没有嵌入索引、长期语义记忆或外部影片目录。
+- 片单是保存时的条目快照，不是自动更新的订阅。重复检测是启发式检测，不是内容哈希校验或无损版本合并。
+- 移动端 SMB、云同步、原生网盘直连、完整字幕/音轨选择、PiP、HDR / Dolby Vision 原生旁路、直播回看与时移仍待实现。
+- Windows / Linux 的挂载逻辑与移动端包未在本轮真机验证；本轮构建与人工交互验证在 macOS 上进行。
 
-### 交互
+## 开发与验证
 
-- **入场编排**：每个 Hero 元素按 40 / 90 / 150 / 200 / 240 / 290ms 依次升起（620ms 长尾曲线），页面切换时再整体重放。
-- **自动放映**：Hero 每 9 秒轮换，底部一条内嵌 hairline 自行走完并标注 `AUTO`；指针进入即暂停，数字页码可点选。
-- **指针光**：海报与横版卡随指针位置做 ±0.08rad 透视倾斜、径向高光、抬升 8px 与描边提亮；同排其它卡自动压暗。
-- **磁吸按钮**：主播放键在悬停时向指针方向轻微位移，配合 0.965 按压与 snappy spring；全局按钮共用同一种手感。
-- **转场**：旧页沉入环境光、新页自下升起（320ms）；详情页 420ms 淡入 + 3.5% 上移；播放器整层 1.045 → 1.0 推入。
-- **三档自适应**：≥1180px 侧边栏；760–1180px 图标栏（iPad 横屏、小窗）；<760px 底部 Tab（手机 / 竖屏平板）。Hero 版画只在 ≥1120px 出现，窄屏让位给标题与按钮。
-- **节目单**：直播页顶部「正在播」横向栏，卡片显示当前节目、起止时间与实时进度；频道卡片同样带节目名与进度条。
-
-## 技术架构
-
-```
-apps/seewow/
-├── lib/
-│   ├── app/            # 应用壳、响应式导航、路由、演示片库装载
-│   ├── domain/         # MediaItem / MediaSource / 文件名解析 / IPTV 与 XMLTV（纯 Dart，可测试）
-│   ├── data/           # LibraryStore / IPTVStore（JSON 持久化）+ LocalScanner（扫描与元数据注入）
-│   ├── sources/        # SourceScanner 分派 + WebDavClient/Scanner + SmbMounter + NativeBridge（钥匙串与挂载）
-│   ├── playback/       # PlayerScreen（media_kit / libmpv，含 LIVE 模式）
-│   ├── features/       # HomeView / DetailView / LiveView / SettingsView
-│   └── design/         # tokens、atmosphere、poster_tile、pressable
-├── macos/ windows/ linux/ android/ ios/
-└── assets/fonts/       # Source Serif 4 + JetBrains Mono
-```
-
-- **单代码库**：UI、状态、扫描、播放全部在 `lib/`；平台目录只保留窗口/权限/图标等宿主细节。
-- **播放内核**：`media_kit`（libmpv）在各桌面与 Android 统一，iPadOS 的 HDR / 杜比视界后续接原生 AVPlayer 旁路。
-- **数据**：`~/Library/Application Support/com.seewow.seewow/SeeWow/library.json`（Windows / Linux 使用对应 application support 目录），无数据库依赖。
-- **可测试**：domain 与 sources 层为纯 Dart；`flutter test` 覆盖文件名解析、M3U / XMLTV 解析、WebDAV PROPFIND 与 401、Basic 认证头、SMB 地址解析（11 项）。
-- **凭证**：用户名写在片源记录里，密码只进系统钥匙串（macOS Keychain，非 macOS 退化为 secrets.json 并 chmod 600），不上传、不写日志。
-
-## 网络片源
-
-两类源共用同一条播放管线：扫描只负责把条目变成 MediaItem，播放器只认 locator + httpHeaders。
-
-- **SMB / NAS**：SmbMounter 先看缓存，再用系统客户端挂载到 Application Support/SeeWow/mounts/<sourceId>（macOS NetFSMountURLSync，Windows net use，Linux gio mount），随后交给本地扫描器；SMB 播放因此走本地 file://，不依赖 libsmbclient。认证错误码 -5995 / -5996 / -5997 / -6003 / -6004 会转成「用户名或密码不正确」。
-- **WebDAV**：WebDavClient 发 PROPFIND Depth: 1，兼容 D: / d: / 无前缀命名空间；WebDavScanner 递归建库，识别 poster.jpg / folder.jpg / fanart.jpg，海报与视频都用同一套认证头。
-- 桌面端挂载完成后断网只会影响新请求；移动端 SMB 仍需 libsmb2 + 本地 HTTP Range 桥，尚未实现。
-
-本地自测（不需要 NAS）：仓库带一个只用标准库实现的 WebDAV 服务器，把 DemoMedia/ 暴露在 http://127.0.0.1:8099/dav/（账号 swd / swd，支持 PROPFIND 与 Range）：
-
-```bash
-python3 Tools/webdav_demo_server.py DemoMedia 8099 &
-SEEWOW_ADD_WEBDAV='演示 WebDAV|http://127.0.0.1:8099/dav/|swd|swd' SEEWOW_RESCAN=1 SEEWOW_LAUNCH=home ./apps/seewow/build/macos/Build/Products/Debug/seewow.app/Contents/MacOS/seewow
-```
-
-SEEWOW_SMB_PROBE=1 会在启动时验证钥匙串读写与原生挂载通道（用不可达主机，预期得到挂载失败而不是 MissingPluginException）。
-
-## 构建
-
-前置：Flutter 3.47+、各平台原生工具链。桌面播放需要 libmpv（macOS：`brew install mpv`；Linux：`libmpv-dev`；Windows：media_kit 自带运行时）。
+前置为 Flutter 3.47.9 / Dart 3.13.7 及平台工具链。macOS 桌面播放依赖 libmpv；已有环境可直接构建。
 
 ```bash
 cd apps/seewow
 flutter pub get
-flutter run -d macos          # 或 windows / linux / chrome
+flutter analyze --no-fatal-infos
+flutter test
+flutter run -d macos
 flutter build macos --release
-flutter build windows --release
-flutter build linux --release
-flutter build apk --release
-flutter build ios --release --no-codesign
 ```
 
-CI：[.github/workflows/flutter.yml](.github/workflows/flutter.yml) 在 GitHub Actions 上构建 macOS / Windows / Linux / Android / iOS 五端产物。
+现有代码仍有历史 info 级 lint；验证要求无 analyzer error / warning。测试覆盖文件名、M3U/XMLTV、WebDAV/SMB 解析，以及偏好/片单持久化、扫描失败恢复、并发扫描、模型规划校验、错误恢复、链接收集、搜索交互和响应式布局。兼容模型、TMDB 和媒体服务器协议通过本机模拟 HTTP 服务验证；元数据确认流程、窄屏服务选择器、服务器 / 网关表单有组件测试。当前共 94 项测试，新增换肤、皮肤导入、design.md 生成、草稿取消与恢复、AI 生成协议测试；其余测试覆盖目录递归、分页中断、动态直链、跨域跳转的 Token 隔离、群晖会话、Navidrome 盐值签名、NFO 与来源编辑。没有使用用户的真实模型、TMDB 或 NAS 凭据进行外部调用，真实服务器兼容性还需实际连接验证。
 
-### 演示模式
+`SEEWOW_SHOTS=1 flutter test test/experience_test.dart` 可生成 `/tmp/seewow-experience-shots/` 布局截图。测试在 macOS 可加载系统字体；其他系统使用默认测试字体。普通 CI 不需要 `DemoMedia/`。
 
-仓库带一个 10 条目的演示片库（`DemoMedia/`，9.7 MB，由 `Tools/make_demo_media.sh` 生成）。App 启动时会向上查找 `DemoMedia`，找到即自动接入；也可用环境变量指定：
+启动可使用 `SEEWOW_LAUNCH=home|library|collections|sources|agent|live|music|settings|detail|play`。兼容旧 `movies`、`tv`、`playweb`、`liveplay` 参数。
 
-```bash
-SEEWOW_DEMO_PATH=/path/to/DemoMedia \
-SEEWOW_WINDOW=1440x900 \
-SEEWOW_LAUNCH=home|movies|tv|live|liveplay|settings|detail|play \
-SEEWOW_IPTV_DEMO=/path/to/DemoMedia/live-demo.m3u \
-SEEWOW_IPTV_EPG=/path/to/DemoMedia/live-demo.xml \
-SEEWOW_LIVE_FILTER=favorites|recent \
-SEEWOW_ADD_WEBDAV='演示 WebDAV|http://127.0.0.1:8099/dav/|swd|swd' \
-SEEWOW_RESCAN=1 \
-SEEWOW_SMB_PROBE=1 \
-  ./apps/seewow/build/macos/Build/Products/Debug/seewow.app/Contents/MacOS/seewow
+## 数据与代码
+
+数据位置：平台 application-support 目录下的 `SeeWow/`，macOS 通常为 `~/Library/Application Support/com.seewow.seewow/SeeWow/`。
+
+- `library.json`：来源、媒体、已确认的元数据匹配、偏好、待看、片单、播放记录、来源错误；写入串行化，临时文件完成后重命名。
+- `agent.json`：模型接口配置与最近任务；不保存 API Key。
+- 认证头（Authorization / Cookie / X-Emby-Token 等）不再写入新的片库快照；启动时从来源凭据恢复。媒体服务器凭据不会发送给 TMDB 图片站点或模型服务。
+- `skin.json`：已有界面偏好。新安装默认石墨、无衬线、纯平；已有偏好保留。
+- `iptv.json`：直播频道、订阅与节目单。订阅链接可能包含用户提供的访问令牌，应视为私人本机数据。
+
+```text
+apps/seewow/lib/
+  app/          应用壳、启动、主题、命令搜索
+  agent/        受限规划执行器、任务记录、链接收集
+  domain/       媒体模型、偏好、推荐、查询、体检、IPTV/XMLTV
+  data/         片库持久化、本地扫描、直播状态
+  sources/      本地/SMB/WebDAV/Plex/Jellyfin/Emby/OpenList/FileStation/Navidrome 适配与播放解析
+  metadata/     TMDB 搜索与详情、NFO 旁车读取
+  features/     首页、媒体库、片单、来源、Agent、详情、直播、设置
+  playback/     media_kit 播放器
+  design/       共享令牌与界面组件
 ```
 
-`DemoMedia/live-demo.m3u` 是一个指向演示视频的假直播列表，`live-demo.xml` 是对应的 XMLTV 节目单（8 频道 × 4 段），两者合起来可以在无真实直播源时验证分组、搜索、「正在播」与 LIVE 播放链路。节目单时间会过期，重新生成即可：`python3 Tools/make_demo_epg.py`。
+当前设计规则见 [设计系统](docs/seewow/design-system/seewow/MASTER.md)。`docs/screens/`、`docs/design-lab/` 与旧 HTML preview 保留 1.1 版历史参考，不代表当前主界面。根目录 `Sources/` 为保留的 SwiftUI 原型，主实现位于 `apps/seewow/`。
 
-## 路线图
+元数据接口参考：[TMDB 搜索](https://developer.themoviedb.org/reference/search-movie)、[详情](https://developer.themoviedb.org/reference/movie-details)。服务器接口参考：[Emby Items](https://dev.emby.media/reference/RestAPI/ItemsService/getItems.html)、[API Key 认证](https://dev.emby.media/doc/restapi/API-Key-Authentication.html)、[Jellyfin API](https://api.jellyfin.org/)。TMDB 标志来自官方品牌素材，应用在匹配界面与关于区域展示来源声明。
 
-- **片源**：移动端 SMB（libsmb2 + 本地 HTTP Range 桥）、Emby / Jellyfin / Plex、DLNA；IPTV 回看 / 时移与完整节目单页；跨源同名片目合并。
-- **播放**：字幕（外挂 SRT/VTT + 音轨切换）、帧预览与滚轮 seek、PiP、iPadOS 原生 AVPlayer 旁路（HDR / 杜比视界）。
-- **元数据**：TMDB 中文元数据与在线海报、剧集季/集海报。
-- **体验**：⌘K 全局跳转、Hero 静音动态预览、播放器手势层。
+## 优先服务的接入方式
 
-## 已知限制
+| 服务 | 1.4 接入方式 | 原生授权状态 |
+| --- | --- | --- |
+| 飞牛 NAS | SMB / WebDAV；也可使用 OpenList 挂载 | 飞牛影视专有协议待接 |
+| 群晖 NAS | File Station API、SMB、WebDAV | 已有账号登录；二步验证账号优先使用共享协议 |
+| Plex | 服务器 Token、电影和剧集目录 | Plex 账号授权待接 |
+| WebDAV | 标准 Basic 认证 | 已接入 |
+| Jellyfin | API Key、可选用户 ID | 已接入；Quick Connect 待接 |
+| 夸克、百度、UC、OneDrive、Google Drive、MEGA、123、115 | 各自的服务入口 → OpenList / Alist API 或 WebDAV | 网盘登录和续期由网关维护，逐步做原生直连 |
+| Navidrome | OpenSubsonic 用户名 / 密码、音乐库 | 已接入协议；认证参数不写进片库 |
 
-- 片源已接入本地文件夹、SMB / NAS（桌面）、WebDAV、IPTV。
-- SMB 只在桌面生效，移动端尚未接 libsmb2；同一部片子同时来自本地与网络源时会各显示一份（跨源去重在路线图）。
-- WebDAV 目前只做读取（PROPFIND + GET/HEAD + Range），不支持写回、加锁与 Digest 认证；Windows / Linux 的 SMB 分支尚未真机验证。
-- 直播已支持 M3U 分组、XMLTV 节目单、收藏与最近观看；暂无回看 / 时移，节目单只解析 XMLTV（不支持 TVG 订阅源里的 gzip 归档）。
-- libmpv 使用软件/纹理渲染路径，4K 高码率在低端设备上 CPU 占用偏高；HDR 需原生旁路。
-- macOS 开发构建关闭了 App Sandbox 以便读取任意演示目录；上架版本需改回沙箱 + security-scoped bookmark。
-- macOS release 已本机实测（首页 / 详情 / 播放 / 设置、1440×900 与 1024×768）；Android APK 在本机构建受 Gradle 守护进程锁阻塞，改由 CI 五端流水线产出，尚未在本机安装验证。
+网盘使用方式：先在网关添加对应驱动并授权 → 在 SeeWow 选择具体服务 → 填写网关地址、Token 与挂载目录（例如 `/夸克/电影`）→ 测试连接并扫描。网关 Token 为空时仅适用于网关允许匿名读取的目录，目录元数据密码本轮未单独提供输入。编辑入口位于来源卡片「… → 编辑连接与凭据」。
 
-## 旧版
-
-仓库根目录的 `Sources/` 是 SeeWow 的 macOS 原生 SwiftUI 原型（AVPlayer + libmpv 双内核、SMB/WebDAV/Emby/Plex/DLNA/IPTV 全套适配器），作为跨平台重构的能力参照保留，见 `Package.swift` 与 `build_app.sh`。
+协议依据：[OpenList 文件 API](https://openlistteam.github.io/docs/guide/api/fs.html)、[官方驱动目录](https://github.com/OpenListTeam/OpenList/tree/main/drivers)、[Plex API](https://developer.plex.tv/pms/)、[Synology File Station API](https://global.download.synology.com/download/Document/Software/DeveloperGuide/Package/FileStation/All/enu/Synology_File_Station_API_Guide.pdf)、[Navidrome 协议兼容性](https://www.navidrome.org/docs/developers/subsonic-api/)。上述服务的协议与错误路径经本地模拟服务验证，尚未使用用户的真实 NAS / 云盘账号逐一测试。

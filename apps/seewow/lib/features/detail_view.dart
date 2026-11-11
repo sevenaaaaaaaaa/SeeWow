@@ -1,384 +1,411 @@
 import 'package:flutter/material.dart';
+
 import '../data/library_store.dart';
-import '../design/artwork.dart';
-import '../design/gate.dart';
-import '../design/poster_tile.dart';
-import '../design/pressable.dart';
+import '../design/cinema_widgets.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
+import 'metadata_dialog.dart';
 
 class DetailView extends StatelessWidget {
-  const DetailView({super.key, required this.item, required this.store, required this.onPlay});
+  const DetailView({
+    super.key,
+    required this.item,
+    required this.store,
+    required this.onPlay,
+  });
   final MediaItem item;
   final LibraryStore store;
-  final void Function(MediaItem item) onPlay;
-
+  final ValueChanged<MediaItem> onPlay;
   @override
-  Widget build(BuildContext context) {
-    final episodes = store.episodes.where((e) => (e.showTitle ?? e.title) == (item.showTitle ?? item.title)).toList()
-      ..sort((a, b) => ((a.season ?? 0) * 1000 + (a.episode ?? 0)).compareTo((b.season ?? 0) * 1000 + (b.episode ?? 0)));
-    final related = store.movies.where((m) => m.id != item.id).take(12).toList();
-    final gutter = WowSpace.gutter(MediaQuery.sizeOf(context).width);
-    var section = 1;
-
-    return Scaffold(
-      backgroundColor: WowColors.ink,
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _Header(item: item, onPlay: () => onPlay(item), gutter: gutter),
-            Padding(
-              padding: EdgeInsets.fromLTRB(gutter, 38, gutter, 80),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (episodes.isNotEmpty) ...[
-                    SectionHeading(index: section++, title: '剧集', subtitle: 'EPISODES', trailing: _count(episodes.length, '集')),
-                    const SizedBox(height: 18),
-                    for (var i = 0; i < episodes.length; i++)
-                      _EpisodeRow(item: episodes[i], index: i, onPlay: () => onPlay(episodes[i])),
-                    const SizedBox(height: 46),
-                  ],
-                  SectionHeading(index: section++, title: '简介', subtitle: 'SYNOPSIS'),
-                  const SizedBox(height: 16),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 720),
-                    child: Text(
-                      item.overview.isNotEmpty ? item.overview : '这个条目还没有简介。填入 TMDB API Key 后可自动抓取中文简介与高清海报；本地 poster.jpg / fanart.jpg 会优先使用。',
-                      style: WowType.body(13.5, color: Colors.white.withValues(alpha: 0.66), height: 1.9),
-                    ),
-                  ),
-                  const SizedBox(height: 46),
-                  SectionHeading(index: section++, title: '文件信息', subtitle: 'FILE'),
-                  const SizedBox(height: 18),
-                  Wrap(spacing: 64, runSpacing: 18, children: [
-                    _Info(label: '来源', value: store.sources.firstWhere((s) => s.id == item.sourceId, orElse: () => store.sources.first).name),
-                    _Info(label: '格式', value: item.container.isEmpty ? '—' : item.container),
-                    _Info(label: '大小', value: item.fileSize <= 0 ? '—' : '${(item.fileSize / 1024 / 1024).toStringAsFixed(0)} MB'),
-                    _Info(label: '路径', value: item.locator.split('/').last),
-                  ]),
-                  if (related.isNotEmpty) ...[
-                    const SizedBox(height: 52),
-                    SectionHeading(index: section++, title: '更多影片', subtitle: 'MORE LIKE THIS'),
-                    const SizedBox(height: 22),
-                    SizedBox(
-                      height: 300,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: related.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 20),
-                        itemBuilder: (_, i) => PosterTile(
-                          item: related[i],
-                          width: 160,
-                          onTap: () => Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(builder: (_) => DetailView(item: related[i], store: store, onPlay: onPlay)),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _count(int n, String unit) =>
-      Text('$n $unit', style: WowType.monoLabel(9, color: WowColors.faint, spacing: 1.6));
-}
-
-class _Header extends StatelessWidget {
-  const _Header({required this.item, required this.onPlay, required this.gutter});
-  final MediaItem item;
-  final VoidCallback onPlay;
-  final double gutter;
-
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final compact = width < 860;
-    final backdrop = item.backdropUrl ?? item.posterUrl;
-    return SizedBox(
-      height: compact ? 420 : 460,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          WowArt(
-            url: backdrop,
-            headers: item.httpHeaders,
-            fallback: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(center: Alignment(0.4, -0.2), radius: 1.2, colors: [Color(0xFF3B2C1C), Color(0xFF0B0A0C), WowColors.ink]),
-              ),
-            ),
-          ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: [Color(0xF2000000), Color(0xCC000000), Color(0x55000000), Color(0xCC000000)], stops: [0, 0.45, 0.75, 1]),
-            ),
-          ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x22000000), Colors.transparent, Color(0xE6000000)], stops: [0, 0.55, 1]),
-            ),
-          ),
-          const Positioned.fill(child: GateFrame(inset: 18, opacity: 0.10)),
-          // Editorial watermark: the release year, engraved into the artwork.
-          if (!compact && item.year != null)
-            Positioned(
-              right: gutter * 0.55,
-              top: 26,
-              child: IgnorePointer(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('RELEASE', style: WowType.monoLabel(7.5, color: Colors.white.withValues(alpha: 0.22), spacing: 3.0)),
-                    Text(
-                      '${item.year}',
-                      style: WowType.display(88, FontWeight.w400, spacing: -2.4, height: 0.86, color: Colors.white.withValues(alpha: 0.03)),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          Positioned(
-            left: gutter,
-            top: 16,
-            child: Pressable(
-              onTap: () => Navigator.of(context).maybePop(),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.24),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.arrow_back_rounded, size: 13, color: Colors.white.withValues(alpha: 0.8)),
-                  const SizedBox(width: 6),
-                  Text('返回', style: WowType.monoLabel(8.5, color: Colors.white.withValues(alpha: 0.78), spacing: 1.8)),
-                ]),
-              ),
-            ),
-          ),
-          Positioned(
-            left: compact ? 24 : gutter,
-            right: gutter,
-            bottom: 40,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (!compact)
-                  Container(
-                    width: 196,
-                    height: 294,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(5),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withValues(alpha: 0.55), blurRadius: 50, offset: const Offset(0, 22)),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: Stack(fit: StackFit.expand, children: [
-                        WowArt(url: item.posterUrl, headers: item.httpHeaders, fallback: Container(color: WowColors.panel)),
-                        const DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x00000000), Color(0x66000000)], stops: [0.6, 1]),
-                          ),
-                        ),
-                      ]),
-                    ),
-                  ),
-                if (!compact) const SizedBox(width: 38),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(children: [
-                        Container(width: 18, height: 1, color: WowColors.accent.withValues(alpha: 0.6)),
-                        const SizedBox(width: 9),
-                        Text(item.kind == MediaKind.episode ? '剧集 · SERIES' : '电影 · FILM',
-                            style: WowType.monoLabel(8.5, weight: FontWeight.w600, color: WowColors.accent, spacing: 2.6)),
-                      ]),
-                      const SizedBox(height: 14),
-                      Text(
-                        item.kind == MediaKind.episode ? (item.showTitle ?? item.title) : item.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: WowType.display(compact ? 38 : 52, FontWeight.w500, spacing: -1.4, height: 1.0),
-                      ),
-                      if (item.kind == MediaKind.episode) ...[
-                        const SizedBox(height: 10),
-                        Text('第 ${item.season ?? 1} 季 · 第 ${item.episode ?? 1} 集',
-                            style: WowType.monoLabel(10, color: Colors.white.withValues(alpha: 0.55), spacing: 1.4)),
-                      ],
-                      const SizedBox(height: 16),
-                      _MetaLine(item: item),
-                      const SizedBox(height: 24),
-                      Row(children: [
-                        Pressable(
-                          onTap: onPlay,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
-                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(26)),
-                            child: Row(mainAxisSize: MainAxisSize.min, children: [
-                              const Icon(Icons.play_arrow_rounded, size: 19, color: Colors.black),
-                              const SizedBox(width: 6),
-                              Text(item.progress > 0 ? '继续播放' : '播放',
-                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black)),
-                            ]),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        _circle(Icons.favorite_border_rounded),
-                        const SizedBox(width: 8),
-                        _circle(Icons.downloading_rounded),
-                      ]),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _circle(IconData icon) => Pressable(
-        child: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.06), border: Border.all(color: Colors.white.withValues(alpha: 0.14))),
-          child: Icon(icon, size: 16, color: Colors.white.withValues(alpha: 0.75)),
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: store,
+    builder: (context, _) {
+      final current = store.current(item);
+      final episodes = item.kind == MediaKind.episode
+          ? store.episodes
+                .where(
+                  (e) =>
+                      (e.showTitle ?? e.title) ==
+                      (item.showTitle ?? item.title),
+                )
+                .toList()
+          : <MediaItem>[];
+      episodes.sort(
+        (a, b) => ((a.season ?? 0) * 10000 + (a.episode ?? 0)).compareTo(
+          (b.season ?? 0) * 10000 + (b.episode ?? 0),
         ),
       );
-}
-
-class _MetaLine extends StatelessWidget {
-  const _MetaLine({required this.item});
-  final MediaItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final parts = <Widget>[];
-    void dot() {
-      if (parts.isEmpty) return;
-      parts.add(Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Container(width: 1, height: 10, color: Colors.white.withValues(alpha: 0.18))));
-    }
-
-    if (item.year != null) {
-      parts.add(Text('${item.year}', style: WowType.monoLabel(10.5, color: Colors.white.withValues(alpha: 0.7), spacing: 1.2)));
-    }
-    if (item.rating != null) {
-      dot();
-      parts.add(Row(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.star_rounded, size: 12, color: Color(0xFFFFC861)),
-        const SizedBox(width: 4),
-        Text(item.rating!.toStringAsFixed(1), style: WowType.monoLabel(10.5, color: Colors.white.withValues(alpha: 0.92), spacing: 0.4)),
-      ]));
-    }
-    if (item.badgeText.isNotEmpty) {
-      dot();
-      parts.add(Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-        decoration: BoxDecoration(border: Border.all(color: Colors.white.withValues(alpha: 0.28)), borderRadius: BorderRadius.circular(3)),
-        child: Text(item.badgeText.toUpperCase(), style: WowType.monoLabel(8, weight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.9), spacing: 1.2)),
-      ));
-    }
-    if (item.genres.isNotEmpty) {
-      dot();
-      parts.add(Text(item.genres.take(3).join('  /  '), style: WowType.monoLabel(9.5, color: Colors.white.withValues(alpha: 0.52), spacing: 1.2)));
-    }
-    if (item.duration > 0) {
-      dot();
-      parts.add(Text(_minutes(item.duration), style: WowType.monoLabel(9.5, color: Colors.white.withValues(alpha: 0.52), spacing: 1.2)));
-    }
-    return Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: parts);
-  }
-
-  String _minutes(double seconds) {
-    final m = (seconds / 60).round();
-    return m >= 60 ? '${m ~/ 60} 小时 ${m % 60} 分' : '$m 分钟';
-  }
-}
-
-class _EpisodeRow extends StatefulWidget {
-  const _EpisodeRow({required this.item, required this.index, required this.onPlay});
-  final MediaItem item;
-  final int index;
-  final VoidCallback onPlay;
-  @override
-  State<_EpisodeRow> createState() => _EpisodeRowState();
-}
-
-class _EpisodeRowState extends State<_EpisodeRow> {
-  bool _hover = false;
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: Pressable(
-        onTap: widget.onPlay,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          decoration: BoxDecoration(
-            color: _hover ? Colors.white.withValues(alpha: 0.055) : Colors.white.withValues(alpha: 0.018),
-            borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: _hover ? Colors.white.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.045)),
+      final related = store
+          .recommendations(limit: 10)
+          .where((p) => current.kind != MediaKind.audio && p.item.id != item.id)
+          .toList();
+      return Scaffold(
+        backgroundColor: WowColors.ink,
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, box) {
+              final compact = box.maxWidth < 700;
+              final pad = compact ? 20.0 : 40.0;
+              return ListView(
+                children: [
+                  SizedBox(
+                    height: compact ? 440 : 470,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        FilmArtwork(item: current, landscape: true),
+                        const DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                              colors: [
+                                Color(0xF0101212),
+                                Color(0x88101212),
+                                Color(0x33101212),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [Color(0xFF101010), Colors.transparent],
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 16,
+                          left: pad,
+                          child: IconButton.filledTonal(
+                            tooltip: '返回',
+                            onPressed: () => Navigator.maybePop(context),
+                            icon: const Icon(Icons.arrow_back),
+                          ),
+                        ),
+                        Positioned(
+                          left: pad,
+                          right: pad,
+                          bottom: 28,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Eyebrow(
+                                current.kind == MediaKind.episode
+                                    ? 'FROM YOUR SERIES'
+                                    : 'IN YOUR COLLECTION',
+                                color: WowColors.accent,
+                              ),
+                              const SizedBox(height: 14),
+                              Text(
+                                current.libraryTitle,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: compact ? 32 : 46,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                  height: 1.15,
+                                  letterSpacing: -1,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Text(
+                                [
+                                  if (current.year != null) '${current.year}',
+                                  ...current.genres,
+                                  if (current.duration > 0)
+                                    '${(current.duration / 60).ceil()} 分钟',
+                                  if (current.rating != null)
+                                    '★ ${current.rating!.toStringAsFixed(1)}',
+                                  if (current.quality.isNotEmpty)
+                                    current.quality,
+                                ].join('  ·  '),
+                                style: const TextStyle(
+                                  color: Color(0xFFCDCFCC),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 8,
+                                children: [
+                                  FilledButton.icon(
+                                    onPressed: () => onPlay(current),
+                                    icon: const Icon(Icons.play_arrow),
+                                    label: Text(
+                                      current.position > 30 && !current.watched
+                                          ? '继续观看'
+                                          : '开始观看',
+                                    ),
+                                  ),
+                                  OutlinedButton.icon(
+                                    onPressed: () =>
+                                        store.toggleWatchlist(current),
+                                    icon: Icon(
+                                      store.taste.watchlist.contains(current.id)
+                                          ? Icons.bookmark
+                                          : Icons.bookmark_add_outlined,
+                                      size: 18,
+                                    ),
+                                    label: Text(
+                                      store.taste.watchlist.contains(current.id)
+                                          ? '已加入待看'
+                                          : '加入待看',
+                                    ),
+                                  ),
+                                  OutlinedButton.icon(
+                                    onPressed: () => store.setFavorite(
+                                      current,
+                                      !current.isFavorite,
+                                    ),
+                                    icon: Icon(
+                                      current.isFavorite
+                                          ? Icons.favorite
+                                          : Icons.favorite_border,
+                                      size: 18,
+                                    ),
+                                    label: Text(
+                                      current.isFavorite ? '已喜欢' : '喜欢',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(pad, 8, pad, 48),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (current.progress > 0) ...[
+                          LinearProgressIndicator(
+                            value: current.progress,
+                            minHeight: 3,
+                            color: WowColors.accent,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            current.watched
+                                ? '已经看过'
+                                : '已看 ${(current.progress * 100).round()}% · 剩余 ${(current.remainingSeconds / 60).ceil()} 分钟',
+                            style: TextStyle(
+                              color: WowColors.muted,
+                              fontSize: 11,
+                            ),
+                          ),
+                          const SizedBox(height: 26),
+                        ],
+                        SectionTitle(
+                          current.kind == MediaKind.audio ? '曲目信息' : '故事从这里开始',
+                        ),
+                        const SizedBox(height: 14),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 760),
+                          child: Text(
+                            current.overview.isEmpty
+                                ? '此条目暂无简介。可使用「匹配影片信息」搜索并预览 TMDB 元数据。'
+                                : current.overview,
+                            style: WowType.body(
+                              14,
+                              color: WowColors.muted,
+                              height: 1.9,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 8,
+                          children: [
+                            TextButton.icon(
+                              onPressed: () => store.markWatched([
+                                current,
+                              ], !current.watched),
+                              icon: const Icon(
+                                Icons.check_circle_outline,
+                                size: 17,
+                              ),
+                              label: Text(current.watched ? '标记为未看' : '标记为已看'),
+                            ),
+                            TextButton.icon(
+                              onPressed: () => store.setDisliked(
+                                current,
+                                !store.taste.dislikedIds.contains(current.id),
+                              ),
+                              icon: const Icon(
+                                Icons.visibility_off_outlined,
+                                size: 17,
+                              ),
+                              label: Text(
+                                store.taste.dislikedIds.contains(current.id)
+                                    ? '恢复推荐'
+                                    : '不感兴趣',
+                              ),
+                            ),
+                            if (current.kind != MediaKind.audio)
+                              TextButton.icon(
+                                onPressed: current.kind == MediaKind.audio
+                                    ? null
+                                    : () => matchMetadata(
+                                        context,
+                                        store,
+                                        current,
+                                      ),
+                                icon: const Icon(Icons.manage_search, size: 17),
+                                label: Text(
+                                  current.metadata == null
+                                      ? '匹配影片信息'
+                                      : '重新匹配影片信息',
+                                ),
+                              ),
+                            TextButton.icon(
+                              onPressed: () async {
+                                final name = await askCollectionName(
+                                  context,
+                                  initial: current.libraryTitle,
+                                );
+                                if (name != null)
+                                  await store.createCollection(name, [
+                                    current.id,
+                                  ]);
+                              },
+                              icon: const Icon(Icons.playlist_add, size: 17),
+                              label: const Text('保存为片单'),
+                            ),
+                          ],
+                        ),
+                        if (episodes.isNotEmpty) ...[
+                          const SizedBox(height: 30),
+                          const SectionTitle('逐集观看'),
+                          const SizedBox(height: 14),
+                          for (final e in episodes)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: CinemaPanel(
+                                padding: const EdgeInsets.all(4),
+                                child: ListTile(
+                                  onTap: () => onPlay(e),
+                                  leading: Icon(
+                                    e.watched
+                                        ? Icons.check_circle_outline
+                                        : Icons.play_circle_outline,
+                                    color: WowColors.accent,
+                                  ),
+                                  title: Text(
+                                    e.displayTitle,
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                  subtitle: Text(
+                                    e.duration <= 0
+                                        ? '时长未知'
+                                        : '${(e.duration / 60).round()} 分钟 · 已看 ${(e.progress * 100).round()}%',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: WowColors.muted,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                        const SizedBox(height: 30),
+                        const SectionTitle('媒体信息'),
+                        const SizedBox(height: 14),
+                        CinemaPanel(
+                          child: Wrap(
+                            spacing: 40,
+                            runSpacing: 20,
+                            children: [
+                              _info(
+                                '来源',
+                                store.sources
+                                        .where((s) => s.id == current.sourceId)
+                                        .firstOrNull
+                                        ?.name ??
+                                    '来源已移除',
+                              ),
+                              _info(
+                                '文件格式',
+                                current.container.isEmpty
+                                    ? '未知'
+                                    : current.container,
+                              ),
+                              _info(
+                                '文件大小',
+                                current.fileSize <= 0
+                                    ? '未知'
+                                    : '${(current.fileSize / 1024 / 1024).round()} MB',
+                              ),
+                              _info(
+                                '文件名',
+                                Uri.tryParse(current.locator)
+                                        ?.pathSegments
+                                        .lastOrNull ??
+                                    current.title,
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (related.isNotEmpty) ...[
+                          const SizedBox(height: 32),
+                          const SectionTitle('也许下一部，会是它'),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            height: 290,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: related.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(width: 16),
+                              itemBuilder: (_, n) => SizedBox(
+                                width: 150,
+                                child: FilmCard(
+                                  item: related[n].item,
+                                  store: store,
+                                  reason: related[n].reason,
+                                  onOpen: () => Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => DetailView(
+                                        item: related[n].item,
+                                        store: store,
+                                        onPlay: onPlay,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
-          child: Row(children: [
-            Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), color: Colors.white.withValues(alpha: 0.04), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
-              child: Text('${(widget.item.episode ?? widget.index + 1)}'.padLeft(2, '0'),
-                  style: WowType.monoLabel(10, color: Colors.white.withValues(alpha: 0.7), spacing: 0.5)),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(widget.item.kind == MediaKind.episode ? '第 ${widget.item.episode ?? widget.index + 1} 集' : widget.item.title,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
-                const SizedBox(height: 3),
-                Text(
-                  [widget.item.badgeText, if (widget.item.duration > 0) '${(widget.item.duration / 60).round()} 分钟'].where((s) => s.isNotEmpty).join('  ·  '),
-                  style: WowType.monoLabel(8, color: WowColors.faint, spacing: 1),
-                ),
-              ]),
-            ),
-            if (widget.item.progress > 0.01)
-              Text('${(widget.item.progress * 100).round()}%', style: WowType.monoLabel(8.5, color: WowColors.accent, spacing: 0.8)),
-            const SizedBox(width: 12),
-            Icon(Icons.play_arrow_rounded, size: 18, color: Colors.white.withValues(alpha: _hover ? 0.9 : 0.32)),
-          ]),
         ),
-      ),
-    );
-  }
-}
-
-class _Info extends StatelessWidget {
-  const _Info({required this.label, required this.value});
-  final String label;
-  final String value;
-  @override
-  Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label.toUpperCase(), style: WowType.monoLabel(8, color: WowColors.faint, spacing: 1.6)),
-      const SizedBox(height: 6),
-      Text(value, style: WowType.monoLabel(10.5, color: Colors.white.withValues(alpha: 0.8), spacing: 0.2)),
-    ]);
-  }
+      );
+    },
+  );
+  Widget _info(String label, String value) => ConstrainedBox(
+    constraints: const BoxConstraints(maxWidth: 420),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(fontSize: 11, color: WowColors.muted)),
+        const SizedBox(height: 6),
+        Text(value, style: const TextStyle(fontSize: 12)),
+      ],
+    ),
+  );
 }

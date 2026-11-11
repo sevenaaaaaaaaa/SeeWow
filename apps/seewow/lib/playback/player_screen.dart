@@ -1,27 +1,54 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+
+import '../features/watch_ai_view.dart';
+import '../watch_ai/watch_ai_controller.dart';
+import '../watch_ai/watch_frame.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+
 import '../design/pressable.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 
 class PlayerScreen extends StatefulWidget {
-  const PlayerScreen({super.key, required this.item, this.startAt, this.isLive = false});
+  const PlayerScreen({
+    super.key,
+    required this.item,
+    this.startAt,
+    this.isLive = false,
+    this.onProgress,
+    this.resolve,
+  });
   final MediaItem item;
   final double? startAt;
   final bool isLive;
+  final Future<MediaItem> Function(MediaItem)? resolve;
+  final void Function(double position, double duration)? onProgress;
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends State<PlayerScreen> {
+class _PlayerScreenState extends State<PlayerScreen>
+    with WidgetsBindingObserver {
+  late final WatchAiController _watchAi;
+  StreamSubscription<List<String>>? _subtitleSub;
   late final Player _player;
   late final VideoController _controller;
   final _focus = FocusNode();
+  final _videoKey = GlobalKey<VideoState>();
+  double _lastReported = 0;
+  StreamSubscription<bool>? _bufferSub;
+  StreamSubscription<String>? _errorSub;
+  String? _error;
   Timer? _hideTimer;
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<Duration>? _durSub;
@@ -34,19 +61,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _muted = false;
   bool _buffering = true;
   bool _hoverBar = false;
+  bool _mobileFullscreen = false;
+  bool _capturingAiFrame = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _watchAi = WatchAiController(title: widget.item.displayTitle)
+      ..addListener(_aiChanged);
     _player = Player(
-      configuration: const PlayerConfiguration(
-        title: 'SeeWow',
-        ready: null,
-      ),
+      configuration: const PlayerConfiguration(title: 'SeeWow', ready: null),
     );
     _controller = VideoController(_player);
+    _subtitleSub = _player.stream.subtitle.listen(
+      (lines) => _watchAi.setSubtitle(
+        lines.where((s) => s.trim().isNotEmpty).toSet().join('\n'),
+      ),
+    );
     _posSub = _player.stream.position.listen((p) {
+      _watchAi.setPosition(p.inMilliseconds / 1000);
       if (mounted) setState(() => _position = p.inMilliseconds / 1000);
+      if ((_position - _lastReported).abs() >= 5 && _duration > 0) {
+        _lastReported = _position;
+        widget.onProgress?.call(_position, _duration);
+      }
     });
     _durSub = _player.stream.duration.listen((d) {
       if (mounted) setState(() => _duration = d.inMilliseconds / 1000);
@@ -54,19 +93,148 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _playSub = _player.stream.playing.listen((p) {
       if (mounted) setState(() => _playing = p);
     });
-    _player.stream.buffering.listen((b) {
+    _bufferSub = _player.stream.buffering.listen((b) {
       if (mounted) setState(() => _buffering = b);
     });
-    _open();
+    _errorSub = _player.stream.error.listen((e) {
+      if (mounted)
+        setState(() {
+          _error = '播放失败，请检查片源连接或文件是否可读';
+          _buffering = false;
+        });
+    });
+    _open().catchError((Object e) {
+      if (mounted)
+        setState(() {
+          _error = '无法打开媒体，请检查来源连接后重试';
+          _buffering = false;
+        });
+    });
     _scheduleHide();
     WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
   }
 
+  void _aiChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _watchAi.suspend(false);
+    } else if (state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _watchAi.suspend(true);
+    }
+  }
+
+  Future<Uint8List?> _captureAiFrame() async {
+    if (_capturingAiFrame) throw const FormatException('上一张画面仍在处理，请稍后再试');
+    _capturingAiFrame = true;
+    try {
+      final raw = await _player.screenshot(format: 'image/jpeg');
+      if (!mounted || !_watchAi.active) return null;
+      return await reduceWatchFrame(raw);
+    } finally {
+      _capturingAiFrame = false;
+    }
+  }
+
+  Future<void> _showCompanion() async {
+    final resume = _playing;
+    await _player.pause();
+    if (!mounted) return;
+    _hideTimer?.cancel();
+    _hoverBar = true;
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        constraints: const BoxConstraints(maxWidth: 720),
+        builder: (_) => SizedBox(
+          height: MediaQuery.sizeOf(context).height * .86,
+          child: WatchCompanionPanel(
+            controller: _watchAi,
+            capture: _captureAiFrame,
+            onImportSubtitle: _importSubtitle,
+            onSelectSubtitle: _selectSubtitle,
+          ),
+        ),
+      );
+    } finally {
+      _watchAi.stop();
+      _hoverBar = false;
+      if (mounted) {
+        if (resume) await _player.play();
+        _reveal();
+      }
+    }
+  }
+
+  Future<void> _importSubtitle() async {
+    try {
+      final files = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['srt', 'vtt'],
+      );
+      if (files.isEmpty || !mounted) return;
+      final file = files.first;
+      if ((await file.length() ?? 2097153) > 2 * 1024 * 1024)
+        throw const FormatException('字幕文件不能超过 2 MB');
+      final text = utf8
+          .decode(await file.readAsBytes())
+          .replaceFirst('\uFEFF', '');
+      await _player.setSubtitleTrack(
+        SubtitleTrack.data(text, title: file.name),
+      );
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e is FormatException
+                  ? e.message
+                  : '字幕导入失败，请使用 UTF-8 编码的 SRT / VTT',
+            ),
+          ),
+        );
+    }
+  }
+
+  Future<void> _selectSubtitle() async {
+    final tracks = _player.state.tracks.subtitle;
+    final track = await showDialog<SubtitleTrack>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('选择字幕轨道'),
+        children: [
+          for (final t in tracks)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, t),
+              child: Text(
+                t.id == 'no'
+                    ? '关闭原字幕'
+                    : t.id == 'auto'
+                    ? '自动选择'
+                    : '${t.title ?? '字幕轨道 ${t.id}'}${t.language == null ? '' : ' · ${t.language}'}',
+              ),
+            ),
+        ],
+      ),
+    );
+    if (track != null && mounted) await _player.setSubtitleTrack(track);
+  }
+
   Future<void> _open() async {
+    final target = await widget.resolve?.call(widget.item) ?? widget.item;
+    if (!mounted) return;
     await _player.open(
       Media(
-        widget.item.locator,
-        httpHeaders: widget.item.httpHeaders.isEmpty ? null : widget.item.httpHeaders,
+        target.locator,
+        httpHeaders: target.httpHeaders.isEmpty ? null : target.httpHeaders,
       ),
       play: true,
     );
@@ -75,7 +243,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
     final start = widget.startAt ?? widget.item.position;
-    if (start > 5) await _player.seek(Duration(milliseconds: (start * 1000).round()));
+    if (start > 5)
+      await _player.seek(Duration(milliseconds: (start * 1000).round()));
     await _player.setVolume(90);
   }
 
@@ -104,12 +273,46 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _reveal();
   }
 
+  Future<void> _toggleFullscreen() async {
+    if (!(Platform.isIOS || Platform.isAndroid)) {
+      await _videoKey.currentState?.toggleFullscreen();
+      return;
+    }
+    // Keep our controls on the current route when rotating the mobile player.
+    setState(() => _mobileFullscreen = !_mobileFullscreen);
+    await SystemChrome.setEnabledSystemUIMode(
+      _mobileFullscreen ? SystemUiMode.immersiveSticky : SystemUiMode.manual,
+      overlays: _mobileFullscreen ? [] : SystemUiOverlay.values,
+    );
+    await SystemChrome.setPreferredOrientations(
+      _mobileFullscreen
+          ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
+          : [],
+    );
+    if (mounted) _reveal();
+  }
+
   @override
   void dispose() {
+    if (_mobileFullscreen) {
+      unawaited(
+        SystemChrome.setEnabledSystemUIMode(
+          SystemUiMode.manual,
+          overlays: SystemUiOverlay.values,
+        ),
+      );
+      unawaited(SystemChrome.setPreferredOrientations([]));
+    }
+    WidgetsBinding.instance.removeObserver(this);
+    _subtitleSub?.cancel();
+    _watchAi.dispose();
     _hideTimer?.cancel();
     _posSub?.cancel();
     _durSub?.cancel();
     _playSub?.cancel();
+    _bufferSub?.cancel();
+    _errorSub?.cancel();
+    if (_duration > 0) widget.onProgress?.call(_position, _duration);
     _player.dispose();
     _focus.dispose();
     super.dispose();
@@ -154,7 +357,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           return KeyEventResult.ignored;
         },
         child: MouseRegion(
-          cursor: _controls ? SystemMouseCursors.basic : SystemMouseCursors.none,
+          cursor: _controls
+              ? SystemMouseCursors.basic
+              : SystemMouseCursors.none,
           onHover: (_) {
             if (!_controls) _reveal();
           },
@@ -171,9 +376,138 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Video(controller: _controller, controls: NoVideoControls, fill: Colors.black),
-                if (_buffering)
-                  const Center(child: _Ring()),
+                Video(
+                  key: _videoKey,
+                  controller: _controller,
+                  controls: NoVideoControls,
+                  subtitleViewConfiguration: SubtitleViewConfiguration(
+                    visible:
+                        !(_watchAi.active &&
+                            _watchAi.config.subtitles &&
+                            _watchAi.currentText.isNotEmpty),
+                  ),
+                  fill: Colors.black,
+                ),
+                if (widget.item.kind == MediaKind.audio)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.album_outlined,
+                            size: 100,
+                            color: Color(0xFFD4EF88),
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            widget.item.title,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '${widget.item.artist} · ${widget.item.album}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (_error != null)
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(24),
+                      color: Colors.black87,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            color: Colors.white,
+                            size: 32,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            _error!,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 16),
+                          FilledButton(
+                            onPressed: () => Navigator.of(context).maybePop(),
+                            child: const Text('返回片库'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (_buffering && _error == null) const Center(child: _Ring()),
+                if (_watchAi.active &&
+                    _watchAi.config.subtitles &&
+                    _watchAi.currentText.isNotEmpty)
+                  Positioned(
+                    left: 20,
+                    right: 20,
+                    bottom:
+                        (_controls ? 168 : 36) +
+                        MediaQuery.paddingOf(context).bottom,
+                    child: IgnorePointer(
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 900),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: .72),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 9,
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _watchAi.currentText,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  if (_watchAi.translation != null) ...[
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      _watchAi.translation!,
+                                      maxLines: 3,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: Color(0xFFFFE3AD),
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 AnimatedOpacity(
                   opacity: _controls ? 1 : 0,
                   duration: const Duration(milliseconds: 240),
@@ -200,12 +534,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xB3000000), Colors.transparent, Colors.transparent, Color(0xCC000000)],
+              colors: [
+                Color(0xB3000000),
+                Colors.transparent,
+                Colors.transparent,
+                Color(0xCC000000),
+              ],
               stops: [0, 0.22, 0.62, 1],
             ),
           ),
         ),
-        Positioned(left: 26, top: 22, right: 26, child: _topBar()),
+        Positioned(
+          left: 16 + MediaQuery.paddingOf(context).left,
+          top: 12 + MediaQuery.paddingOf(context).top,
+          right: 16 + MediaQuery.paddingOf(context).right,
+          child: _topBar(),
+        ),
         Center(
           child: AnimatedScale(
             scale: _playing ? 0.001 : 1,
@@ -219,14 +563,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: Colors.black.withValues(alpha: 0.44),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.22),
+                  ),
                 ),
-                child: const Icon(Icons.play_arrow_rounded, size: 40, color: Colors.white),
+                child: const Icon(
+                  Icons.play_arrow_rounded,
+                  size: 40,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
         ),
-        Positioned(left: 22, right: 22, bottom: 22, child: _controlBar()),
+        Positioned(
+          left: 12 + MediaQuery.paddingOf(context).left,
+          right: 12 + MediaQuery.paddingOf(context).right,
+          bottom: 12 + MediaQuery.paddingOf(context).bottom,
+          child: _controlBar(),
+        ),
       ],
     );
   }
@@ -237,48 +592,120 @@ class _PlayerScreenState extends State<PlayerScreen> {
         Pressable(
           onTap: () => Navigator.of(context).maybePop(),
           child: Container(
-            width: 34, height: 34,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.black.withValues(alpha: 0.35)),
-            child: const Icon(Icons.close_rounded, size: 17, color: Colors.white),
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.35),
+            ),
+            child: const Icon(
+              Icons.close_rounded,
+              size: 17,
+              color: Colors.white,
+            ),
           ),
         ),
         const SizedBox(width: 14),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.item.displayTitle, style: WowType.display(19, FontWeight.w500, spacing: -0.5, height: 1.0)),
-            const SizedBox(height: 2),
-            Text(
-              widget.isLive
-                  ? '直播流  ·  LIVE STREAM'
-                  : [if (widget.item.year != null) '${widget.item.year}', widget.item.badgeText].where((s) => s.isNotEmpty).join('  ·  ').toUpperCase(),
-              style: WowType.monoLabel(8.5, color: Colors.white.withValues(alpha: 0.55), spacing: 1.4),
-            ),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.item.displayTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: WowType.display(
+                  19,
+                  FontWeight.w500,
+                  spacing: -0.5,
+                  height: 1.0,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                widget.isLive
+                    ? '直播流  ·  LIVE STREAM'
+                    : [
+                        if (widget.item.year != null) '${widget.item.year}',
+                        widget.item.badgeText,
+                      ].where((s) => s.isNotEmpty).join('  ·  ').toUpperCase(),
+                style: WowType.monoLabel(
+                  8.5,
+                  color: Colors.white.withValues(alpha: 0.55),
+                  spacing: 1.4,
+                ),
+              ),
+            ],
+          ),
         ),
-        const Spacer(),
+        const SizedBox(width: 8),
+        if (widget.item.kind != MediaKind.audio)
+          IconButton(
+            tooltip: 'AI 字幕与小映陪看',
+            onPressed: _showCompanion,
+            icon: Icon(
+              Icons.face_3_outlined,
+              color: _watchAi.config.enabled
+                  ? const Color(0xFFFFE3AD)
+                  : Colors.white,
+              size: 24,
+            ),
+          ),
         if (widget.isLive) ...[
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), color: const Color(0xFFD5372F)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Container(width: 5, height: 5, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white)),
-              const SizedBox(width: 5),
-              Text('LIVE', style: WowType.monoLabel(8, color: Colors.white, spacing: 1.6).copyWith(fontWeight: FontWeight.w600)),
-            ]),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              color: const Color(0xFFD5372F),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 5,
+                  height: 5,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  'LIVE',
+                  style: WowType.monoLabel(
+                    8,
+                    color: Colors.white,
+                    spacing: 1.6,
+                  ).copyWith(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
           ),
           const SizedBox(width: 8),
         ],
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withValues(alpha: 0.16)), color: Colors.white.withValues(alpha: 0.06)),
-          child: Text('LIBMPV', style: WowType.monoLabel(8, color: Colors.white.withValues(alpha: 0.75), spacing: 1.6)),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+            color: Colors.white.withValues(alpha: 0.06),
+          ),
+          child: Text(
+            'LIBMPV',
+            style: WowType.monoLabel(
+              8,
+              color: Colors.white.withValues(alpha: 0.75),
+              spacing: 1.6,
+            ),
+          ),
         ),
       ],
     );
   }
 
   Widget _controlBar() {
+    final compact = MediaQuery.sizeOf(context).width < 600;
     return MouseRegion(
       onEnter: (_) {
         _hoverBar = true;
@@ -294,7 +721,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
           borderRadius: BorderRadius.circular(18),
           color: const Color(0xE60C0E14),
           border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.45), blurRadius: 26, offset: const Offset(0, 10))],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.45),
+              blurRadius: 26,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -302,56 +735,111 @@ class _PlayerScreenState extends State<PlayerScreen> {
             Row(
               children: [
                 if (widget.isLive) ...[
-                  Container(width: 6, height: 6, decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFD5372F))),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFFD5372F),
+                    ),
+                  ),
                   const SizedBox(width: 7),
-                  Text('LIVE', style: WowType.monoLabel(9.5, color: Colors.white.withValues(alpha: 0.85), spacing: 1.6)),
+                  Text(
+                    'LIVE',
+                    style: WowType.monoLabel(
+                      9.5,
+                      color: Colors.white.withValues(alpha: 0.85),
+                      spacing: 1.6,
+                    ),
+                  ),
                   const SizedBox(width: 10),
-                  Text('直播中', style: WowType.monoLabel(9.5, color: Colors.white.withValues(alpha: 0.38), spacing: 0.8)),
+                  Text(
+                    '直播中',
+                    style: WowType.monoLabel(
+                      9.5,
+                      color: Colors.white.withValues(alpha: 0.38),
+                      spacing: 0.8,
+                    ),
+                  ),
                 ] else ...[
-                  Text(_fmt(_position), style: WowType.monoLabel(9.5, color: Colors.white.withValues(alpha: 0.72), spacing: 0.8)),
+                  Text(
+                    _fmt(_position),
+                    style: WowType.monoLabel(
+                      9.5,
+                      color: Colors.white.withValues(alpha: 0.72),
+                      spacing: 0.8,
+                    ),
+                  ),
                 ],
                 const Spacer(),
                 if (!widget.isLive)
-                  Text('-${_fmt((_duration - _position).clamp(0, _duration))}', style: WowType.monoLabel(9.5, color: Colors.white.withValues(alpha: 0.45), spacing: 0.8)),
+                  Text(
+                    '-${_fmt((_duration - _position).clamp(0, _duration))}',
+                    style: WowType.monoLabel(
+                      9.5,
+                      color: Colors.white.withValues(alpha: 0.45),
+                      spacing: 0.8,
+                    ),
+                  ),
               ],
             ),
-            if (!widget.isLive) ...[
-              const SizedBox(height: 8),
-              _scrubber(),
-            ],
+            if (!widget.isLive) ...[const SizedBox(height: 8), _scrubber()],
             const SizedBox(height: 10),
             Row(
               children: [
-                _tool(_playing ? Icons.pause_rounded : Icons.play_arrow_rounded, _togglePlay, big: true),
+                _tool(
+                  _playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  _togglePlay,
+                  big: true,
+                ),
                 if (!widget.isLive) ...[
                   const SizedBox(width: 6),
                   _tool(Icons.replay_10_rounded, () => _seekBy(-10)),
                   const SizedBox(width: 4),
                   _tool(Icons.forward_30_rounded, () => _seekBy(30)),
                 ],
-                const SizedBox(width: 16),
-                _tool(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, () {
-                  setState(() => _muted = !_muted);
-                  _player.setVolume(_muted ? 0 : 90);
-                }),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: SizedBox(
-                      width: 120,
-                      child: _VolumeBar(
-                        value: _player.state.volume,
-                        onChanged: (v) {
-                          setState(() => _muted = v == 0);
-                          _player.setVolume(v);
-                        },
+                if (!compact) ...[
+                  const SizedBox(width: 16),
+                  _tool(
+                    _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                    () {
+                      setState(() => _muted = !_muted);
+                      _player.setVolume(_muted ? 0 : 90);
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(
+                        width: 120,
+                        child: _VolumeBar(
+                          value: _player.state.volume,
+                          onChanged: (v) {
+                            setState(() => _muted = v == 0);
+                            _player.setVolume(v);
+                          },
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
                 const Spacer(),
-                _tool(Icons.fullscreen_rounded, () {}),
+                PopupMenuButton<double>(
+                  tooltip: '播放速度',
+                  icon: const Icon(Icons.speed, color: Colors.white, size: 20),
+                  onSelected: (v) => _player.setRate(v),
+                  itemBuilder: (_) => [
+                    for (final rate in [0.75, 1.0, 1.25, 1.5, 2.0])
+                      PopupMenuItem(value: rate, child: Text('${rate}x')),
+                  ],
+                ),
+                _tool(
+                  _mobileFullscreen
+                      ? Icons.fullscreen_exit_rounded
+                      : Icons.fullscreen_rounded,
+                  _toggleFullscreen,
+                ),
               ],
             ),
           ],
@@ -361,51 +849,98 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _scrubber() {
-    return LayoutBuilder(builder: (context, constraints) {
-      final w = constraints.maxWidth;
-      final ratio = _duration <= 0 ? 0.0 : (_position / _duration).clamp(0.0, 1.0);
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (d) => _player.seek(Duration(milliseconds: (d.localPosition.dx / w * _duration * 1000).round())),
-        onHorizontalDragUpdate: (d) => _player.seek(Duration(milliseconds: (d.localPosition.dx / w * _duration * 1000).round())),
-        child: SizedBox(
-          height: 16,
-          child: Stack(
-            alignment: Alignment.centerLeft,
-            children: [
-              Container(height: 3, decoration: BoxDecoration(borderRadius: BorderRadius.circular(2), color: Colors.white.withValues(alpha: 0.16))),
-              FractionallySizedBox(
-                widthFactor: ratio,
-                child: Container(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final ratio = _duration <= 0
+            ? 0.0
+            : (_position / _duration).clamp(0.0, 1.0);
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (d) => _player.seek(
+            Duration(
+              milliseconds: (d.localPosition.dx / w * _duration * 1000).round(),
+            ),
+          ),
+          onHorizontalDragUpdate: (d) => _player.seek(
+            Duration(
+              milliseconds: (d.localPosition.dx / w * _duration * 1000).round(),
+            ),
+          ),
+          child: SizedBox(
+            height: 16,
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                Container(
                   height: 3,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(2),
-                    gradient: LinearGradient(colors: [WowColors.accent2, WowColors.accent]),
+                    color: Colors.white.withValues(alpha: 0.16),
                   ),
                 ),
-              ),
-              Positioned(
-                left: (w * ratio - 6).clamp(0, w - 12),
-                child: Container(
-                  width: 12, height: 12,
-                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+                FractionallySizedBox(
+                  widthFactor: ratio,
+                  child: Container(
+                    height: 3,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(2),
+                      gradient: LinearGradient(
+                        colors: [WowColors.accent2, WowColors.accent],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ],
+                Positioned(
+                  left: (w * ratio - 6).clamp(0, w - 12),
+                  child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 
   Widget _tool(IconData icon, VoidCallback onTap, {bool big = false}) {
-    return Pressable(
-      onTap: onTap,
-      child: Container(
-        width: big ? 42 : 32,
-        height: big ? 42 : 32,
-        decoration: big ? const BoxDecoration(shape: BoxShape.circle, color: Colors.white) : null,
-        child: Icon(icon, size: big ? 24 : 18, color: big ? Colors.black : Colors.white.withValues(alpha: 0.85)),
+    return Semantics(
+      button: true,
+      label: icon == Icons.pause_rounded
+          ? '暂停'
+          : icon == Icons.play_arrow_rounded
+          ? '播放'
+          : icon == Icons.replay_10_rounded
+          ? '后退十秒'
+          : icon == Icons.forward_30_rounded
+          ? '前进三十秒'
+          : icon == Icons.fullscreen_rounded ||
+                icon == Icons.fullscreen_exit_rounded
+          ? '切换全屏'
+          : icon == Icons.volume_off_rounded
+          ? '取消静音'
+          : '静音',
+      child: Pressable(
+        onTap: onTap,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: big
+              ? const BoxDecoration(shape: BoxShape.circle, color: Colors.white)
+              : null,
+          child: Icon(
+            icon,
+            size: big ? 24 : 18,
+            color: big ? Colors.black : Colors.white.withValues(alpha: 0.85),
+          ),
+        ),
       ),
     );
   }
@@ -428,26 +963,46 @@ class _VolumeBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      return GestureDetector(
-        onHorizontalDragUpdate: (d) => onChanged((d.localPosition.dx / c.maxWidth * 100).clamp(0, 100)),
-        onTapDown: (d) => onChanged((d.localPosition.dx / c.maxWidth * 100).clamp(0, 100)),
-        child: SizedBox(
-          height: 16,
-          child: Stack(
-            alignment: Alignment.centerLeft,
-            children: [
-              Container(height: 2, color: Colors.white.withValues(alpha: 0.18)),
-              FractionallySizedBox(widthFactor: value / 100, child: Container(height: 2, color: Colors.white.withValues(alpha: 0.8))),
-              Positioned(
-                left: (c.maxWidth * value / 100 - 4).clamp(0, c.maxWidth - 8),
-                child: Container(width: 8, height: 8, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white)),
-              ),
-            ],
+    return LayoutBuilder(
+      builder: (context, c) {
+        return GestureDetector(
+          onHorizontalDragUpdate: (d) =>
+              onChanged((d.localPosition.dx / c.maxWidth * 100).clamp(0, 100)),
+          onTapDown: (d) =>
+              onChanged((d.localPosition.dx / c.maxWidth * 100).clamp(0, 100)),
+          child: SizedBox(
+            height: 16,
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                Container(
+                  height: 2,
+                  color: Colors.white.withValues(alpha: 0.18),
+                ),
+                FractionallySizedBox(
+                  widthFactor: value / 100,
+                  child: Container(
+                    height: 2,
+                    color: Colors.white.withValues(alpha: 0.8),
+                  ),
+                ),
+                Positioned(
+                  left: (c.maxWidth * value / 100 - 4).clamp(0, c.maxWidth - 8),
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 }
 
@@ -458,7 +1013,10 @@ class _Ring extends StatefulWidget {
 }
 
 class _RingState extends State<_Ring> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000))..repeat();
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1000),
+  )..repeat();
 
   @override
   void dispose() {
@@ -473,12 +1031,24 @@ class _RingState extends State<_Ring> with SingleTickerProviderStateMixin {
       builder: (context, _) => Transform.rotate(
         angle: _c.value * 6.283,
         child: Container(
-          width: 30, height: 30,
+          width: 30,
+          height: 30,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: SweepGradient(colors: [Colors.transparent, WowColors.accent, WowColors.accent2]),
+            gradient: SweepGradient(
+              colors: [Colors.transparent, WowColors.accent, WowColors.accent2],
+            ),
           ),
-          child: Center(child: Container(width: 26, height: 26, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black))),
+          child: Center(
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black,
+              ),
+            ),
+          ),
         ),
       ),
     );

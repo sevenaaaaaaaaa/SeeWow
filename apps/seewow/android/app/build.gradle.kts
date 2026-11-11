@@ -7,7 +7,8 @@ plugins {
 android {
     namespace = "com.seewow.seewow"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Keep Flutter's default in CI; allow a locally installed NDK for previews.
+    ndkVersion = providers.gradleProperty("seewowNdkVersion").getOrElse(flutter.ndkVersion)
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

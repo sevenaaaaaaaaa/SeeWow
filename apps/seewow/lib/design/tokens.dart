@@ -12,13 +12,15 @@ class WowColors {
   static Color get ink => _p.ink;
   static Color get shell => _p.shell;
   static Color get panel => _p.panel;
-  static Color get line => _p.text.withValues(alpha: 0.10);
+  static Color get line => WowSkin.I.spec.color('line');
   static Color get text => _p.text;
   static Color get muted => _p.muted;
   static Color get faint => _p.faint;
   static Color get accent => WowSkin.I.accent;
   static Color get accent2 => WowSkin.I.accent2;
   static Color get onAccent => WowSkin.I.onAccent;
+  static Color get success => WowSkin.I.spec.color('success');
+  static Color get error => WowSkin.I.spec.color('error');
   static Color get ambient => _p.ambient;
 }
 

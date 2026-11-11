@@ -1,0 +1,1027 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+
+import '../agent/agent_controller.dart';
+import '../data/iptv_store.dart';
+import '../data/library_store.dart';
+import '../design/cinema_widgets.dart';
+import '../design/tokens.dart';
+import '../domain/media_item.dart';
+import '../domain/source_catalog.dart';
+import '../sources/remote_files.dart';
+import '../sources/native_bridge.dart';
+
+List<SourceKind> _availableModes(List<SourceKind> modes) => modes
+    .where(
+      (m) => m != SourceKind.smb || !(Platform.isIOS || Platform.isAndroid),
+    )
+    .toList();
+
+String sourceDisplayAddress(String location) {
+  final uri = Uri.tryParse(location);
+  if (uri == null || uri.host.isEmpty) return location;
+  return '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}${uri.path}${uri.hasQuery ? '?…' : ''}';
+}
+
+Future<void> connectSource(
+  BuildContext context,
+  LibraryStore library,
+  IPTVStore iptv, {
+  String initial = '',
+  String type = 'webdav',
+  String providerId = '',
+  MediaSource? existing,
+}) => showDialog<void>(
+  context: context,
+  barrierDismissible: false,
+  builder: (_) => _ConnectDialog(
+    library: library,
+    iptv: iptv,
+    initial: existing?.location ?? initial,
+    initialType:
+        existing?.kind.name ??
+        (initial.startsWith('smb://')
+            ? 'smb'
+            : RegExp(r'\.m3u8?(\?|$)', caseSensitive: false).hasMatch(initial)
+            ? 'iptv'
+            : type),
+    providerId: existing?.providerId ?? providerId,
+    existing: existing,
+  ),
+);
+
+Future<void> chooseSourceProvider(
+  BuildContext context,
+  LibraryStore library,
+  IPTVStore iptv,
+) async {
+  final provider = await showDialog<SourceProvider>(
+    context: context,
+    builder: (_) => const _ProviderPicker(),
+  );
+  if (provider != null && context.mounted)
+    await connectSource(
+      context,
+      library,
+      iptv,
+      providerId: provider.id,
+      type: _availableModes(provider.modes).first.name,
+    );
+}
+
+class _ProviderPicker extends StatefulWidget {
+  const _ProviderPicker();
+  @override
+  State<_ProviderPicker> createState() => _ProviderPickerState();
+}
+
+class _ProviderPickerState extends State<_ProviderPicker> {
+  final _query = TextEditingController();
+  String _category = '全部';
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final providers = sourceProviders
+        .where(
+          (p) =>
+              (_category == '全部' || p.category == _category) &&
+              '${p.name} ${p.id}'.toLowerCase().contains(
+                _query.text.trim().toLowerCase(),
+              ),
+        )
+        .toList();
+    return AlertDialog(
+      title: const Text('选择你的服务'),
+      content: SizedBox(
+        width: 600,
+        height: 560,
+        child: Column(
+          children: [
+            TextField(
+              controller: _query,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: '飞牛、群晖、Plex、夸克、115…',
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 44,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final category in [
+                    '全部',
+                    'NAS',
+                    '媒体服务器',
+                    '网盘',
+                    '音乐服务器',
+                    '通用',
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(category),
+                        selected: _category == category,
+                        onSelected: (_) => setState(() => _category = category),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: ListView(
+                children: [
+                  for (final p in providers)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        p.name,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '${p.category} · ${p.modes.contains(SourceKind.openlist) && p.category == '网盘' ? '通过 OpenList / Alist，原生授权待接' : sourceModeLabel(_availableModes(p.modes).first)}',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.pop(context, p),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+      ],
+    );
+  }
+}
+
+class SourcesView extends StatefulWidget {
+  const SourcesView({
+    super.key,
+    required this.store,
+    required this.iptv,
+    required this.onAgent,
+  });
+  final LibraryStore store;
+  final IPTVStore iptv;
+  final ValueChanged<String> onAgent;
+  @override
+  State<SourcesView> createState() => _SourcesViewState();
+}
+
+class _SourcesViewState extends State<SourcesView> {
+  final _links = TextEditingController();
+  bool _folderBusy = false;
+  @override
+  void dispose() {
+    _links.dispose();
+    super.dispose();
+  }
+
+  Future<void> _folder() async {
+    setState(() => _folderBusy = true);
+    try {
+      final path = Platform.isIOS
+          ? await NativeBridge.pickIOSFolder()
+          : await FilePicker.getDirectoryPath(dialogTitle: '选择媒体库文件夹');
+      if (path == null) return;
+      await widget.store.addSource(
+        MediaSource(
+          id: 'local-${DateTime.now().microsecondsSinceEpoch}',
+          kind: SourceKind.local,
+          name: path
+              .split(Platform.pathSeparator)
+              .where((s) => s.isNotEmpty)
+              .last,
+          location: path,
+        ),
+      );
+    } catch (_) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('未能打开文件夹，请检查文件访问权限后重试')));
+    } finally {
+      if (mounted) setState(() => _folderBusy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([widget.store, widget.iptv]),
+    builder: (context, _) => LayoutBuilder(
+      builder: (context, box) {
+        final store = widget.store;
+        final urls = SourceDiscovery.extract(_links.text);
+        return ListView(
+          padding: EdgeInsets.all(box.maxWidth < 700 ? 20 : 32),
+          children: [
+            const PageIntro(
+              eyebrow: 'ONE LIBRARY. EVERYWHERE.',
+              title: '让片源，汇聚于此。',
+              description: '本地、NAS、网盘和直播订阅，各有入口，最终回到同一个影院。',
+            ),
+            const SizedBox(height: 26),
+            Wrap(
+              spacing: 14,
+              runSpacing: 14,
+              children: [
+                _entry(
+                  box,
+                  Icons.folder_outlined,
+                  '本地文件夹',
+                  '选择目录，递归扫描电影与剧集',
+                  _folderBusy ? null : _folder,
+                ),
+                _entry(
+                  box,
+                  Icons.dns_outlined,
+                  '飞牛 / 群晖 NAS',
+                  Platform.isIOS || Platform.isAndroid
+                      ? '通过 WebDAV / File Station / OpenList 接入'
+                      : '连接共享目录 · 桌面系统挂载',
+                  () => chooseSourceProvider(context, store, widget.iptv),
+                ),
+                _entry(
+                  box,
+                  Icons.cloud_outlined,
+                  '网盘 / WebDAV',
+                  '通过 Alist / OpenList 等网关接入',
+                  () => connectSource(context, store, widget.iptv),
+                ),
+                _entry(
+                  box,
+                  Icons.movie_filter_outlined,
+                  'Jellyfin / Emby',
+                  '同步媒体库、海报与直接播放地址',
+                  () => connectSource(
+                    context,
+                    store,
+                    widget.iptv,
+                    type: 'jellyfin',
+                  ),
+                ),
+                _entry(
+                  box,
+                  Icons.video_library_outlined,
+                  'Plex',
+                  'Plex Token · 电影与剧集原文件播放',
+                  () => connectSource(
+                    context,
+                    store,
+                    widget.iptv,
+                    type: 'plex',
+                    providerId: 'plex',
+                  ),
+                ),
+                _entry(
+                  box,
+                  Icons.rss_feed_rounded,
+                  '直播订阅',
+                  'M3U 频道列表与 XMLTV 节目单',
+                  () =>
+                      connectSource(context, store, widget.iptv, type: 'iptv'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: () =>
+                      chooseSourceProvider(context, store, widget.iptv),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('选择网盘、NAS 或音乐服务'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => connectSource(
+                    context,
+                    store,
+                    widget.iptv,
+                    type: 'navidrome',
+                    providerId: 'navidrome',
+                  ),
+                  icon: const Icon(Icons.library_music_outlined, size: 18),
+                  label: const Text('Navidrome 音乐库'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            CinemaPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SectionTitle(
+                    '把链接交给 Agent',
+                    subtitle: '粘贴订阅地址或包含订阅链接的网页。Agent 可读取页面、收集候选，再由你连接。',
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _links,
+                    onChanged: (_) => setState(() {}),
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      hintText: '粘贴 http(s)://… 或 smb://…，支持一次粘贴多个链接',
+                      labelText: '待收集的地址',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: urls.isEmpty
+                            ? null
+                            : () => widget.onAgent(_links.text),
+                        icon: const Icon(Icons.auto_awesome, size: 17),
+                        label: const Text('解析并收集候选'),
+                      ),
+                      Text(
+                        '已识别 ${urls.length} 个地址 · 不自动导入',
+                        style: TextStyle(fontSize: 12, color: WowColors.muted),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 30),
+            SectionTitle(
+              '已添加的媒体来源',
+              subtitle: '${store.sources.length} 个来源 · 扫描失败保留原片库',
+            ),
+            const SizedBox(height: 16),
+            if (store.sources.isEmpty)
+              const CinemaPanel(
+                child: Text(
+                  '还没有添加媒体来源。选择上方任一入口开始。',
+                  style: TextStyle(fontSize: 13),
+                ),
+              ),
+            for (final s in store.sources)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: CinemaPanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            s.kind == SourceKind.local
+                                ? Icons.folder_outlined
+                                : s.kind == SourceKind.smb
+                                ? Icons.dns_outlined
+                                : Icons.cloud_outlined,
+                            size: 24,
+                            color: WowColors.accent,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  s.name,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  '${providerById(s.providerId)?.name ?? sourceModeLabel(s.kind)} · ${store.items.where((i) => i.sourceId == s.id).length} 个条目',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: WowColors.muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (store.scanningIds.contains(s.id))
+                            const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            IconButton(
+                              tooltip: '重新扫描 ${s.name}',
+                              onPressed: () => store.rescan(s),
+                              icon: const Icon(Icons.sync, size: 20),
+                            ),
+                          PopupMenuButton<String>(
+                            tooltip: '片源操作',
+                            onSelected: (action) => action == 'edit'
+                                ? connectSource(
+                                    context,
+                                    store,
+                                    widget.iptv,
+                                    existing: s,
+                                  )
+                                : _remove(s),
+                            itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                value: 'edit',
+                                child: Text('编辑连接与凭据'),
+                              ),
+                              PopupMenuItem(
+                                value: 'remove',
+                                child: Text('断开来源（不删除文件）'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SelectableText(
+                        '${sourceDisplayAddress(s.location)}${s.rootPath == '/' ? '' : ' · ${s.rootPath}'}',
+                        style: TextStyle(fontSize: 11, color: WowColors.muted),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            store.sourceErrors.containsKey(s.id)
+                                ? Icons.error_outline
+                                : s.lastScan == null
+                                ? Icons.circle_outlined
+                                : Icons.check_circle_outline,
+                            size: 14,
+                            color: store.sourceErrors.containsKey(s.id)
+                                ? WowColors.error
+                                : WowColors.success,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              store.sourceErrors[s.id] ??
+                                  (s.lastScan == null
+                                      ? '尚未完成首次扫描'
+                                      : '上次扫描成功 · ${_date(s.lastScan!)}'),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: store.sourceErrors.containsKey(s.id)
+                                    ? WowColors.error
+                                    : WowColors.muted,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 24),
+            SectionTitle(
+              '直播订阅',
+              subtitle:
+                  '${widget.iptv.playlists.length} 个订阅 · ${widget.iptv.channels.length} 个频道',
+            ),
+            const SizedBox(height: 16),
+            for (final p in widget.iptv.playlists)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: CinemaPanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.rss_feed, color: WowColors.accent),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  p.name,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  '${p.channelCount} 个频道 · ${p.epgCount} 条节目',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: WowColors.muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: '刷新订阅',
+                            onPressed: widget.iptv.loading
+                                ? null
+                                : () => widget.iptv.reload(p),
+                            icon: const Icon(Icons.sync),
+                          ),
+                          PopupMenuButton<String>(
+                            tooltip: '订阅操作',
+                            onSelected: (_) => widget.iptv.removePlaylist(p),
+                            itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                value: 'remove',
+                                child: Text('移除订阅'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        sourceDisplayAddress(p.source),
+                        style: TextStyle(fontSize: 11, color: WowColors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if (widget.iptv.toast != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  widget.iptv.toast!,
+                  style: TextStyle(fontSize: 12, color: WowColors.muted),
+                ),
+              ),
+            const SizedBox(height: 28),
+            Text(
+              '网盘需要提供可用的 WebDAV 网关地址；尚不支持网盘原生 OAuth。国内云盘通过已配置对应驱动的 OpenList / Alist 读取；Plex、群晖 File Station 与 Navidrome 有独立适配。飞牛影视专有接口与局域网自动发现仍待接入。',
+              style: WowType.body(12, color: WowColors.muted),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+  Widget _entry(
+    BoxConstraints box,
+    IconData icon,
+    String title,
+    String detail,
+    VoidCallback? onTap,
+  ) {
+    final count = box.maxWidth > 1100
+        ? 3
+        : box.maxWidth > 550
+        ? 2
+        : 1;
+    final pad = box.maxWidth < 700 ? 20.0 : 32.0;
+    return SizedBox(
+      width: (box.maxWidth - pad * 2 - (count - 1) * 14) / count,
+      child: Material(
+        color: WowColors.panel,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Container(
+            height: 150,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              border: Border.all(color: WowColors.line),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(icon, color: WowColors.accent, size: 25),
+                    const Spacer(),
+                    Icon(Icons.add, size: 18, color: WowColors.muted),
+                  ],
+                ),
+                const Spacer(),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  detail,
+                  maxLines: 2,
+                  style: TextStyle(fontSize: 11, color: WowColors.muted),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _remove(MediaSource s) async {
+    await widget.store.removeSource(s);
+    await NativeBridge.secretDelete(sourceSecretKey(s));
+  }
+
+  String _date(DateTime d) =>
+      '${d.month}/${d.day} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+}
+
+class _ConnectDialog extends StatefulWidget {
+  const _ConnectDialog({
+    required this.library,
+    required this.iptv,
+    required this.initial,
+    required this.initialType,
+    required this.providerId,
+    this.existing,
+  });
+  final LibraryStore library;
+  final IPTVStore iptv;
+  final String initial, initialType, providerId;
+  final MediaSource? existing;
+  @override
+  State<_ConnectDialog> createState() => _ConnectDialogState();
+}
+
+class _ConnectDialogState extends State<_ConnectDialog> {
+  late String _type;
+  final _form = GlobalKey<FormState>();
+  final _name = TextEditingController(),
+      _user = TextEditingController(),
+      _password = TextEditingController(),
+      _epg = TextEditingController();
+  late final TextEditingController _location, _root;
+  String? _error;
+  bool _busy = false;
+  SourceProvider? get _provider => providerById(widget.providerId);
+  SourceKind get _kind => SourceKind.values.firstWhere(
+    (k) => k.name == _type,
+    orElse: () => SourceKind.webdav,
+  );
+  bool get _server => ['jellyfin', 'emby'].contains(_type);
+  bool get _rooted => ['openlist', 'synology'].contains(_type);
+  bool get _userVisible => [
+    'smb',
+    'webdav',
+    'synology',
+    'navidrome',
+    'jellyfin',
+    'emby',
+  ].contains(_type);
+  bool get _passwordRequired =>
+      ['synology', 'navidrome', 'plex', 'jellyfin', 'emby'].contains(_type);
+  String get _secretLabel => switch (_type) {
+    'plex' => 'Plex Token',
+    'openlist' => 'OpenList / Alist Token（允许匿名时可留空）',
+    'jellyfin' || 'emby' => 'API Key（单独保存，不发给 AI）',
+    _ => '密码（单独保存，不发给 AI）',
+  };
+  String get _hint => switch (_type) {
+    'smb' => 'smb://192.168.1.10/Movies',
+    'openlist' => 'http://192.168.1.10:5244',
+    'synology' => 'https://192.168.1.10:5001',
+    'plex' => 'http://192.168.1.10:32400',
+    'navidrome' => 'http://192.168.1.10:4533',
+    'iptv' => 'https://example.com/channels.m3u',
+    _ => 'https://example.com/dav/',
+  };
+  String get _guidance => switch (_type) {
+    'smb' => '填写完整共享地址。飞牛、群晖均可通过共享目录接入；SMB 目前支持桌面系统。',
+    'webdav' => '填写实际 WebDAV 地址。网盘可使用网关的 /dav/ 路径，NAS 需要先启用 WebDAV 服务。',
+    'openlist' => '填写网关服务地址与挂载根目录，不是网盘分享链接。需要先在 OpenList / Alist 配好对应驱动。播放前重新获取直链，Token 不会发给云盘直链站点。',
+    'synology' =>
+      '群晖 File Station 只读接入。填写 DSM 服务根地址与共享文件夹路径。需要二步验证的账号可先使用 SMB / WebDAV。',
+    'navidrome' =>
+      'Navidrome 是音乐服务器，导入曲目到音乐库。通过 OpenSubsonic 认证，密码不存入播放地址，播放时生成认证参数。',
+    'plex' =>
+      '连接 Plex Media Server 并填写 Plex Token。电影与剧集保留服务端海报和简介，当前直接播放原文件，不请求转码。',
+    'jellyfin' ||
+    'emby' => '使用服务器 API Key。地址包含反向代理子路径；用户 ID 可选。读取片库与原文件流，不向服务器回写观看状态。',
+    _ => '填写 M3U 频道列表，XMLTV 节目单可选。',
+  };
+  @override
+  void initState() {
+    super.initState();
+    _type = widget.initialType;
+    _location = TextEditingController(text: widget.initial);
+    _root = TextEditingController(text: widget.existing?.rootPath ?? '/');
+    _name.text = widget.existing?.name ?? _provider?.name ?? '';
+    _user.text = widget.existing?.username ?? '';
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_name, _user, _password, _epg, _location, _root]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _connect() async {
+    if (!_form.currentState!.validate()) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final location = _location.text.trim();
+      if (_type == 'iptv') {
+        if (!await widget.iptv.addPlaylist(
+          name: _name.text.trim(),
+          source: location,
+          epgUrl: _epg.text.trim(),
+        ))
+          throw StateError(widget.iptv.toast ?? '订阅读取失败');
+      } else {
+        final root = _rooted ? normalizedRemotePath(_root.text) : '/';
+        final previous =
+            widget.existing ??
+            widget.library.sources
+                .where(
+                  (s) =>
+                      s.location == location &&
+                      s.rootPath == root &&
+                      s.kind == _kind,
+                )
+                .firstOrNull;
+        final source = MediaSource(
+          id: previous?.id ?? 'net-${DateTime.now().microsecondsSinceEpoch}',
+          kind: _kind,
+          name: _name.text.trim().isEmpty
+              ? (_provider?.name ?? Uri.parse(location).host)
+              : _name.text.trim(),
+          location: location,
+          username: _userVisible ? _user.text.trim() : '',
+          rootPath: root,
+          providerId: widget.providerId,
+          enabled: previous?.enabled ?? true,
+          lastScan: previous?.lastScan,
+        );
+        if (_password.text.isNotEmpty)
+          await NativeBridge.secretWrite(
+            sourceSecretKey(source),
+            _password.text,
+          );
+        if (previous == null) {
+          await widget.library.addSource(source);
+        } else {
+          await widget.library.updateSource(source);
+        }
+        final error = widget.library.sourceErrors[source.id];
+        if (error != null) throw StateError(error);
+      }
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final modes = _availableModes(
+      _provider?.modes ??
+          [
+            SourceKind.smb,
+            SourceKind.webdav,
+            SourceKind.jellyfin,
+            SourceKind.emby,
+            SourceKind.plex,
+            SourceKind.openlist,
+            SourceKind.synology,
+            SourceKind.navidrome,
+            SourceKind.iptv,
+          ],
+    );
+    if (_type == 'smb' && !modes.contains(SourceKind.smb))
+      modes.add(SourceKind.smb);
+    return PopScope(
+      canPop: !_busy,
+      child: AlertDialog(
+        title: Text(widget.existing != null ? '编辑连接' : '连接你的片源'),
+        content: SizedBox(
+          width: 500,
+          child: SingleChildScrollView(
+            child: Form(
+              key: _form,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_provider != null) ...[
+                    Text(
+                      _provider!.name,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _provider!.description,
+                      style: WowType.body(12, color: WowColors.muted),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  DropdownButtonFormField<String>(
+                    initialValue: _type,
+                    decoration: const InputDecoration(labelText: '片源类型 / 接入方式'),
+                    isExpanded: true,
+                    items: [
+                      for (final mode in modes)
+                        DropdownMenuItem(
+                          value: mode.name,
+                          child: Text(
+                            sourceModeLabel(mode),
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                    ],
+                    onChanged: _busy || widget.existing != null
+                        ? null
+                        : (v) => setState(() {
+                            _type = v!;
+                            _error = null;
+                          }),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _guidance,
+                    style: WowType.body(12, color: WowColors.muted),
+                  ),
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: _name,
+                    enabled: !_busy,
+                    decoration: const InputDecoration(labelText: '显示名称（可选）'),
+                  ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _location,
+                    enabled: !_busy,
+                    decoration: InputDecoration(
+                      labelText: '地址',
+                      hintText: _hint,
+                    ),
+                    validator: (value) {
+                      final uri = Uri.tryParse(value?.trim() ?? '');
+                      if (uri == null ||
+                          uri.host.isEmpty ||
+                          uri.userInfo.isNotEmpty)
+                        return '填写完整地址，账号和密钥填在单独字段';
+                      if (_type == 'smb') {
+                        if (uri.scheme != 'smb' ||
+                            uri.pathSegments.where((s) => s.isNotEmpty).isEmpty)
+                          return '需要 smb://主机/共享目录';
+                        if (!(Platform.isMacOS ||
+                            Platform.isWindows ||
+                            Platform.isLinux))
+                          return '移动端 SMB 暂未接入，请使用 WebDAV';
+                      } else if (!['http', 'https'].contains(uri.scheme)) {
+                        return '需要 http:// 或 https:// 地址';
+                      }
+                      if (_type != 'iptv' && (uri.hasQuery || uri.hasFragment))
+                        return '地址中不要包含查询参数或密钥';
+                      return null;
+                    },
+                  ),
+                  if (_rooted) ...[
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _root,
+                      enabled: !_busy,
+                      decoration: InputDecoration(
+                        labelText: _type == 'openlist' ? '网关挂载根目录' : '共享文件夹路径',
+                        hintText: _type == 'openlist' ? '/夸克/电影' : '/video',
+                      ),
+                      validator: (v) {
+                        try {
+                          normalizedRemotePath(v ?? '');
+                          return null;
+                        } catch (_) {
+                          return '目录不能包含 ..';
+                        }
+                      },
+                    ),
+                  ],
+                  if (_userVisible) ...[
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _user,
+                      enabled: !_busy,
+                      decoration: InputDecoration(
+                        labelText: _server ? '用户 ID（可选）' : '用户名',
+                      ),
+                      validator: (v) =>
+                          ['synology', 'navidrome'].contains(_type) &&
+                              (v == null || v.trim().isEmpty)
+                          ? '请填写用户名'
+                          : null,
+                    ),
+                  ],
+                  if (_type != 'iptv') ...[
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _password,
+                      obscureText: true,
+                      enabled: !_busy,
+                      decoration: InputDecoration(
+                        labelText: _secretLabel,
+                        hintText: widget.existing == null
+                            ? null
+                            : '留空保留当前地址的凭据',
+                      ),
+                      validator: (v) {
+                        final required =
+                            _passwordRequired && widget.existing == null ||
+                            widget.existing != null &&
+                                _location.text.trim() !=
+                                    widget.existing!.location;
+                        if (required && (v == null || v.isEmpty))
+                          return _server
+                              ? '请输入服务器 API Key'
+                              : '请填写凭据；更换地址时不自动复用旧密钥';
+                        return null;
+                      },
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _epg,
+                      enabled: !_busy,
+                      decoration: const InputDecoration(
+                        labelText: 'XMLTV 节目单地址（可选）',
+                      ),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return null;
+                        final u = Uri.tryParse(v.trim());
+                        return u != null &&
+                                ['http', 'https'].contains(u.scheme) &&
+                                u.host.isNotEmpty &&
+                                u.userInfo.isEmpty
+                            ? null
+                            : '请填写有效的 http(s) 地址';
+                      },
+                    ),
+                  ],
+                  if (_busy)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 18),
+                      child: LinearProgressIndicator(),
+                    ),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: Text(
+                        '连接失败：$_error',
+                        style: TextStyle(color: WowColors.error, fontSize: 12),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _busy ? null : () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: _busy ? null : _connect,
+            child: Text(_busy ? '正在测试并扫描…' : '测试连接并导入'),
+          ),
+        ],
+      ),
+    );
+  }
+}

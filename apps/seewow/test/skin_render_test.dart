@@ -11,6 +11,9 @@ import 'package:seewow/data/iptv_store.dart';
 import 'package:seewow/data/library_store.dart';
 import 'package:seewow/design/skin.dart';
 import 'package:seewow/design/tokens.dart';
+import 'package:seewow/design/skin_spec.dart';
+import 'package:seewow/design/theme.dart';
+import 'package:seewow/features/skin_studio.dart';
 import 'package:seewow/features/settings_view.dart';
 import 'package:seewow/domain/media_item.dart';
 
@@ -82,6 +85,14 @@ LibraryStore _demoStore() {
 
 void main() {
   setUpAll(() async {
+    await _loadFont('MaterialIcons', ['fonts/MaterialIcons-Regular.otf']);
+    final cjk = File('/System/Library/Fonts/Supplemental/Arial Unicode.ttf');
+    if (cjk.existsSync()) {
+      final data = await cjk.readAsBytes();
+      final loader = FontLoader('PingFang SC')
+        ..addFont(Future.value(ByteData.sublistView(data)));
+      await loader.load();
+    }
     await _loadFont('SourceSerif4', [
       'assets/fonts/SourceSerif4-Regular.otf',
       'assets/fonts/SourceSerif4-Semibold.otf',
@@ -104,20 +115,38 @@ void main() {
     final iptv = IPTVStore();
 
     Future<void> shoot(String name) async {
-      await tester.pumpWidget(MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: WowColors.ink),
-        home: RepaintBoundary(
-          key: key,
-          child: Scaffold(
-            backgroundColor: WowColors.ink,
-            body: AppShell(store: store, iptv: iptv),
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: buildWowTheme().copyWith(
+            textTheme: buildWowTheme().textTheme.apply(
+              fontFamily: 'PingFang SC',
+            ),
+          ),
+          home: RepaintBoundary(
+            key: key,
+            child: Scaffold(
+              backgroundColor: WowColors.ink,
+              body: AppShell(store: store, iptv: iptv),
+            ),
           ),
         ),
-      ));
+      );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 1400));
-      final boundary = key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      await tester.pumpAndSettle();
+      expect(
+        Theme.of(tester.element(find.text('SeeWow').first)).brightness,
+        WowSkin.I.isLight ? Brightness.light : Brightness.dark,
+      );
+      expect(
+        DefaultTextStyle.of(tester.element(find.text('SeeWow').first))
+            .style
+            .color,
+        WowColors.text,
+      );
+      final boundary =
+          key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
       final bytes = await tester.runAsync(() async {
         final image = await boundary.toImage(pixelRatio: 1);
         final data = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -130,74 +159,124 @@ void main() {
       }
     }
 
-    WowSkin.I.apply(
-      palette: WowPaletteId.editorial,
-      accent: WowAccentId.violet,
-      font: WowFontId.editorial,
-      backdrop: WowBackdropId.fog,
-      poster: WowPosterId.hue,
-    );
-    final inkA = WowColors.ink;
-    await shoot('a-current');
-
-    WowSkin.I.apply(
-      palette: WowPaletteId.warm,
-      accent: WowAccentId.ember,
-      font: WowFontId.humanist,
-      backdrop: WowBackdropId.vignette,
-      poster: WowPosterId.neutral,
-    );
-    expect(WowColors.ink, isNot(inkA));
-    await shoot('b-warm');
-
-    WowSkin.I.apply(
-      palette: WowPaletteId.graphite,
-      accent: WowAccentId.cyan,
-      font: WowFontId.sans,
-      backdrop: WowBackdropId.flat,
-      poster: WowPosterId.neutral,
-    );
-    await shoot('c-graphite');
-
-    WowSkin.I.apply(
-      palette: WowPaletteId.ink,
-      accent: WowAccentId.amber,
-      font: WowFontId.editorial,
-      backdrop: WowBackdropId.tonal,
-      poster: WowPosterId.neutral,
-    );
-    await shoot('d-ink');
+    for (var i = 0; i < builtInSkins.length; i++) {
+      WowSkin.I.use(builtInSkins[i]);
+      await shoot(['black', 'white', 'glass'][i]);
+      expect(tester.takeException(), isNull);
+    }
 
     // The switcher itself has to render, not only the palettes behind it.
-    WowSkin.I.apply(
-      palette: WowPaletteId.warm,
-      accent: WowAccentId.ember,
-      font: WowFontId.humanist,
-      backdrop: WowBackdropId.vignette,
-      poster: WowPosterId.neutral,
-    );
-    await tester.pumpWidget(MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: WowColors.ink),
-      home: RepaintBoundary(
-        key: key,
-        child: Scaffold(
-          backgroundColor: WowColors.ink,
-          body: SettingsView(store: store),
+    WowSkin.I.use(builtInSkins.first);
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: buildWowTheme(),
+        home: RepaintBoundary(
+          key: key,
+          child: Scaffold(
+            backgroundColor: WowColors.ink,
+            body: SettingsView(store: store),
+          ),
         ),
       ),
-    ));
+    );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
     final settingsBytes = await tester.runAsync(() async {
-      final boundary = key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      final boundary =
+          key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
       final image = await boundary.toImage(pixelRatio: 1);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       return data!.buffer.asUint8List();
     });
     expect(settingsBytes!.length, greaterThan(20000));
     if (Platform.environment['SEEWOW_SHOTS'] == '1') {
-      File('/tmp/seewow-shots/skin-e-settings.png').writeAsBytesSync(settingsBytes);
+      File('/tmp/seewow-shots/skin-e-settings.png')
+          .writeAsBytesSync(settingsBytes);
     }
+  });
+  testWidgets(
+    'design generation previews and cancel preserves current skin at 375px',
+    (tester) async {
+      tester.view.physicalSize = const Size(375, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      WowSkin.I.reset();
+      final initial = WowSkin.I.spec.encode();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildWowTheme(),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => const SkinStudioDialog(initialTab: 2),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextField),
+        'mode: light\nname: 生成的白色',
+      );
+      await tester.ensureVisible(find.text('本地生成预览'));
+      await tester.tap(find.text('本地生成预览'));
+      await tester.pumpAndSettle();
+      expect(find.text('生成的白色'), findsOneWidget);
+      expect(WowSkin.I.spec.encode(), initial);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(WowSkin.I.spec.encode(), initial);
+    },
+  );
+
+  testWidgets('community import applies only a validated preview', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    WowSkin.I.reset();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildWowTheme(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => const SkinStudioDialog(initialTab: 1),
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '{"schemaVersion": 99}');
+    await tester.tap(find.text('校验并预览'));
+    await tester.pumpAndSettle();
+    expect(find.text('仅支持 schemaVersion: 1'), findsOneWidget);
+    expect(WowSkin.I.spec.name, builtInSkins.first.name);
+    await tester.enterText(
+      find.byType(TextField),
+      communityExamples.first.encode(),
+    );
+    await tester.tap(find.text('校验并预览'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('应用并保存'));
+    await tester.pumpAndSettle();
+    expect(WowSkin.I.spec.name, communityExamples.first.name);
+    expect(tester.takeException(), isNull);
+    WowSkin.I.reset();
   });
 }

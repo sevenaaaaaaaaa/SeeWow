@@ -19,10 +19,11 @@ class NativeBridge {
   static const MethodChannel _channel = MethodChannel('seewow/native');
 
   static Future<String?> secretRead(String key) async {
-    if (Platform.isMacOS) {
+    if (Platform.isMacOS || Platform.isIOS) {
       try {
         return await _channel.invokeMethod<String>('secret.read', {'key': key});
       } on MissingPluginException {
+        if (Platform.isIOS) throw NativeException('iOS 钥匙串未就绪，请重新打开应用');
         // fall through to file storage
       } on PlatformException catch (e) {
         throw NativeException(e.message ?? '读取凭据失败');
@@ -32,13 +33,19 @@ class NativeBridge {
   }
 
   static Future<void> secretWrite(String key, String value) async {
-    if (Platform.isMacOS) {
+    if (Platform.isMacOS || Platform.isIOS) {
       try {
-        final ok = await _channel.invokeMethod<bool>('secret.write', {'key': key, 'value': value});
+        final ok = await _channel.invokeMethod<bool>('secret.write', {
+          'key': key,
+          'value': value,
+        });
         if (ok == true) return;
+        if (Platform.isIOS) throw NativeException('无法保存到 iOS 钥匙串');
       } on MissingPluginException {
+        if (Platform.isIOS) throw NativeException('iOS 钥匙串未就绪，请重新打开应用');
         // fall through
-      } on PlatformException {
+      } on PlatformException catch (e) {
+        if (Platform.isIOS) throw NativeException(e.message ?? '无法保存凭据');
         // fall through to file storage rather than losing the credential
       }
     }
@@ -46,17 +53,23 @@ class NativeBridge {
   }
 
   static Future<void> secretDelete(String key) async {
-    if (Platform.isMacOS) {
+    if (Platform.isMacOS || Platform.isIOS) {
       try {
         await _channel.invokeMethod<bool>('secret.delete', {'key': key});
+        if (Platform.isIOS) return;
       } on MissingPluginException {
+        if (Platform.isIOS) throw NativeException('iOS 钥匙串未就绪');
         // ignore
-      } on PlatformException {
+      } on PlatformException catch (e) {
+        if (Platform.isIOS) throw NativeException(e.message ?? '无法删除凭据');
         // ignore
       }
     }
     await _fileSecrets.delete(key);
   }
+
+  static Future<String?> pickIOSFolder() =>
+      _channel.invokeMethod<String>('folder.pick');
 
   /// Mounts an SMB share and returns a readable local path.
   static Future<String> smbMount({
@@ -85,12 +98,19 @@ class NativeBridge {
         throw NativeException(e.message ?? 'SMB 挂载失败');
       }
     }
-    if (Platform.isWindows) return _windowsMount(host, share, username, password, subpath);
+    if (Platform.isWindows)
+      return _windowsMount(host, share, username, password, subpath);
     if (Platform.isLinux) return _linuxMount(host, share, subpath);
     throw NativeException('当前平台暂不支持 SMB 直连，请使用 WebDAV 或本地文件夹');
   }
 
-  static Future<String> _windowsMount(String host, String share, String username, String password, String subpath) async {
+  static Future<String> _windowsMount(
+    String host,
+    String share,
+    String username,
+    String password,
+    String subpath,
+  ) async {
     for (final drive in ['Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S']) {
       final target = '\\\\' + host + '\\' + share;
       final args = ['use', drive + ':', target, '/persistent:no'];
@@ -104,18 +124,25 @@ class NativeBridge {
     throw NativeException('无法建立 SMB 连接：请检查地址或凭据');
   }
 
-  static Future<String> _linuxMount(String host, String share, String subpath) async {
+  static Future<String> _linuxMount(
+    String host,
+    String share,
+    String subpath,
+  ) async {
     final uri = 'smb://' + host + '/' + share;
     final r = await Process.run('gio', ['mount', uri], runInShell: true);
     if (r.exitCode != 0) {
-      throw NativeException('无法挂载 ' + uri + '。Linux 请先在「文件」中连接该共享（凭据存入密钥环），或改用 WebDAV。');
+      throw NativeException(
+        '无法挂载 ' + uri + '。Linux 请先在「文件」中连接该共享（凭据存入密钥环），或改用 WebDAV。',
+      );
     }
     final uid = (await Process.run('id', ['-u'])).stdout.toString().trim();
     final root = Directory('/run/user/' + uid + '/gvfs');
     if (await root.exists()) {
       await for (final e in root.list()) {
         if (!e.path.contains('smb-share')) continue;
-        if (e.path.contains('server=' + host) || e.path.contains(':server=' + host)) {
+        if (e.path.contains('server=' + host) ||
+            e.path.contains(':server=' + host)) {
           return subpath.isEmpty ? e.path : e.path + '/' + subpath;
         }
       }
@@ -158,7 +185,7 @@ class _FileSecrets {
   Future<void> _persist(Map<String, String> data) async {
     final f = await _file();
     await f.writeAsString(jsonEncode(data));
-    if (!Platform.isWindows) {
+    if (Platform.isMacOS || Platform.isLinux) {
       await Process.run('chmod', ['600', f.path]);
     }
   }

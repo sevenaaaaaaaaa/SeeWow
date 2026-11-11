@@ -5,6 +5,8 @@
 /*
 !/.gitignore
 !/README.md
+!/design.md
+!/skins/
 !/apps/
 !/docs/
 !/.github/
@@ -32,6 +34,7 @@ apps/seewow/ios/Flutter/ephemeral/
 
 # Android
 apps/seewow/android/.gradle/
+apps/seewow/android/build/
 apps/seewow/android/local.properties
 
 # Windows / Linux

@@ -1,622 +1,710 @@
 import 'dart:io';
 
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../agent/agent_controller.dart';
 import '../data/iptv_store.dart';
 import '../data/library_store.dart';
-import '../design/atmosphere.dart';
-import '../design/poster_tile.dart';
-import '../design/entrance.dart';
-import '../design/pressable.dart';
-import '../design/skin.dart';
+import '../design/cinema_widgets.dart';
 import '../design/tokens.dart';
+import '../design/skin_surface.dart';
+import '../domain/library_intelligence.dart';
 import '../domain/media_item.dart';
-import '../playback/player_screen.dart';
+import '../features/agent_view.dart';
 import '../features/detail_view.dart';
 import '../features/home_view.dart';
+import '../features/library_view.dart';
 import '../features/live_view.dart';
 import '../features/settings_view.dart';
+import '../features/sources_view.dart';
+import '../playback/player_screen.dart';
+import '../sources/source_scanner.dart';
 
-enum Section { home, movies, tv, live, settings }
+enum Section {
+  home,
+  library,
+  collections,
+  sources,
+  agent,
+  live,
+  settings,
+  music,
+}
+
+const _destinations = [
+  (Section.home, Icons.space_dashboard_outlined, '为你放映'),
+  (Section.library, Icons.video_library_outlined, '媒体库'),
+  (Section.collections, Icons.bookmarks_outlined, '我的片单'),
+  (Section.sources, Icons.hub_outlined, '片源与订阅'),
+  (Section.agent, Icons.auto_awesome_outlined, '影院 Agent'),
+  (Section.live, Icons.sensors_rounded, '直播'),
+  (Section.music, Icons.library_music_outlined, '音乐库'),
+  (Section.settings, Icons.settings_outlined, '设置'),
+];
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.store, required this.iptv});
   final LibraryStore store;
   final IPTVStore iptv;
-
   @override
   State<AppShell> createState() => _AppShellState();
 }
 
 class _AppShellState extends State<AppShell> {
   Section _section = Section.home;
-
+  late final AgentController _agent;
+  FilmCollection? _collection;
+  WatchFilter _watch = WatchFilter.all;
+  MediaKind? _kind;
+  String _query = '';
+  int _libraryKey = 0;
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _applyLaunchEnv());
+    _agent = AgentController(widget.store);
+    _agent.load().catchError((Object e) {
+      debugPrint('Agent history unavailable');
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _launch());
   }
 
-  /// Debug/QA hook: SEEWOW_LAUNCH=movies|tv|live|settings|detail|play opens a
-  /// screen directly so screenshots and smoke runs are deterministic.
-  Future<void> _applyLaunchEnv() async {
-    final launch = Platform.environment['SEEWOW_LAUNCH'] ?? '';
-    if (launch.isEmpty) return;
-    if (launch == 'liveplay') {
-      setState(() => _section = Section.live);
-      await Future<void>.delayed(const Duration(milliseconds: 700));
-      if (widget.iptv.channels.isEmpty || !mounted) return;
-      final c = widget.iptv.channels.first;
-      _playLive(MediaItem(
-        id: c.id,
-        sourceId: c.playlistId,
-        kind: MediaKind.other,
-        title: c.name,
-        locator: c.url,
-        posterUrl: c.logo.isEmpty ? null : c.logo,
-        quality: 'LIVE',
-      ));
-      return;
-    }
-    if (launch == 'movies' || launch == 'tv' || launch == 'live' || launch == 'settings') {
-      final section = Section.values.firstWhere((s) => s.name == launch, orElse: () => Section.home);
-      setState(() => _section = section);
-      return;
-    }
-    final items = widget.store.items;
-    if (items.isEmpty) return;
-    if (launch == 'playweb') {
-      final web = items.where((i) => i.locator.startsWith('http')).toList();
-      if (web.isEmpty) return;
-      _play(web.firstWhere((i) => i.kind == MediaKind.movie, orElse: () => web.first));
-      return;
-    }
-    MediaItem? pick;
-    for (final item in items) {
-      if (item.kind == MediaKind.movie) { pick = item; break; }
-    }
-    pick ??= items.first;
-    if (launch == 'detail') {
-      _open(pick);
-    } else if (launch == 'play') {
-      _play(pick);
-    }
+  @override
+  void dispose() {
+    _agent.dispose();
+    super.dispose();
   }
 
-  void _open(MediaItem item) {
-    Navigator.of(context).push(PageRouteBuilder(
-      transitionDuration: const Duration(milliseconds: 420),
-      reverseTransitionDuration: const Duration(milliseconds: 280),
-      pageBuilder: (_, animation, __) => FadeTransition(
-        opacity: animation,
-        child: DetailView(item: item, store: widget.store, onPlay: _play),
+  void _select(Section s) => setState(() {
+    _section = s;
+    if (s == Section.library) {
+      _collection = null;
+      _watch = WatchFilter.all;
+      _kind = null;
+      _query = '';
+      _libraryKey++;
+    }
+  });
+  void _library({
+    FilmCollection? collection,
+    WatchFilter watch = WatchFilter.all,
+    String query = '',
+    MediaKind? kind,
+  }) => setState(() {
+    _section = Section.library;
+    _collection = collection;
+    _watch = watch;
+    _query = query;
+    _kind = kind;
+    _libraryKey++;
+  });
+  void _run(String prompt) {
+    _select(Section.agent);
+    if (prompt.isNotEmpty) _agent.run(prompt);
+  }
+
+  void _open(MediaItem item) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => DetailView(
+        item: widget.store.current(item),
+        store: widget.store,
+        onPlay: _play,
       ),
-      transitionsBuilder: (_, animation, __, child) {
-        final curved = CurvedAnimation(parent: animation, curve: WowMotion.page, reverseCurve: Curves.easeIn);
-        return FadeTransition(
-          opacity: curved,
-          child: SlideTransition(position: Tween(begin: const Offset(0, 0.035), end: Offset.zero).animate(curved), child: child),
-        );
-      },
-    ));
+    ),
+  );
+  void _play(MediaItem item) =>
+      _playLive(widget.store.current(item), live: false);
+  void _playLive(MediaItem item, {bool live = true}) =>
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PlayerScreen(
+            item: item,
+            isLive: live,
+            resolve: live
+                ? null
+                : (i) => SourceScanner().prepare(
+                    i,
+                    widget.store.sources
+                        .where((s) => s.id == i.sourceId)
+                        .firstOrNull,
+                  ),
+            onProgress: live
+                ? null
+                : (position, duration) {
+                    widget.store.updatePosition(item, position, duration);
+                  },
+          ),
+        ),
+      );
+  void _launch() {
+    if (!mounted) return;
+    final launch = Platform.environment['SEEWOW_LAUNCH'];
+    if (launch == 'movies' || launch == 'tv') {
+      _library(kind: launch == 'movies' ? MediaKind.movie : MediaKind.episode);
+      return;
+    }
+    final section = Section.values.where((s) => s.name == launch).firstOrNull;
+    if (section != null) _select(section);
+    if (launch == 'detail' && widget.store.items.isNotEmpty)
+      _open(widget.store.movies.firstOrNull ?? widget.store.items.first);
+    if (launch == 'play' && widget.store.items.isNotEmpty)
+      _play(widget.store.movies.firstOrNull ?? widget.store.items.first);
+    if (launch == 'playweb') {
+      final i = widget.store.items
+          .where((i) => i.locator.startsWith('http'))
+          .firstOrNull;
+      if (i != null) _play(i);
+    }
+    if (launch == 'liveplay' && widget.iptv.channels.isNotEmpty) {
+      final c = widget.iptv.channels.first;
+      _playLive(
+        MediaItem(
+          id: c.id,
+          sourceId: c.playlistId,
+          kind: MediaKind.other,
+          title: c.name,
+          locator: c.url,
+        ),
+      );
+    }
   }
 
-  void _play(MediaItem item) => _playLive(item, live: false);
+  Future<void> _search() async {
+    final selection = await showDialog<Object>(
+      context: context,
+      builder: (_) => _CommandPalette(store: widget.store),
+    );
+    if (!mounted) return;
+    if (selection is MediaItem) _open(selection);
+    if (selection is Section) _select(selection);
+    if (selection is String) _library(query: selection);
+  }
 
-  void _playLive(MediaItem item, {bool live = true}) {
-    Navigator.of(context).push(PageRouteBuilder(
-      opaque: true,
-      transitionDuration: const Duration(milliseconds: 440),
-      reverseTransitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (_, __, ___) => PlayerScreen(item: item, isLive: live),
-      transitionsBuilder: (_, animation, __, child) {
-        final curved = CurvedAnimation(parent: animation, curve: WowMotion.modal, reverseCurve: Curves.easeIn);
-        return FadeTransition(
-          opacity: curved,
-          child: ScaleTransition(scale: Tween(begin: 1.045, end: 1.0).animate(curved), child: child),
-        );
-      },
-    ));
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([widget.store, _agent]),
+    builder: (context, _) {
+      final width = MediaQuery.sizeOf(context).width;
+      final sidebar = width >= 1180;
+      final rail = width >= 760 && !sidebar;
+      return CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.keyK, meta: true): _search,
+          const SingleActivator(LogicalKeyboardKey.keyK, control: true):
+              _search,
+        },
+        child: Scaffold(
+          backgroundColor: WowColors.ink,
+          body: SkinCanvas(
+            child: SafeArea(
+              child: Row(
+                children: [
+                  if (sidebar || rail) _navigation(rail),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Container(
+                          height: 68,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: width < 760 ? 16 : 32,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(color: WowColors.line),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              if (width >= 760) ...[
+                                Text(
+                                  _destinations
+                                      .firstWhere((d) => d.$1 == _section)
+                                      .$3,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: WowColors.muted,
+                                  ),
+                                ),
+                                const SizedBox(width: 24),
+                              ],
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 390,
+                                    ),
+                                    child: OutlinedButton(
+                                      onPressed: _search,
+                                      style: OutlinedButton.styleFrom(
+                                        alignment: Alignment.centerLeft,
+                                        backgroundColor: WowColors.panel,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 13,
+                                        ),
+                                        side: BorderSide(color: WowColors.line),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.search,
+                                            size: 17,
+                                            color: WowColors.muted,
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              '搜索你的影院',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: WowColors.muted,
+                                              ),
+                                            ),
+                                          ),
+                                          if (width >= 760)
+                                            Text(
+                                              Platform.isMacOS
+                                                  ? '⌘ K'
+                                                  : 'Ctrl K',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: WowColors.muted,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              IconButton(
+                                tooltip: '我的待看',
+                                onPressed: () =>
+                                    _library(watch: WatchFilter.watchlist),
+                                icon: const Icon(
+                                  Icons.bookmark_border,
+                                  size: 19,
+                                ),
+                              ),
+                              if (width >= 760) ...[
+                                const SizedBox(width: 8),
+                                OutlinedButton.icon(
+                                  onPressed: () => _select(Section.sources),
+                                  icon: const Icon(Icons.add, size: 16),
+                                  label: const Text('连接片源'),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (widget.store.scanning)
+                          const LinearProgressIndicator(minHeight: 2),
+                        Expanded(child: _content()),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          bottomNavigationBar: width >= 760
+              ? null
+              : NavigationBar(
+                  height: 68,
+                  selectedIndex:
+                      _section == Section.collections ||
+                          _section == Section.live ||
+                          _section == Section.music
+                      ? 4
+                      : [
+                          Section.home,
+                          Section.library,
+                          Section.agent,
+                          Section.sources,
+                          Section.settings,
+                        ].indexOf(_section).clamp(0, 4),
+                  onDestinationSelected: (n) => _select(
+                    [
+                      Section.home,
+                      Section.library,
+                      Section.agent,
+                      Section.sources,
+                      Section.settings,
+                    ][n],
+                  ),
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(Icons.home_outlined),
+                      label: '放映',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.video_library_outlined),
+                      label: '片库',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.auto_awesome_outlined),
+                      label: 'Agent',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.hub_outlined),
+                      label: '片源',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.more_horiz),
+                      label: '更多',
+                    ),
+                  ],
+                ),
+        ),
+      );
+    },
+  );
+  Widget _navigation(bool rail) => SizedBox(
+    width: rail ? 76 : 210,
+    child: SkinSurface(
+      radius: 0,
+      color: WowColors.shell,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(rail ? 20 : 24, 26, 16, 30),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: WowColors.accent,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.play_arrow_rounded,
+                    color: WowColors.onAccent,
+                    size: 24,
+                  ),
+                ),
+                if (!rail) ...[
+                  const SizedBox(width: 10),
+                  const Flexible(
+                    child: Text(
+                      'SeeWow',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -.8,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (!rail)
+            Padding(
+              padding: const EdgeInsets.only(left: 24, bottom: 14),
+              child: Text(
+                '我的私人影院',
+                style: TextStyle(fontSize: 11, color: WowColors.muted),
+              ),
+            ),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.symmetric(horizontal: rail ? 12 : 14),
+              children: [
+                for (final d in _destinations)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Tooltip(
+                      message: rail ? d.$3 : '',
+                      child: Material(
+                        color: _section == d.$1
+                            ? WowColors.accent.withValues(alpha: .11)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () => _select(d.$1),
+                          child: SizedBox(
+                            height: 46,
+                            child: Row(
+                              mainAxisAlignment: rail
+                                  ? MainAxisAlignment.center
+                                  : MainAxisAlignment.start,
+                              children: [
+                                if (!rail) const SizedBox(width: 12),
+                                Icon(
+                                  d.$2,
+                                  size: 19,
+                                  color: _section == d.$1
+                                      ? WowColors.accent
+                                      : WowColors.muted,
+                                ),
+                                if (!rail) ...[
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    d.$3,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: _section == d.$1
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                      color: _section == d.$1
+                                          ? WowColors.accent
+                                          : WowColors.muted,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  if (d.$1 == Section.agent && _agent.busy)
+                                    const SizedBox(
+                                      width: 10,
+                                      height: 10,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 1.5,
+                                      ),
+                                    ),
+                                  const SizedBox(width: 12),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (!rail)
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: CinemaPanel(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Eyebrow('LIBRARY STATUS'),
+                    const SizedBox(height: 12),
+                    Text(
+                      '${widget.store.items.length} 部影片已入库',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.circle,
+                          size: 6,
+                          color: widget.store.sourceErrors.isEmpty
+                              ? WowColors.success
+                              : WowColors.error,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            widget.store.scanning
+                                ? '正在同步片源'
+                                : widget.store.sourceErrors.isEmpty
+                                ? '${widget.store.sources.length} 个来源已添加'
+                                : '${widget.store.sourceErrors.length} 个来源需要检查',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: WowColors.muted,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'CINEMA, MADE PERSONAL.',
+                      style: TextStyle(
+                        fontSize: 7,
+                        letterSpacing: 1.2,
+                        color: WowColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (rail) const SizedBox(height: 20),
+        ],
+      ),
+    ),
+  );
+  Widget _content() => switch (_section) {
+    Section.music => LibraryView(
+      key: const ValueKey('music'),
+      store: widget.store,
+      onOpen: _open,
+      initialKind: MediaKind.audio,
+      onSources: () => _select(Section.sources),
+    ),
+    Section.home => HomeView(
+      store: widget.store,
+      onOpen: _open,
+      onPlay: _play,
+      onAgent: _run,
+      onSources: () => _select(Section.sources),
+      onLibrary: () => _library(),
+    ),
+    Section.library => LibraryView(
+      key: ValueKey(_libraryKey),
+      store: widget.store,
+      onOpen: _open,
+      initialText: _query,
+      initialKind: _kind,
+      initialWatch: _watch,
+      collection: _collection,
+      onSources: () => _select(Section.sources),
+    ),
+    Section.collections => CollectionsView(
+      store: widget.store,
+      onOpen: (c) => _library(collection: c),
+      onAgent: () => _run('按我的口味生成片单'),
+      onWatchlist: () => _library(watch: WatchFilter.watchlist),
+    ),
+    Section.sources => SourcesView(
+      store: widget.store,
+      iptv: widget.iptv,
+      onAgent: _run,
+    ),
+    Section.agent => AgentView(agent: _agent, iptv: widget.iptv, onOpen: _open),
+    Section.live => LiveView(store: widget.iptv, onPlay: _playLive),
+    Section.settings => Column(
+      children: [
+        if (MediaQuery.sizeOf(context).width < 760)
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Wrap(
+              spacing: 10,
+              children: [
+                OutlinedButton(
+                  onPressed: () => _select(Section.collections),
+                  child: const Text('我的片单'),
+                ),
+                OutlinedButton(
+                  onPressed: () => _select(Section.live),
+                  child: const Text('直播'),
+                ),
+                OutlinedButton(
+                  onPressed: () => _select(Section.music),
+                  child: const Text('音乐库'),
+                ),
+              ],
+            ),
+          ),
+        Expanded(
+          child: SettingsView(
+            agent: _agent,
+            store: widget.store,
+            onConfigureAgent: () => configureAgent(context, _agent),
+            onSources: () => _select(Section.sources),
+          ),
+        ),
+      ],
+    ),
+  };
+}
+
+class _CommandPalette extends StatefulWidget {
+  const _CommandPalette({required this.store});
+  final LibraryStore store;
+  @override
+  State<_CommandPalette> createState() => _CommandPaletteState();
+}
+
+class _CommandPaletteState extends State<_CommandPalette> {
+  final _text = TextEditingController();
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final wide = width >= 1180;
-    final rail = !wide && width >= 760;
-    return Scaffold(
-      backgroundColor: WowColors.ink,
-      body: Atmosphere(
-        child: SafeArea(
-          child: Row(
+    final items = LibraryQuery(text: _text.text)
+        .apply(widget.store.items, widget.store.taste)
+        .take(8)
+        .toList();
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 620, maxHeight: 600),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              if (wide)
-                _Sidebar(section: _section, onSelect: (s) => setState(() => _section = s))
-              else if (rail)
-                _NavRail(section: _section, onSelect: (s) => setState(() => _section = s)),
-              Expanded(
-                child: Column(
+              TextField(
+                autofocus: true,
+                controller: _text,
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (v) => Navigator.pop(context, v),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search),
+                  hintText: '搜索影片、年份、类型，或跳转到功能',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
                   children: [
-                    _TopBar(title: _title, index: _index, width: width, onRefresh: () => _rescan(), onSettings: () => setState(() => _section = Section.settings)),
-                    Expanded(
-                      child: AnimatedSwitcher(
-                        duration: WowMotion.pageDuration,
-                        switchInCurve: WowMotion.page,
-                        switchOutCurve: Curves.easeIn,
-                        transitionBuilder: (child, animation) => FadeTransition(
-                          opacity: animation,
-                          child: SlideTransition(position: Tween(begin: const Offset(0, 0.012), end: Offset.zero).animate(animation), child: child),
+                    if (_text.text.isEmpty) ...[
+                      for (final d in _destinations)
+                        ListTile(
+                          dense: true,
+                          leading: Icon(d.$2, size: 18),
+                          title: Text(
+                            d.$3,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          trailing: const Icon(
+                            Icons.subdirectory_arrow_left,
+                            size: 16,
+                          ),
+                          onTap: () => Navigator.pop(context, d.$1),
                         ),
-                        child: KeyedSubtree(key: ValueKey(_section), child: _content(wide)),
+                    ] else ...[
+                      for (final i in items)
+                        ListTile(
+                          leading: const Icon(Icons.movie_outlined, size: 18),
+                          title: Text(
+                            i.displayTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          subtitle: Text(
+                            '${i.year ?? '年份未知'} · ${widget.store.sources.where((s) => s.id == i.sourceId).firstOrNull?.name ?? '未知来源'} · ${i.genres.join(' / ')}',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          onTap: () => Navigator.pop(context, i),
+                        ),
+                      ListTile(
+                        leading: const Icon(Icons.search, size: 18),
+                        title: const Text(
+                          '在媒体库中查看全部结果',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                        onTap: () => Navigator.pop(context, _text.text),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
             ],
           ),
         ),
-      ),
-      bottomNavigationBar: wide || rail ? null : _BottomBar(section: _section, onSelect: (s) => setState(() => _section = s)),
-    );
-  }
-
-  String get _title => switch (_section) {
-        Section.home => '首页',
-        Section.movies => '电影',
-        Section.tv => '剧集',
-        Section.live => '直播',
-        Section.settings => '设置',
-      };
-
-  int get _index => switch (_section) {
-        Section.home => 1,
-        Section.movies => 2,
-        Section.tv => 3,
-        Section.live => 4,
-        Section.settings => 5,
-      };
-
-  Widget _content(bool wide) {
-    switch (_section) {
-      case Section.home:
-        return HomeView(store: widget.store, onOpen: _open, onPlay: _play);
-      case Section.movies:
-        return _Grid(items: widget.store.movies, title: '电影', subtitle: '${widget.store.movies.length} FILMS', onOpen: _open);
-      case Section.tv:
-        return _Grid(items: widget.store.series, title: '剧集', subtitle: '${widget.store.series.length} SERIES', onOpen: _open);
-      case Section.live:
-        return LiveView(store: widget.iptv, onPlay: _playLive);
-      case Section.settings:
-        return SettingsView(store: widget.store);
-    }
-  }
-
-  Future<void> _rescan() async {
-    for (final s in [...widget.store.sources]) {
-      await widget.store.rescan(s);
-    }
-  }
-}
-
-class _Sidebar extends StatelessWidget {
-  const _Sidebar({required this.section, required this.onSelect});
-  final Section section;
-  final ValueChanged<Section> onSelect;
-
-  static const _items = [
-    (Section.home, Icons.home_rounded, '首页', 'HOME'),
-    (Section.movies, Icons.movie_outlined, '电影', 'MOVIES'),
-    (Section.tv, Icons.tv_rounded, '剧集', 'SERIES'),
-    (Section.live, Icons.sensors_rounded, '直播', 'LIVE TV'),
-    (Section.settings, Icons.settings_outlined, '设置', 'SETTINGS'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 218,
-      margin: const EdgeInsets.fromLTRB(12, 12, 0, 12),
-      decoration: BoxDecoration(
-        color: const Color(0x6608090D),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 20, 18, 26),
-            child: Row(children: [
-              const _LogoMark(size: 30, radius: 9, iconSize: 19),
-              const SizedBox(width: 10),
-              Text('SeeWow', style: WowType.display(20, FontWeight.w700, spacing: -0.4)),
-            ]),
-          ),
-          for (final (s, icon, label, en) in _items)
-            _SidebarRow(selected: section == s, icon: icon, label: label, en: en, onTap: () => onSelect(s)),
-          const Spacer(),
-          Padding(
-            padding: const EdgeInsets.all(18),
-            child: Text('SEEWOW 1.0\nCINEMA FOR EVERY SCREEN', style: WowType.monoLabel(7.5, color: WowColors.faint.withValues(alpha: 0.7), spacing: 1.4)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LogoMark extends StatelessWidget {
-  const _LogoMark({required this.size, required this.radius, required this.iconSize});
-  final double size;
-  final double radius;
-  final double iconSize;
-
-  @override
-  Widget build(BuildContext context) {
-    final legacy = WowSkin.I.legacyLogo;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius),
-        color: legacy ? null : WowColors.accent,
-        gradient: legacy
-            ? LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [WowColors.accent, WowColors.accent2],
-              )
-            : null,
-      ),
-      child: Icon(Icons.play_arrow_rounded, size: iconSize, color: WowColors.onAccent),
-    );
-  }
-}
-
-class _SidebarRow extends StatelessWidget {
-  const _SidebarRow({required this.selected, required this.icon, required this.label, required this.en, required this.onTap});
-  final bool selected;
-  final IconData icon;
-  final String label;
-  final String en;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-      child: Pressable(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 240),
-          curve: WowMotion.page,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(9),
-            color: selected ? Colors.white.withValues(alpha: 0.09) : Colors.transparent,
-          ),
-          child: Row(children: [
-            Icon(icon, size: 16, color: selected ? Colors.white : Colors.white.withValues(alpha: 0.45)),
-            const SizedBox(width: 11),
-            Text(label, style: TextStyle(fontSize: 12.5, color: selected ? Colors.white : Colors.white.withValues(alpha: 0.58), fontWeight: selected ? FontWeight.w600 : FontWeight.w400)),
-            const Spacer(),
-            if (selected) Text(en, style: WowType.monoLabel(7, color: WowColors.accent.withValues(alpha: 0.9), spacing: 0.8)),
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.title, required this.index, required this.width, required this.onRefresh, required this.onSettings});
-  final String title;
-  final int index;
-  final double width;
-  final VoidCallback onRefresh;
-  final VoidCallback onSettings;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 66,
-      child: Stack(
-        children: [
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: width < 760 ? 18 : 34),
-            child: Row(children: [
-              Container(
-                width: 4,
-                height: 4,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: WowColors.accent.withValues(alpha: 0.9)),
-              ),
-              const SizedBox(width: 11),
-              Text(index.toString().padLeft(2, '0'), style: WowType.monoLabel(9, color: Colors.white.withValues(alpha: 0.26), spacing: 1.6)),
-              const SizedBox(width: 10),
-              Text(title, style: WowType.monoLabel(10, color: Colors.white.withValues(alpha: 0.55), spacing: 2.2)),
-              const Spacer(),
-          Container(
-            height: 30,
-            width: width < 900 ? 150 : 220,
-            padding: const EdgeInsets.symmetric(horizontal: 11),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.045), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withValues(alpha: 0.07))),
-            child: Row(children: [
-              Icon(Icons.search_rounded, size: 14, color: Colors.white.withValues(alpha: 0.35)),
-              const SizedBox(width: 7),
-              Expanded(child: Text('搜索影片、剧集…', style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.3)))),
-              Text('⌘K', style: WowType.monoLabel(7.5, color: Colors.white.withValues(alpha: 0.24), spacing: 0.6)),
-            ]),
-          ),
-          const SizedBox(width: 10),
-              _IconTap(icon: Icons.sync_rounded, onTap: onRefresh),
-              const SizedBox(width: 6),
-              _IconTap(icon: Icons.settings_outlined, onTap: onSettings),
-            ]),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.white.withValues(alpha: 0.08), Colors.white.withValues(alpha: 0.015)],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _IconTap extends StatelessWidget {
-  const _IconTap({required this.icon, required this.onTap});
-  final IconData icon;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) {
-    return Pressable(
-      onTap: onTap,
-      child: Container(
-        width: 30, height: 30,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.05), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
-        child: Icon(icon, size: 14, color: Colors.white.withValues(alpha: 0.65)),
-      ),
-    );
-  }
-}
-
-class _BottomBar extends StatelessWidget {
-  const _BottomBar({required this.section, required this.onSelect});
-  final Section section;
-  final ValueChanged<Section> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(color: Color(0xF20A0C11), border: Border(top: BorderSide(color: Color(0x14FFFFFF)))),
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-        for (final (s, icon, label) in const [
-          (Section.home, Icons.home_rounded, '首页'),
-          (Section.movies, Icons.movie_outlined, '电影'),
-          (Section.tv, Icons.tv_rounded, '剧集'),
-          (Section.live, Icons.sensors_rounded, '直播'),
-          (Section.settings, Icons.settings_outlined, '设置'),
-        ])
-          Pressable(
-            onTap: () => onSelect(s),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(icon, size: 18, color: section == s ? Colors.white : Colors.white.withValues(alpha: 0.35)),
-              const SizedBox(height: 3),
-              Text(label, style: TextStyle(fontSize: 9, color: section == s ? Colors.white : Colors.white.withValues(alpha: 0.35))),
-            ]),
-          ),
-      ]),
-    );
-  }
-}
-
-enum _LibraryFilter { all, unwatched, favorites }
-
-class _Grid extends StatefulWidget {
-  const _Grid({required this.items, required this.title, required this.subtitle, required this.onOpen});
-  final List<MediaItem> items;
-  final String title;
-  final String subtitle;
-  final void Function(MediaItem) onOpen;
-
-  @override
-  State<_Grid> createState() => _GridState();
-}
-
-class _GridState extends State<_Grid> {
-  _LibraryFilter _filter = _LibraryFilter.all;
-  bool _byTitle = false;
-
-  List<MediaItem> get _visible {
-    final list = switch (_filter) {
-      _LibraryFilter.all => [...widget.items],
-      _LibraryFilter.unwatched => widget.items.where((i) => i.progress < 0.02 && !i.watched).toList(),
-      _LibraryFilter.favorites => widget.items.where((i) => i.isFavorite).toList(),
-    };
-    if (_byTitle) {
-      list.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-    } else {
-      list.sort((a, b) => (b.addedAt ?? DateTime(1970)).compareTo(a.addedAt ?? DateTime(1970)));
-    }
-    return list;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final gutter = WowSpace.gutter(width);
-    final items = _visible;
-    return LayoutBuilder(builder: (context, c) {
-      final avail = c.maxWidth - gutter * 2;
-      final cols = ((avail + 22) / (176 + 22)).floor().clamp(2, 8);
-      final tileW = ((avail - 22 * (cols - 1)) / cols).clamp(140.0, 240.0);
-      final ratio = tileW / (tileW * 1.5 + 54);
-      return CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 26),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(width: 4, height: 4, decoration: BoxDecoration(shape: BoxShape.circle, color: WowColors.accent.withValues(alpha: 0.9))),
-                      const SizedBox(width: 10),
-                      Text('LIBRARY', style: WowType.monoLabel(8.5, color: Colors.white.withValues(alpha: 0.34), spacing: 2.4)),
-                      const Spacer(),
-                      Pressable(
-                        onTap: () => setState(() => _byTitle = !_byTitle),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(Icons.swap_vert_rounded, size: 14, color: Colors.white.withValues(alpha: 0.45)),
-                          const SizedBox(width: 5),
-                          Text(_byTitle ? '片名' : '最近添加',
-                              style: WowType.monoLabel(8.5, color: Colors.white.withValues(alpha: 0.5), spacing: 1.4)),
-                        ]),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(widget.title, style: WowType.display(46, FontWeight.w400, spacing: -1.2, height: 1.0)),
-                      const SizedBox(width: 16),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 7),
-                        child: Text('${items.length.toString().padLeft(2, '0')}  ${{'电影': 'FILMS', '剧集': 'SERIES'}[widget.title] ?? ''}',
-                            style: WowType.monoLabel(8.5, color: Colors.white.withValues(alpha: 0.3), spacing: 2.2)),
-                      ),
-                      const Spacer(),
-                      for (final (f, label) in const [
-                        (_LibraryFilter.all, '全部'),
-                        (_LibraryFilter.unwatched, '未看'),
-                        (_LibraryFilter.favorites, '收藏'),
-                      ]) ...[
-                        _FilterChip(label: label, selected: _filter == f, onTap: () => setState(() => _filter = f)),
-                        const SizedBox(width: 8),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Container(height: 1, color: Colors.white.withValues(alpha: 0.07)),
-                ],
-              ),
-            ),
-          ),
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(gutter, 26, gutter, 70),
-            sliver: SliverGrid(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: cols,
-                childAspectRatio: ratio,
-                crossAxisSpacing: 22,
-                mainAxisSpacing: 30,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (_, i) => RiseIn(
-                  delay: Duration(milliseconds: math.min(i * 26, 320)),
-                  child: PosterTile(item: items[i], width: tileW, onTap: () => widget.onOpen(items[i])),
-                ),
-                childCount: items.length,
-              ),
-            ),
-          ),
-        ],
-      );
-    });
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({required this.label, required this.selected, required this.onTap});
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Pressable(
-      onTap: onTap,
-      scale: 0.95,
-      child: AnimatedContainer(
-        duration: WowMotion.pageDuration,
-        curve: WowMotion.page,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          color: selected ? Colors.white.withValues(alpha: 0.10) : Colors.transparent,
-          border: Border.all(color: Colors.white.withValues(alpha: selected ? 0.26 : 0.10)),
-        ),
-        child: Text(label,
-            style: WowType.monoLabel(8.5,
-                weight: selected ? FontWeight.w600 : FontWeight.w400,
-                color: selected ? Colors.white.withValues(alpha: 0.92) : Colors.white.withValues(alpha: 0.45),
-                spacing: 1.0)),
-      ),
-    );
-  }
-}
-
-class _NavRail extends StatelessWidget {
-  const _NavRail({required this.section, required this.onSelect});
-  final Section section;
-  final ValueChanged<Section> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 74,
-      margin: const EdgeInsets.fromLTRB(10, 10, 0, 10),
-      decoration: BoxDecoration(
-        color: const Color(0x6608090D),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-      ),
-      child: Column(
-        children: [
-          const SizedBox(height: 16),
-          const _LogoMark(size: 34, radius: 10, iconSize: 21),
-          const SizedBox(height: 18),
-          for (final (s, icon, label, _) in _Sidebar._items)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Pressable(
-                onTap: () => onSelect(s),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: WowMotion.page,
-                  width: 56,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    color: section == s ? Colors.white.withValues(alpha: 0.10) : Colors.transparent,
-                  ),
-                  child: Column(children: [
-                    Icon(icon, size: 19, color: section == s ? Colors.white : Colors.white.withValues(alpha: 0.5)),
-                    const SizedBox(height: 4),
-                    Text(label, style: WowType.monoLabel(7.5, color: section == s ? Colors.white.withValues(alpha: 0.9) : Colors.white.withValues(alpha: 0.38), spacing: 0.8)),
-                  ]),
-                ),
-              ),
-            ),
-          const Spacer(),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Text('1.0', style: WowType.monoLabel(7.5, color: WowColors.faint.withValues(alpha: 0.6), spacing: 1.2)),
-          ),
-        ],
       ),
     );
   }
