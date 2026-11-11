@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'subscription_dialog.dart';
+
 import 'package:flutter/material.dart';
 
 import '../data/iptv_store.dart';
@@ -58,9 +60,13 @@ class _LiveViewState extends State<LiveView> {
   }
 
   Future<void> _addDialog({IPTVPlaylist? existing}) async {
-    final nameCtrl = TextEditingController(text: existing?.name ?? '');
-    final sourceCtrl = TextEditingController(text: existing?.source ?? '');
-    final epgCtrl = TextEditingController(text: existing?.epgUrl ?? '');
+    if (existing == null) {
+      await importSubscription(context, widget.store);
+      return;
+    }
+    final nameCtrl = TextEditingController(text: existing.name);
+    final sourceCtrl = TextEditingController(text: existing.source);
+    final epgCtrl = TextEditingController(text: existing.epgUrl ?? '');
     final added = await showDialog<bool>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.7),
@@ -565,7 +571,7 @@ class _EmptyLive extends StatelessWidget {
         const SizedBox(height: 10),
         SizedBox(
           width: 460,
-          child: Text('支持 M3U / M3U8 播放列表与 XMLTV 节目单，频道会自动按分组整理，并显示正在播。',
+          child: Text('导入你有权使用的 M3U、TXT 或 JSON 列表，先预览再确认。支持 XMLTV 节目单；不执行配置中的爬虫和解析插件。',
               textAlign: TextAlign.center,
               style: WowType.body(12.5, color: WowColors.muted).copyWith(height: 1.7)),
         ),
@@ -625,8 +631,7 @@ class _AddPlaylistDialogState extends State<_AddPlaylistDialog> {
     });
     var ok = false;
     if (_editing) {
-      await widget.store.setEpgUrl(widget.existing!, widget.epgCtrl.text);
-      ok = true;
+      ok = await widget.store.setEpgUrl(widget.existing!, widget.epgCtrl.text);
     } else {
       ok = await widget.store.addPlaylist(
         name: widget.nameCtrl.text,

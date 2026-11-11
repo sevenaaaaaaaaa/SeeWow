@@ -16,6 +16,14 @@ class SourceProvider {
 
 const sourceProviders = [
   SourceProvider(
+    'telegramLocal',
+    'Telegram 本地媒体',
+    '本地媒体',
+    [SourceKind.local],
+    '选择 Telegram 已下载到设备的媒体目录。无需登录；不读取频道或聊天。不向 AI 发送此来源内容。原生账号与频道接入待验证。',
+    nativePending: true,
+  ),
+  SourceProvider(
     'fnos',
     '飞牛 NAS',
     'NAS',
@@ -111,6 +119,7 @@ const sourceProviders = [
   SourceProvider('emby', 'Emby', '媒体服务器', [SourceKind.emby], 'API Key 接入媒体库。'),
 ];
 String sourceModeLabel(SourceKind kind) => switch (kind) {
+  SourceKind.local => '本机已下载目录',
   SourceKind.openlist => 'OpenList / Alist API（网关）',
   SourceKind.synology => 'File Station API',
   SourceKind.navidrome => 'OpenSubsonic（音乐）',

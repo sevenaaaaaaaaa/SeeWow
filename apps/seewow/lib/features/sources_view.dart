@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../agent/agent_controller.dart';
+import 'subscription_dialog.dart';
 import '../data/iptv_store.dart';
 import '../data/library_store.dart';
 import '../design/cinema_widgets.dart';
@@ -33,24 +34,40 @@ Future<void> connectSource(
   String type = 'webdav',
   String providerId = '',
   MediaSource? existing,
-}) => showDialog<void>(
-  context: context,
-  barrierDismissible: false,
-  builder: (_) => _ConnectDialog(
-    library: library,
-    iptv: iptv,
-    initial: existing?.location ?? initial,
-    initialType:
-        existing?.kind.name ??
-        (initial.startsWith('smb://')
-            ? 'smb'
-            : RegExp(r'\.m3u8?(\?|$)', caseSensitive: false).hasMatch(initial)
-            ? 'iptv'
-            : type),
-    providerId: existing?.providerId ?? providerId,
-    existing: existing,
-  ),
-);
+}) async {
+  if (existing?.kind == SourceKind.local) {
+    await connectLocalMediaFolder(
+      context,
+      library,
+      providerId: existing!.providerId,
+      existing: existing,
+    );
+    return;
+  }
+  if (type == 'iptv' ||
+      RegExp(r'\.m3u8?(\?|$)', caseSensitive: false).hasMatch(initial)) {
+    await importSubscription(context, iptv, initial: initial);
+    return;
+  }
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _ConnectDialog(
+      library: library,
+      iptv: iptv,
+      initial: existing?.location ?? initial,
+      initialType:
+          existing?.kind.name ??
+          (initial.startsWith('smb://')
+              ? 'smb'
+              : RegExp(r'\.m3u8?(\?|$)', caseSensitive: false).hasMatch(initial)
+              ? 'iptv'
+              : type),
+      providerId: existing?.providerId ?? providerId,
+      existing: existing,
+    ),
+  );
+}
 
 Future<void> chooseSourceProvider(
   BuildContext context,
@@ -61,14 +78,72 @@ Future<void> chooseSourceProvider(
     context: context,
     builder: (_) => const _ProviderPicker(),
   );
-  if (provider != null && context.mounted)
-    await connectSource(
-      context,
-      library,
-      iptv,
-      providerId: provider.id,
-      type: _availableModes(provider.modes).first.name,
+  if (provider == null || !context.mounted) return;
+  if (provider.modes.first == SourceKind.local) {
+    await connectLocalMediaFolder(context, library, providerId: provider.id);
+    return;
+  }
+  await connectSource(
+    context,
+    library,
+    iptv,
+    providerId: provider.id,
+    type: _availableModes(provider.modes).first.name,
+  );
+}
+
+Future<void> connectLocalMediaFolder(
+  BuildContext context,
+  LibraryStore library, {
+  String providerId = '',
+  MediaSource? existing,
+  Future<String?> Function()? pickDirectory,
+}) async {
+  try {
+    final path = await (pickDirectory != null
+        ? pickDirectory()
+        : Platform.isIOS
+        ? NativeBridge.pickIOSFolder()
+        : FilePicker.getDirectoryPath(
+            dialogTitle: providerId == 'telegramLocal'
+                ? '选择 Telegram 已下载的媒体目录'
+                : '选择媒体库文件夹',
+          ));
+    if (path == null) return;
+    final previous =
+        existing ??
+        library.sources
+            .where((s) => s.kind == SourceKind.local && s.location == path)
+            .firstOrNull;
+    final effectiveProvider = previous?.providerId == 'telegramLocal'
+        ? 'telegramLocal'
+        : providerId;
+    final label = path
+        .split(Platform.pathSeparator)
+        .where((s) => s.isNotEmpty)
+        .last;
+    final source = MediaSource(
+      id: previous?.id ?? 'local-${DateTime.now().microsecondsSinceEpoch}',
+      kind: SourceKind.local,
+      providerId: effectiveProvider,
+      name: effectiveProvider == 'telegramLocal' ? 'Telegram · $label' : label,
+      location: path,
+      enabled: previous?.enabled ?? true,
     );
+    if (previous == null) {
+      await library.addSource(source);
+    } else {
+      await library.updateSource(source);
+    }
+    if (library.sourceErrors.containsKey(source.id) && context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('目录扫描失败，请检查文件访问权限后重试')));
+    }
+  } catch (_) {
+    if (context.mounted)
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('未能打开文件夹，请检查文件访问权限后重试')));
+  }
 }
 
 class _ProviderPicker extends StatefulWidget {
@@ -124,6 +199,7 @@ class _ProviderPickerState extends State<_ProviderPicker> {
                     '媒体服务器',
                     '网盘',
                     '音乐服务器',
+                    '本地媒体',
                     '通用',
                   ])
                     Padding(
@@ -197,29 +273,14 @@ class _SourcesViewState extends State<SourcesView> {
     super.dispose();
   }
 
-  Future<void> _folder() async {
+  Future<void> _folder({String providerId = ''}) async {
     setState(() => _folderBusy = true);
     try {
-      final path = Platform.isIOS
-          ? await NativeBridge.pickIOSFolder()
-          : await FilePicker.getDirectoryPath(dialogTitle: '选择媒体库文件夹');
-      if (path == null) return;
-      await widget.store.addSource(
-        MediaSource(
-          id: 'local-${DateTime.now().microsecondsSinceEpoch}',
-          kind: SourceKind.local,
-          name: path
-              .split(Platform.pathSeparator)
-              .where((s) => s.isNotEmpty)
-              .last,
-          location: path,
-        ),
+      await connectLocalMediaFolder(
+        context,
+        widget.store,
+        providerId: providerId,
       );
-    } catch (_) {
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('未能打开文件夹，请检查文件访问权限后重试')));
     } finally {
       if (mounted) setState(() => _folderBusy = false);
     }
@@ -295,9 +356,18 @@ class _SourcesViewState extends State<SourcesView> {
                 ),
                 _entry(
                   box,
+                  Icons.folder_special_outlined,
+                  'Telegram 本地媒体',
+                  '选择已下载目录 · 不连接账号、不发送给 AI',
+                  _folderBusy
+                      ? null
+                      : () => _folder(providerId: 'telegramLocal'),
+                ),
+                _entry(
+                  box,
                   Icons.rss_feed_rounded,
                   '直播订阅',
-                  'M3U 频道列表与 XMLTV 节目单',
+                  'M3U / TXT / JSON · 先预览再导入',
                   () =>
                       connectSource(context, store, widget.iptv, type: 'iptv'),
                 ),
@@ -724,7 +794,7 @@ class _ConnectDialogState extends State<_ConnectDialog> {
       '连接 Plex Media Server 并填写 Plex Token。电影与剧集保留服务端海报和简介，当前直接播放原文件，不请求转码。',
     'jellyfin' ||
     'emby' => '使用服务器 API Key。地址包含反向代理子路径；用户 ID 可选。读取片库与原文件流，不向服务器回写观看状态。',
-    _ => '填写 M3U 频道列表，XMLTV 节目单可选。',
+    _ => '支持 M3U / TXT / JSON 纯数据列表；先预览，不执行远程插件。',
   };
   @override
   void initState() {
@@ -753,12 +823,14 @@ class _ConnectDialogState extends State<_ConnectDialog> {
     try {
       final location = _location.text.trim();
       if (_type == 'iptv') {
-        if (!await widget.iptv.addPlaylist(
+        if (!await importSubscription(
+          context,
+          widget.iptv,
+          initial: location,
           name: _name.text.trim(),
-          source: location,
           epgUrl: _epg.text.trim(),
         ))
-          throw StateError(widget.iptv.toast ?? '订阅读取失败');
+          return;
       } else {
         final root = _rooted ? normalizedRemotePath(_root.text) : '/';
         final previous =

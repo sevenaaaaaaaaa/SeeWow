@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 
 import '../domain/iptv.dart';
 import '../domain/xmltv.dart';
+import '../domain/subscription.dart';
+import '../sources/subscription_reader.dart';
 
 /// A channel that is on air right now, used by the "正在播" rail.
 class NowOnAir {
@@ -17,6 +19,10 @@ class NowOnAir {
 /// IPTV playlists, channels, EPG and favourites, persisted next to the
 /// movie library as plain JSON.
 class IPTVStore extends ChangeNotifier {
+  IPTVStore({this.directory, this.reader = const SubscriptionReader()});
+  final Directory? directory;
+  final SubscriptionReader reader;
+  Future<void> _writes = Future.value();
   final List<IPTVPlaylist> playlists = [];
   final List<IPTVChannel> channels = [];
   final Map<String, List<EPGProgram>> epg = {};
@@ -36,8 +42,9 @@ class IPTVStore extends ChangeNotifier {
   bool get hasEpg => epg.isNotEmpty;
 
   Future<Directory> _dir() async {
-    final support = await getApplicationSupportDirectory();
-    final d = Directory(support.path + '/SeeWow');
+    final d =
+        directory ??
+        Directory('${(await getApplicationSupportDirectory()).path}/SeeWow');
     if (!await d.exists()) await d.create(recursive: true);
     return d;
   }
@@ -50,14 +57,24 @@ class IPTVStore extends ChangeNotifier {
       final raw = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       playlists
         ..clear()
-        ..addAll((raw['playlists'] as List? ?? []).map((e) => IPTVPlaylist.fromJson(e as Map<String, dynamic>)));
+        ..addAll(
+          (raw['playlists'] as List? ?? []).map(
+            (e) => IPTVPlaylist.fromJson(e as Map<String, dynamic>),
+          ),
+        );
       channels
         ..clear()
-        ..addAll((raw['channels'] as List? ?? []).map((e) => IPTVChannel.fromJson(e as Map<String, dynamic>)));
+        ..addAll(
+          (raw['channels'] as List? ?? []).map(
+            (e) => IPTVChannel.fromJson(e as Map<String, dynamic>),
+          ),
+        );
       epg.clear();
       final rawEpg = raw['epg'] as Map<String, dynamic>? ?? {};
       rawEpg.forEach((key, value) {
-        epg[key] = (value as List).map((e) => EPGProgram.fromJson(e as Map<String, dynamic>)).toList();
+        epg[key] = (value as List)
+            .map((e) => EPGProgram.fromJson(e as Map<String, dynamic>))
+            .toList();
       });
       favorites
         ..clear()
@@ -65,6 +82,16 @@ class IPTVStore extends ChangeNotifier {
       recents
         ..clear()
         ..addAll((raw['recents'] as List? ?? []).map((e) => e as String));
+      for (final playlist in playlists) {
+        for (final channelId in _epgChannelIds(playlist)) {
+          if (epg.containsKey(channelId))
+            epg.putIfAbsent(
+              '${playlist.id}::$channelId',
+              () => epg[channelId]!,
+            );
+        }
+      }
+      epg.removeWhere((key, _) => !key.contains('::'));
       _pruneEpg();
       notifyListeners();
     } catch (e) {
@@ -73,50 +100,117 @@ class IPTVStore extends ChangeNotifier {
   }
 
   Future<void> save() async {
-    final d = await _dir();
     final payload = jsonEncode({
       'playlists': playlists.map((e) => e.toJson()).toList(),
       'channels': channels.map((e) => e.toJson()).toList(),
-      'epg': epg.map((key, value) => MapEntry(key, value.map((e) => e.toJson()).toList())),
+      'epg': epg.map(
+        (key, value) => MapEntry(key, value.map((e) => e.toJson()).toList()),
+      ),
       'favorites': favorites,
       'recents': recents,
     });
-    await File(d.path + '/iptv.json').writeAsString(payload);
+    final write = _writes.catchError((Object _) {}).then((_) async {
+      final d = await _dir();
+      final temp = File('${d.path}/iptv.json.tmp');
+      await temp.writeAsString(payload, flush: true);
+      await temp.rename('${d.path}/iptv.json');
+    });
+    _writes = write;
+    await write;
   }
 
-  /// Accepts an http(s) M3U url or a local .m3u/.m3u8 file path.
-  Future<bool> addPlaylist({required String name, required String source, String? epgUrl}) async {
+  Future<SubscriptionPreview> preview(
+    String source, {
+    bool allowLocalNetwork = false,
+  }) async {
+    final document = await reader.read(
+      source,
+      allowLocalNetwork: allowLocalNetwork,
+    );
+    return SubscriptionParser.parse(
+      document.text,
+      uri: document.uri,
+      playlistId: 'preview',
+    );
+  }
+
+  Future<bool> addPlaylist({
+    required String name,
+    required String source,
+    String? epgUrl,
+    bool allowLocalNetwork = false,
+  }) async {
+    try {
+      final data = await preview(source, allowLocalNetwork: allowLocalNetwork);
+      return await importPreview(
+        data,
+        name: name,
+        source: source,
+        epgUrl: epgUrl,
+        allowLocalNetwork: allowLocalNetwork,
+      );
+    } catch (_) {
+      toast = '读取失败，请检查地址、文件格式和访问权限';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Commits the exact preview confirmed by the user; never fetches child configs.
+  Future<bool> importPreview(
+    SubscriptionPreview data, {
+    required String name,
+    String? source,
+    String? epgUrl,
+    bool allowLocalNetwork = false,
+  }) async {
+    if (loading) return false;
     loading = true;
     toast = null;
     notifyListeners();
+    final id = DateTime.now().microsecondsSinceEpoch.toString();
     try {
-      final text = await _read(source);
-      final id = DateTime.now().millisecondsSinceEpoch.toString();
-      final parsed = M3UParser.parse(text, playlistId: id);
-      if (parsed.isEmpty) {
-        toast = '这个列表里没有可播放的频道';
-        return false;
-      }
-      channels.addAll(parsed);
+      if (data.channels.isEmpty) throw const FormatException('请先选择含频道列表的配置');
+      final selectedEpg = epgUrl == null
+          ? data.epgUrl
+          : epgUrl.trim().isEmpty
+          ? null
+          : epgUrl.trim();
+      if (selectedEpg != null)
+        SubscriptionReader.validateWebUri(Uri.parse(selectedEpg));
+      final parsed = M3UParser.stableIds(data.channels, id);
       var playlist = IPTVPlaylist(
         id: id,
-        name: name.trim().isEmpty ? _nameFrom(source) : name.trim(),
-        source: source,
+        name: name.trim().isEmpty
+            ? _nameFrom(data.uri.toString())
+            : name.trim(),
+        source: source ?? data.uri.toString(),
         channelCount: parsed.length,
         updatedAt: DateTime.now(),
-        epgUrl: (epgUrl != null && epgUrl.trim().isNotEmpty) ? epgUrl.trim() : null,
+        epgUrl: selectedEpg,
+        allowLocalNetwork: allowLocalNetwork,
       );
-      final guide = await _loadEpg(playlist.epgUrl);
+      final guide = await _loadEpg(
+        selectedEpg,
+        allowLocalNetwork: allowLocalNetwork,
+      );
       if (guide != null) {
-        epg.addAll(guide);
-        playlist = playlist.copyWith(epgCount: guide.values.fold<int>(0, (sum, list) => sum + list.length));
+        epg.addAll(guide.map((key, value) => MapEntry('$id::$key', value)));
+        playlist = playlist.copyWith(
+          epgCount: guide.values.fold<int>(0, (sum, list) => sum + list.length),
+        );
       }
+      channels.addAll(parsed);
       playlists.add(playlist);
       await save();
-      toast = '已添加 ' + parsed.length.toString() + ' 个频道' + (playlist.epgCount > 0 ? '，' + playlist.epgCount.toString() + ' 条节目' : '');
+      toast =
+          '已添加 ${parsed.length} 个频道${selectedEpg != null && guide == null ? '，节目单暂未加载，可稍后重试' : ''}';
       return true;
-    } catch (e) {
-      toast = '读取失败：' + e.toString();
+    } catch (_) {
+      epg.removeWhere((key, _) => key.startsWith('$id::'));
+      channels.removeWhere((c) => c.playlistId == id);
+      playlists.removeWhere((p) => p.id == id);
+      toast = '导入失败，请检查频道和节目单地址，或先选择下级配置';
       return false;
     } finally {
       loading = false;
@@ -125,22 +219,61 @@ class IPTVStore extends ChangeNotifier {
   }
 
   Future<void> reload(IPTVPlaylist playlist) async {
+    if (loading) return;
+    final oldChannels = List<IPTVChannel>.of(channels);
+    final oldPlaylists = List<IPTVPlaylist>.of(playlists);
+    final oldFavorites = List<String>.of(favorites),
+        oldRecents = List<String>.of(recents);
     loading = true;
     notifyListeners();
     try {
-      final text = await _read(playlist.source);
-      final parsed = M3UParser.parse(text, playlistId: playlist.id);
+      final data = await preview(
+        playlist.source,
+        allowLocalNetwork: playlist.allowLocalNetwork,
+      );
+      if (data.channels.isEmpty)
+        throw const FormatException('订阅已变为配置目录或没有频道，保留原列表');
+      if (!playlists.any((p) => p.id == playlist.id)) return;
+      final parsed = M3UParser.stableIds(data.channels, playlist.id);
+      // Migrate the previous index-based IDs without moving favourites.
+      final old = channels.where((c) => c.playlistId == playlist.id).toList();
+      for (final channel in old) {
+        final replacement = parsed
+            .where((c) => c.url == channel.url && c.name == channel.name)
+            .firstOrNull;
+        if (replacement == null) continue;
+        for (final ids in [favorites, recents]) {
+          for (var i = 0; i < ids.length; i++) {
+            if (ids[i] == channel.id) ids[i] = replacement.id;
+          }
+        }
+      }
       channels.removeWhere((c) => c.playlistId == playlist.id);
       channels.addAll(parsed);
       final idx = playlists.indexWhere((p) => p.id == playlist.id);
       if (idx >= 0) {
-        playlists[idx] = playlist.copyWith(channelCount: parsed.length, updatedAt: DateTime.now());
+        playlists[idx] = playlist.copyWith(
+          channelCount: parsed.length,
+          updatedAt: DateTime.now(),
+        );
       }
       await save();
       toast = '已更新 ' + parsed.length.toString() + ' 个频道';
       if (playlist.epgUrl != null) await refreshEpg(playlist);
     } catch (e) {
-      toast = '更新失败：' + e.toString();
+      channels
+        ..clear()
+        ..addAll(oldChannels);
+      playlists
+        ..clear()
+        ..addAll(oldPlaylists);
+      favorites
+        ..clear()
+        ..addAll(oldFavorites);
+      recents
+        ..clear()
+        ..addAll(oldRecents);
+      toast = '更新失败，已保留上次频道。请检查订阅格式、网络和访问权限';
     } finally {
       loading = false;
       notifyListeners();
@@ -157,37 +290,63 @@ class IPTVStore extends ChangeNotifier {
     loading = true;
     notifyListeners();
     try {
-      final guide = await _loadEpg(url);
+      final guide = await _loadEpg(
+        url,
+        allowLocalNetwork: playlist.allowLocalNetwork,
+      );
       if (guide == null) throw StateError('节目单为空');
-      final oldIds = epg.keys.where((k) => _epgChannelIds(playlist).contains(k)).toList();
+      final oldIds = epg.keys
+          .where((k) => k.startsWith('${playlist.id}::'))
+          .toList();
       for (final id in oldIds) {
         epg.remove(id);
       }
-      epg.addAll(guide);
+      epg.addAll(
+        guide.map((key, value) => MapEntry('${playlist.id}::$key', value)),
+      );
       final count = guide.values.fold<int>(0, (sum, list) => sum + list.length);
       final idx = playlists.indexWhere((p) => p.id == playlist.id);
       if (idx >= 0) playlists[idx] = playlists[idx].copyWith(epgCount: count);
       await save();
       toast = '节目单已更新：' + count.toString() + ' 条';
     } catch (e) {
-      toast = '节目单更新失败：' + e.toString();
+      toast = '节目单更新失败，请检查地址和 XMLTV 格式';
     } finally {
       loading = false;
       notifyListeners();
     }
   }
 
-  Future<void> setEpgUrl(IPTVPlaylist playlist, String url) async {
+  Future<bool> setEpgUrl(IPTVPlaylist playlist, String url) async {
     final idx = playlists.indexWhere((p) => p.id == playlist.id);
-    if (idx < 0) return;
-    playlists[idx] = playlists[idx].copyWith(epgUrl: url.trim().isEmpty ? null : url.trim());
+    if (idx < 0) return false;
+    final value = url.trim();
+    if (value.isNotEmpty) {
+      try {
+        SubscriptionReader.validateWebUri(Uri.parse(value));
+      } catch (_) {
+        toast = '节目单需要有效的 HTTP(S) 地址';
+        notifyListeners();
+        return false;
+      }
+    }
+    playlists[idx] = playlists[idx].copyWith(
+      epgUrl: value,
+      clearEpg: value.isEmpty,
+      epgCount: value.isEmpty ? 0 : null,
+    );
+    if (value.isEmpty)
+      epg.removeWhere((key, _) => key.startsWith('${playlist.id}::'));
     await save();
     notifyListeners();
-    if (url.trim().isNotEmpty) await refreshEpg(playlists[idx]);
+    if (value.isNotEmpty) await refreshEpg(playlists[idx]);
+    return true;
   }
 
   Future<void> removePlaylist(IPTVPlaylist playlist) async {
+    if (loading) return;
     playlists.removeWhere((p) => p.id == playlist.id);
+    epg.removeWhere((key, _) => key.startsWith('${playlist.id}::'));
     final removed = channels.where((c) => c.playlistId == playlist.id).toList();
     channels.removeWhere((c) => c.playlistId == playlist.id);
     favorites.removeWhere((id) => removed.any((c) => c.id == id));
@@ -199,7 +358,13 @@ class IPTVStore extends ChangeNotifier {
   List<IPTVChannel> search(String query) {
     final q = query.trim().toLowerCase();
     if (q.isEmpty) return channels;
-    return channels.where((c) => c.name.toLowerCase().contains(q) || c.group.toLowerCase().contains(q)).toList();
+    return channels
+        .where(
+          (c) =>
+              c.name.toLowerCase().contains(q) ||
+              c.group.toLowerCase().contains(q),
+        )
+        .toList();
   }
 
   // ---------------------------------------------------------------- favourites
@@ -212,7 +377,8 @@ class IPTVStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<IPTVChannel> get favoriteChannels => channels.where((c) => favorites.contains(c.id)).toList();
+  List<IPTVChannel> get favoriteChannels =>
+      channels.where((c) => favorites.contains(c.id)).toList();
 
   // ------------------------------------------------------------------- recents
 
@@ -236,7 +402,10 @@ class IPTVStore extends ChangeNotifier {
   // ----------------------------------------------------------------------- EPG
 
   List<EPGProgram> guideFor(IPTVChannel channel, {DateTime? at}) {
-    final list = epg[channel.tvgId] ?? epg[channel.name] ?? const <EPGProgram>[];
+    final list =
+        epg['${channel.playlistId}::${channel.tvgId}'] ??
+        epg['${channel.playlistId}::${channel.name}'] ??
+        const <EPGProgram>[];
     return list;
   }
 
@@ -275,39 +444,30 @@ class IPTVStore extends ChangeNotifier {
     });
   }
 
-  Set<String> _epgChannelIds(IPTVPlaylist playlist) => channels.where((c) => c.playlistId == playlist.id).expand((c) => [c.tvgId, c.name]).where((s) => s.isNotEmpty).toSet();
+  Set<String> _epgChannelIds(IPTVPlaylist playlist) => channels
+      .where((c) => c.playlistId == playlist.id)
+      .expand((c) => [c.tvgId, c.name])
+      .where((s) => s.isNotEmpty)
+      .toSet();
 
-  Future<Map<String, List<EPGProgram>>?> _loadEpg(String? url) async {
+  Future<Map<String, List<EPGProgram>>?> _loadEpg(
+    String? url, {
+    bool allowLocalNetwork = false,
+  }) async {
     if (url == null || url.isEmpty) return null;
     try {
-      final xml = await _read(url);
+      SubscriptionReader.validateWebUri(Uri.parse(url));
+      final xml = (await reader.read(
+        url,
+        allowLocalNetwork: allowLocalNetwork,
+      )).text;
       final programs = XMLTVParser.parse(xml);
       if (programs.isEmpty) return null;
       return XMLTVParser.group(programs);
     } catch (e) {
-      debugPrint('epg load failed: ' + e.toString());
+      debugPrint('epg load failed');
       return null;
     }
-  }
-
-  Future<String> _read(String source) async {
-    if (source.startsWith('http://') || source.startsWith('https://')) {
-      final client = HttpClient();
-      try {
-        final request = await client.getUrl(Uri.parse(source));
-        request.headers.set(HttpHeaders.userAgentHeader, 'SeeWow/1.0');
-        final response = await request.close().timeout(const Duration(seconds: 25));
-        if (response.statusCode >= 400) {
-          throw HttpException('HTTP ' + response.statusCode.toString());
-        }
-        return await response.transform(utf8.decoder).join();
-      } finally {
-        client.close(force: true);
-      }
-    }
-    final file = File(source);
-    if (!await file.exists()) throw FileSystemException('文件不存在', source);
-    return file.readAsString();
   }
 
   String _nameFrom(String source) {
