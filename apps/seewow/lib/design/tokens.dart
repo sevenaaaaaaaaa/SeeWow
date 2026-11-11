@@ -31,11 +31,19 @@ class WowType {
   /// Bundled mono stays fixed: metadata must look the same in every preset.
   static const mono = 'JetBrainsMono';
 
-  static List<String> get serifFallback => WowSkin.I.voice.fallback;
+  static List<String> get serifFallback => [
+    ...WowSkin.I.voice.fallback,
+    'NotoSerifTibetan',
+    'NotoSansArabic',
+  ];
 
   /// Chinese needs its own voice; serif presets fall back to Songti, sans
   /// presets to PingFang.
-  static List<String> get fallback => WowSkin.I.voice.fallback;
+  static List<String> get fallback => [
+    ...WowSkin.I.voice.fallback,
+    'NotoSerifTibetan',
+    'NotoSansArabic',
+  ];
 
   static TextStyle display(
     double size,
@@ -43,27 +51,31 @@ class WowType {
     double spacing = -0.8,
     Color? color,
     double height = 1.02,
-  }) =>
-      TextStyle(
-        fontFamily: serif,
-        fontFamilyFallback: serifFallback,
-        fontSize: size,
-        fontWeight: weight,
-        letterSpacing: spacing,
-        height: height,
-        color: color ?? WowColors.text,
-      );
+  }) => TextStyle(
+    fontFamily: serif,
+    fontFamilyFallback: serifFallback,
+    fontSize: size,
+    fontWeight: weight,
+    letterSpacing: spacing,
+    height: height,
+    color: color ?? WowColors.text,
+  );
 
-  static TextStyle monoLabel(double size, {FontWeight weight = FontWeight.w500, Color? color, double spacing = 1.4}) =>
-      TextStyle(
-        fontFamily: mono,
-        fontSize: size,
-        fontWeight: weight,
-        letterSpacing: spacing,
-        color: color ?? WowColors.muted,
-      );
+  static TextStyle monoLabel(
+    double size, {
+    FontWeight weight = FontWeight.w500,
+    Color? color,
+    double spacing = 1.4,
+  }) => TextStyle(
+    fontFamily: mono,
+    fontSize: size,
+    fontWeight: weight,
+    letterSpacing: spacing,
+    color: color ?? WowColors.muted,
+  );
 
-  static TextStyle body(double size, {Color? color, double height = 1.6}) => TextStyle(
+  static TextStyle body(double size, {Color? color, double height = 1.6}) =>
+      TextStyle(
         fontFamilyFallback: fallback,
         fontSize: size,
         height: height,
@@ -93,5 +105,6 @@ class WowSpace {
   static const xxl = 64.0;
 
   /// One fluid page gutter for every breakpoint.
-  static double gutter(double width) => width < 760 ? 20 : (width < 1180 ? 34 : 56);
+  static double gutter(double width) =>
+      width < 760 ? 20 : (width < 1180 ? 34 : 56);
 }

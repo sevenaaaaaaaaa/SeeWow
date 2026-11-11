@@ -88,7 +88,7 @@ class LibraryQuery {
         .where((t) => t.isNotEmpty);
     final result = items.where((i) {
       final haystack =
-          '${i.title} ${i.metadata?.title ?? ''} ${i.showTitle ?? ''} ${i.year ?? ''} ${i.genres.join(' ')} ${i.quality} ${i.overview}'
+          '${i.title} ${i.metadata?.title ?? ''} ${i.metadata?.multilingualSearchText ?? ''} ${i.showTitle ?? ''} ${i.year ?? ''} ${i.genres.join(' ')} ${i.quality} ${i.overview}'
               .toLowerCase();
       if (!terms.every(haystack.contains)) return false;
       if (genre != null && !i.genres.contains(genre)) return false;

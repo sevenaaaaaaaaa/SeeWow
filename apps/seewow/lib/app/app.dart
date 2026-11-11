@@ -11,6 +11,7 @@ import '../watch_ai/watch_ai_settings.dart';
 import '../design/theme.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
+import '../playback/playback_preferences.dart';
 import 'app_shell.dart';
 
 class SeeWowApp extends StatefulWidget {
@@ -33,6 +34,7 @@ class _SeeWowAppState extends State<SeeWowApp> {
   Future<void> _boot() async {
     await WowSkin.I.load();
     await WatchAiSettings.I.load();
+    await PlaybackPreferences.I.load();
     await _store.load();
     await _iptv.load();
     final scanner = SourceScanner();

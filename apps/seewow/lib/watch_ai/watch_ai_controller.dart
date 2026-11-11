@@ -25,6 +25,7 @@ class WatchAnswer {
 class WatchAiController extends ChangeNotifier {
   WatchAiController({
     required this.title,
+    this.contentAllowed = true,
     WatchAiSettings? settings,
     WatchAiClient? client,
     this.translationDelay = const Duration(milliseconds: 650),
@@ -34,6 +35,7 @@ class WatchAiController extends ChangeNotifier {
     this.settings.addListener(_configChanged);
   }
   final String title;
+  final bool contentAllowed;
   final WatchAiSettings settings;
   late final WatchAiClient client;
   final Duration translationDelay, minimumInterval;
@@ -48,7 +50,11 @@ class WatchAiController extends ChangeNotifier {
   String? error;
   bool busy = false, translating = false, suspended = false, _disposed = false;
   bool get active =>
-      !_disposed && !suspended && config.enabled && config.configured;
+      contentAllowed &&
+      !_disposed &&
+      !suspended &&
+      config.enabled &&
+      config.configured;
   double position = 0;
   Timer? _timer;
   int _generation = 0;

@@ -165,82 +165,123 @@ class FilmArtwork extends StatelessWidget {
   final MediaItem item;
   final bool landscape;
   @override
-  Widget build(BuildContext context) => WowArt(
-    url: landscape ? item.backdropUrl ?? item.posterUrl : item.posterUrl,
-    headers: item.artworkHeaders(
-      landscape ? item.backdropUrl ?? item.posterUrl : item.posterUrl,
-    ),
-    fallback: Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color.alphaBlend(
-              WowColors.ambient.withValues(alpha: .16),
-              WowColors.panel,
-            ),
-            WowColors.panel,
-            WowColors.shell,
-          ],
-        ),
+  Widget build(BuildContext context) {
+    final artwork = WowArt(
+      url: landscape ? item.backdropUrl ?? item.posterUrl : item.posterUrl,
+      headers: item.artworkHeaders(
+        landscape ? item.backdropUrl ?? item.posterUrl : item.posterUrl,
       ),
-      child: LayoutBuilder(
-        builder: (context, box) {
-          if (landscape || box.maxHeight < 130 || box.maxWidth < 80) {
+      fallback: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color.alphaBlend(
+                WowColors.ambient.withValues(alpha: .16),
+                WowColors.panel,
+              ),
+              WowColors.panel,
+              WowColors.shell,
+            ],
+          ),
+        ),
+        child: LayoutBuilder(
+          builder: (context, box) {
+            if (landscape || box.maxHeight < 130 || box.maxWidth < 80) {
+              return Center(
+                child: Icon(
+                  item.kind == MediaKind.audio
+                      ? Icons.album_outlined
+                      : Icons.local_movies_outlined,
+                  color: WowColors.muted,
+                  size: box.maxWidth < 80 ? 20 : 36,
+                ),
+              );
+            }
             return Center(
-              child: Icon(
-                item.kind == MediaKind.audio
-                    ? Icons.album_outlined
-                    : Icons.local_movies_outlined,
-                color: WowColors.muted,
-                size: box.maxWidth < 80 ? 20 : 36,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: SizedBox(
+                    width: 130,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          item.kind == MediaKind.audio
+                              ? Icons.album_outlined
+                              : Icons.local_movies_outlined,
+                          color: WowColors.muted,
+                          size: 30,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          item.libraryTitle,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${item.year ?? 'SEEWOW'}',
+                          style: WowType.monoLabel(10),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             );
-          }
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: SizedBox(
-                  width: 130,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        item.kind == MediaKind.audio
-                            ? Icons.album_outlined
-                            : Icons.local_movies_outlined,
-                        color: WowColors.muted,
-                        size: 30,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        item.libraryTitle,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${item.year ?? 'SEEWOW'}',
-                        style: WowType.monoLabel(10),
-                      ),
-                    ],
+          },
+        ),
+      ),
+    );
+    final shown = landscape
+        ? item.backdropUrl ?? item.posterUrl
+        : item.posterUrl;
+    if (!item.hasGeneratedCover || shown != item.posterUrl) return artwork;
+    return LayoutBuilder(
+      builder: (context, box) {
+        final compact = box.maxWidth < 90 || box.maxHeight < 90;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            artwork,
+            Positioned(
+              right: compact ? 2 : 8,
+              bottom: compact ? 2 : 8,
+              child: Semantics(
+                label: 'AI 生成的配图，非官方海报',
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: compact ? 4 : 7,
+                    vertical: compact ? 2 : 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: .8),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    compact ? 'AI' : 'AI 配图',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: compact ? 9 : 10,
+                    ),
                   ),
                 ),
               ),
             ),
-          );
-        },
-      ),
-    ),
-  );
+          ],
+        );
+      },
+    );
+  }
 }
 
 class FilmCard extends StatefulWidget {

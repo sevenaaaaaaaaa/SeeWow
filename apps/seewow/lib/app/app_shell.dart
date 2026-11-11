@@ -59,6 +59,7 @@ class _AppShellState extends State<AppShell> {
   MediaKind? _kind;
   String _query = '';
   int _libraryKey = 0;
+  bool _playerOpen = false;
   @override
   void initState() {
     super.initState();
@@ -114,8 +115,11 @@ class _AppShellState extends State<AppShell> {
   );
   void _play(MediaItem item) =>
       _playLive(widget.store.current(item), live: false);
-  void _playLive(MediaItem item, {bool live = true}) =>
-      Navigator.of(context).push(
+  Future<void> _playLive(MediaItem item, {bool live = true}) async {
+    if (_playerOpen) return;
+    _playerOpen = true;
+    try {
+      await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => PlayerScreen(
             item: item,
@@ -136,6 +140,11 @@ class _AppShellState extends State<AppShell> {
           ),
         ),
       );
+    } finally {
+      _playerOpen = false;
+    }
+  }
+
   void _launch() {
     if (!mounted) return;
     final launch = Platform.environment['SEEWOW_LAUNCH'];

@@ -140,6 +140,32 @@ void main() {
     expect(run.itemIds, isEmpty);
     expect(library.collections, isEmpty);
   });
+  test('Telegram-origin media is excluded from the model catalog', () async {
+    library.items.add(
+      MediaItem(
+        id: 'tg-private',
+        sourceId: 'telegram',
+        kind: MediaKind.movie,
+        title: 'Private Telegram Course',
+        locator: '/telegram/course.mp4',
+        aiAllowed: false,
+      ),
+    );
+    await model();
+    await agent.run('推荐电影');
+    expect(
+      jsonEncode(requests.single),
+      isNot(contains('Private Telegram Course')),
+    );
+    expect(jsonEncode(requests.single), isNot(contains('tg-private')));
+    steps = [
+      {
+        'tool': 'recommend',
+        'ids': ['tg-private'],
+      },
+    ];
+    expect((await agent.run('推荐电影'))!.failed, isTrue);
+  });
   test('an unrequested refresh and arbitrary tools are rejected', () async {
     await model();
     steps = [

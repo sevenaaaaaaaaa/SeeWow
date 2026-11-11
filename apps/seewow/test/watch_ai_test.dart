@@ -74,6 +74,31 @@ void main() {
     expect(ai.cues, isEmpty);
     expect(captures, 0);
   });
+  test('restricted source cannot send subtitles, questions or frames even when AI is enabled', () async {
+    ai.dispose();
+    ai = WatchAiController(
+      title: 'Private course',
+      contentAllowed: false,
+      settings: settings,
+      client: client,
+    );
+    await settings.configure(_enabled, apiKey: 'key');
+    var captures = 0;
+    ai.setSubtitle('Private subtitle');
+    await ai.translateCurrent();
+    await ai.ask(
+      'Explain',
+      withFrame: true,
+      capture: () async {
+        captures++;
+        return Uint8List(1);
+      },
+    );
+    expect(ai.active, isFalse);
+    expect(ai.cues, isEmpty);
+    expect(client.requests, isEmpty);
+    expect(captures, 0);
+  });
   test(
     'secrets are scoped to API origin and never persisted in preferences',
     () async {

@@ -332,7 +332,11 @@ class AgentController extends ChangeNotifier {
     }
     final key = await readSecret(_secretKey(endpoint)) ?? '';
     final catalog = library.items
-        .where((i) => i.kind.name == 'movie' || i.kind.name == 'episode')
+        .where(
+          (i) =>
+              i.aiAllowed &&
+              (i.kind.name == 'movie' || i.kind.name == 'episode'),
+        )
         .take(250)
         .map(
           (i) => {

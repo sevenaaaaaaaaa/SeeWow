@@ -6,6 +6,7 @@ import '../design/tokens.dart';
 import '../design/skin.dart';
 import '../domain/library_intelligence.dart';
 import '../domain/media_item.dart';
+import 'metadata_language_batch.dart';
 
 class LibraryView extends StatefulWidget {
   const LibraryView({
@@ -304,6 +305,17 @@ class _LibraryViewState extends State<LibraryView> {
                                     ? null
                                     : () => _save(selectedItems),
                                 child: const Text('保存片单'),
+                              ),
+                              TextButton.icon(
+                                onPressed: selectedItems.isEmpty
+                                    ? null
+                                    : () => manageMetadataLanguages(
+                                        context,
+                                        store,
+                                        selectedItems,
+                                      ),
+                                icon: const Icon(Icons.translate, size: 17),
+                                label: const Text('多语言采集／本机补译'),
                               ),
                             ],
                           ),

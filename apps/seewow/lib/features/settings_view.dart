@@ -5,6 +5,13 @@ import '../design/cinema_widgets.dart';
 import '../design/skin.dart';
 import '../design/tokens.dart';
 import 'metadata_dialog.dart';
+import 'custom_scraper_view.dart';
+import 'cover_generation_view.dart';
+import 'playback_settings_view.dart';
+import 'frame_bookmarks_view.dart';
+import 'voice_translation_view.dart';
+import 'subtitle_dialog.dart';
+import '../metadata/subtitles.dart';
 import 'skin_studio.dart';
 import 'watch_ai_view.dart';
 import '../agent/agent_controller.dart';
@@ -54,17 +61,77 @@ class SettingsView extends StatelessWidget {
                 ),
                 Divider(color: WowColors.line),
                 const WatchAiSettingsTile(),
+                ListTile(
+                  leading: const Icon(Icons.record_voice_over_outlined),
+                  title: const Text('语音译配 API · 实验性'),
+                  subtitle: const Text('目标语言配音、服务声明保留音色；分段缓冲'),
+                  onTap: () => configureVoiceTranslation(context),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.theaters_outlined),
+                  title: const Text('放映与播放'),
+                  subtitle: const Text('入场片头、全屏、后台播放和音频电平'),
+                  onTap: () => configurePlayback(context),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: const Text('精彩帧收藏'),
+                  subtitle: const Text('本机保存的影片画面与时间点'),
+                  onTap: () => showFrameBookmarks(context),
+                ),
                 Divider(color: WowColors.line),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.manage_search, color: WowColors.accent),
                   title: const Text('影片信息补全', style: TextStyle(fontSize: 14)),
                   subtitle: const Text(
-                    '配置 TMDB Token，搜索、预览并确认匹配',
+                    '多语言与地区、封面、演职员和评分；预览后确认',
                     style: TextStyle(fontSize: 12),
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => configureMetadata(context),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.api_outlined),
+                  title: const Text('自定义刮削 API'),
+                  subtitle: const Text('按视频类型配置资料接口与 JSON 字段映射'),
+                  onTap: () => configureCustomScrapers(context),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.image_outlined),
+                  title: const Text('AI 封面服务'),
+                  subtitle: const Text('用户自配图像模型；缺少封面时生成原创配图'),
+                  onTap: () => configureCoverGeneration(context),
+                ),
+                const Divider(height: 24),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.subtitles_outlined),
+                  title: const Text('在线字幕服务'),
+                  subtitle: const Text('OpenSubtitles · 用户自配 API Key 与可选账号'),
+                  onTap: () => configureSubtitles(context),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.delete_sweep_outlined),
+                  title: const Text('清理下载字幕缓存'),
+                  subtitle: const Text('仅删除 SeeWow 下载缓存，保留媒体与本地旁车文件'),
+                  onTap: () async {
+                    try {
+                      await SubtitleCache().clear();
+                      if (context.mounted)
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('字幕下载缓存已清理')),
+                        );
+                    } catch (_) {
+                      if (context.mounted)
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('缓存清理失败，请停止播放后重试')),
+                        );
+                    }
+                  },
                 ),
                 Divider(color: WowColors.line),
                 ListTile(
