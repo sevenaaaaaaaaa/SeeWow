@@ -20,7 +20,8 @@ class SmbMounter {
     final spec = parseSmbLocation(source.location);
     final support = await getApplicationSupportDirectory();
     final mountPoint = support.path + '/SeeWow/mounts/' + source.id;
-    final password = await NativeBridge.secretRead(sourceSecretKey(source)) ?? '';
+    final password =
+        await NativeBridge.secretRead(sourceSecretKey(source)) ?? '';
     final path = await NativeBridge.smbMount(
       host: spec.host,
       share: spec.share,
@@ -33,18 +34,40 @@ class SmbMounter {
     return path;
   }
 
-  static SmbSpec parseSmbLocation(String raw) {
+  /// Accepts the forms people actually type: `192.168.1.10/media`,
+  /// `\\192.168.1.10\media` or a full `smb://host/share` URL.
+  static String normalizeSmbLocation(String raw) {
     var text = raw.trim();
     if (text.isEmpty) throw NativeException('请填写 SMB 地址');
-    if (!text.toLowerCase().startsWith('smb://')) text = 'smb://' + text;
+    if (text.startsWith('\\\\')) {
+      text = 'smb://' + text.substring(2).replaceAll('\\', '/');
+    }
+    if (!text.toLowerCase().startsWith('smb://')) {
+      text = 'smb://' + text.replaceFirst(RegExp(r'^/+'), '');
+    }
     final uri = Uri.tryParse(text);
     if (uri == null || uri.host.isEmpty) {
-      throw NativeException('SMB 地址格式应为 smb://主机/共享名');
+      throw NativeException(
+        'SMB 地址格式应为 smb://主机/共享名，例如 smb://192.168.1.10/Movies',
+      );
+    }
+    if (uri.userInfo.isNotEmpty) {
+      throw NativeException('账号请填在用户名与密码字段，不要写进地址');
+    }
+    if (uri.hasQuery || uri.hasFragment) {
+      throw NativeException('SMB 地址不要包含查询参数');
     }
     final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
     if (segments.isEmpty) {
       throw NativeException('缺少共享名，例如 smb://192.168.1.10/media');
     }
+    return 'smb://' + uri.host + '/' + segments.join('/');
+  }
+
+  static SmbSpec parseSmbLocation(String raw) {
+    final normalized = normalizeSmbLocation(raw);
+    final uri = Uri.parse(normalized);
+    final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
     return SmbSpec(
       host: uri.host,
       share: segments.first,
@@ -54,8 +77,10 @@ class SmbMounter {
 }
 
 class SmbSpec {
-  const SmbSpec({required this.host, required this.share, required this.subpath});
-  final String host;
-  final String share;
-  final String subpath;
+  const SmbSpec({
+    required this.host,
+    required this.share,
+    required this.subpath,
+  });
+  final String host, share, subpath;
 }

@@ -38,7 +38,7 @@ const sourceProviders = [
   ], 'File Station 账号接入，或使用共享目录与 WebDAV。'),
   SourceProvider('plex', 'Plex', '媒体服务器', [
     SourceKind.plex,
-  ], '服务器 Token，电影和逐集目录、海报、原文件播放。'),
+  ], 'Plex 账号验证码登录，或手动填写服务器 Token；自动读取电影与剧集目录、海报并原文件播放。'),
   SourceProvider('webdav', 'WebDAV', '通用', [
     SourceKind.webdav,
   ], '标准 WebDAV，支持账号、递归建库和认证播放。'),

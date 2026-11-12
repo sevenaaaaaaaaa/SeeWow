@@ -21,12 +21,15 @@ class NativeBridge {
   static Future<String?> secretRead(String key) async {
     if (Platform.isMacOS || Platform.isIOS) {
       try {
+        // On macOS the host bridge falls back to its own JSON store when the
+        // Keychain item was created by a differently-signed build.
         return await _channel.invokeMethod<String>('secret.read', {'key': key});
       } on MissingPluginException {
         if (Platform.isIOS) throw NativeException('iOS 钥匙串未就绪，请重新打开应用');
         // fall through to file storage
       } on PlatformException catch (e) {
-        throw NativeException(e.message ?? '读取凭据失败');
+        if (Platform.isIOS) throw NativeException(e.message ?? '读取凭据失败');
+        // fall through to the file store on macOS rather than losing access
       }
     }
     return _fileSecrets.read(key);
@@ -190,7 +193,15 @@ class _FileSecrets {
     }
   }
 
-  Future<String?> read(String key) async => (await _load())[key];
+  Future<String?> read(String key) async {
+    try {
+      return (await _load())[key];
+    } catch (_) {
+      // Hosts without a writable support directory (including widget tests)
+      // simply have no file fallback yet.
+      return null;
+    }
+  }
 
   Future<void> write(String key, String value) async {
     final data = await _load();

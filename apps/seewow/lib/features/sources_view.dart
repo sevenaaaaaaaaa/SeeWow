@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../agent/agent_controller.dart';
 import 'subscription_dialog.dart';
@@ -13,12 +14,19 @@ import '../domain/media_item.dart';
 import '../domain/source_catalog.dart';
 import '../sources/remote_files.dart';
 import '../sources/native_bridge.dart';
+import '../sources/plex_login.dart';
+import '../sources/smb_mounter.dart';
 
-List<SourceKind> _availableModes(List<SourceKind> modes) => modes
-    .where(
-      (m) => m != SourceKind.smb || !(Platform.isIOS || Platform.isAndroid),
-    )
-    .toList();
+List<SourceKind> _availableModes(List<SourceKind> modes) {
+  final filtered = modes
+      .where(
+        (m) => m != SourceKind.smb || !(Platform.isIOS || Platform.isAndroid),
+      )
+      .toList();
+  // Providers that only expose SMB still need a selectable mode so the picker
+  // does not throw on mobile; the dialog then explains the limitation.
+  return filtered.isEmpty ? modes : filtered;
+}
 
 String sourceDisplayAddress(String location) {
   final uri = Uri.tryParse(location);
@@ -118,10 +126,11 @@ Future<void> connectLocalMediaFolder(
     final effectiveProvider = previous?.providerId == 'telegramLocal'
         ? 'telegramLocal'
         : providerId;
-    final label = path
+    final segments = path
         .split(Platform.pathSeparator)
         .where((s) => s.isNotEmpty)
-        .last;
+        .toList();
+    final label = segments.isEmpty ? path : segments.last;
     final source = MediaSource(
       id: previous?.id ?? 'local-${DateTime.now().microsecondsSinceEpoch}',
       kind: SourceKind.local,
@@ -135,14 +144,23 @@ Future<void> connectLocalMediaFolder(
     } else {
       await library.updateSource(source);
     }
-    if (library.sourceErrors.containsKey(source.id) && context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('目录扫描失败，请检查文件访问权限后重试')));
+    final scanError = library.sourceErrors[source.id];
+    if (scanError != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('目录扫描失败：$scanError（已保留原有条目）'),
+          duration: const Duration(seconds: 8),
+        ),
+      );
     }
-  } catch (_) {
+  } catch (e) {
     if (context.mounted)
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('未能打开文件夹，请检查文件访问权限后重试')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('未能打开文件夹：$e'),
+          duration: const Duration(seconds: 8),
+        ),
+      );
   }
 }
 
@@ -345,7 +363,7 @@ class _SourcesViewState extends State<SourcesView> {
                   box,
                   Icons.video_library_outlined,
                   'Plex',
-                  'Plex Token · 电影与剧集原文件播放',
+                  '账号登录 · 自动选择服务器与原文件播放',
                   () => connectSource(
                     context,
                     store,
@@ -750,6 +768,11 @@ class _ConnectDialogState extends State<_ConnectDialog> {
   late final TextEditingController _location, _root;
   String? _error;
   bool _busy = false;
+  PlexLogin? _plexLogin;
+  PlexPin? _plexPin;
+  String? _plexStatus;
+  bool _plexBusy = false;
+  int _plexSession = 0;
   SourceProvider? get _provider => providerById(widget.providerId);
   SourceKind get _kind => SourceKind.values.firstWhere(
     (k) => k.name == _type,
@@ -783,15 +806,14 @@ class _ConnectDialogState extends State<_ConnectDialog> {
     _ => 'https://example.com/dav/',
   };
   String get _guidance => switch (_type) {
-    'smb' => '填写完整共享地址。飞牛、群晖均可通过共享目录接入；SMB 目前支持桌面系统。',
+    'smb' => '填写共享地址即可，192.168.1.10/媒体 或 smb://192.168.1.10/媒体 都行。飞牛、群晖均可通过共享目录接入；SMB 目前支持桌面系统。',
     'webdav' => '填写实际 WebDAV 地址。网盘可使用网关的 /dav/ 路径，NAS 需要先启用 WebDAV 服务。',
     'openlist' => '填写网关服务地址与挂载根目录，不是网盘分享链接。需要先在 OpenList / Alist 配好对应驱动。播放前重新获取直链，Token 不会发给云盘直链站点。',
     'synology' =>
       '群晖 File Station 只读接入。填写 DSM 服务根地址与共享文件夹路径。需要二步验证的账号可先使用 SMB / WebDAV。',
     'navidrome' =>
       'Navidrome 是音乐服务器，导入曲目到音乐库。通过 OpenSubsonic 认证，密码不存入播放地址，播放时生成认证参数。',
-    'plex' =>
-      '连接 Plex Media Server 并填写 Plex Token。电影与剧集保留服务端海报和简介，当前直接播放原文件，不请求转码。',
+    'plex' => '优先用 Plex 账号登录：应用会显示 plex.tv/link 验证码，登录后自动列出你的服务器。也可以继续手动填写服务器地址与 Token。电影与剧集保留服务端海报和简介，直接播放原文件，不请求转码。',
     'jellyfin' ||
     'emby' => '使用服务器 API Key。地址包含反向代理子路径；用户 ID 可选。读取片库与原文件流，不向服务器回写观看状态。',
     _ => '支持 M3U / TXT / JSON 纯数据列表；先预览，不执行远程插件。',
@@ -808,10 +830,110 @@ class _ConnectDialogState extends State<_ConnectDialog> {
 
   @override
   void dispose() {
+    _plexSession++;
     for (final c in [_name, _user, _password, _epg, _location, _root]) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _plexSignIn() async {
+    final session = ++_plexSession;
+    setState(() {
+      _plexBusy = true;
+      _plexStatus = '正在向 plex.tv 申请登录验证码…';
+    });
+    try {
+      final login = _plexLogin ??= await PlexLogin.create();
+      final pin = await login.createPin();
+      if (!mounted || session != _plexSession) return;
+      setState(() {
+        _plexPin = pin;
+        _plexStatus = '在浏览器打开 plex.tv/link，输入验证码 ${pin.code}';
+      });
+      await _openPlexLink();
+      String? token;
+      for (var attempt = 0; attempt < 150; attempt++) {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        if (!mounted || session != _plexSession) return;
+        token = await login.pollToken(pin.id);
+        if (token != null) break;
+      }
+      if (!mounted || session != _plexSession) return;
+      if (token == null) {
+        setState(() => _plexStatus = '登录超时，请重新点击登录');
+        return;
+      }
+      setState(() => _plexStatus = '已登录，正在读取 Plex 服务器…');
+      final servers = await login.servers(token);
+      if (!mounted || session != _plexSession) return;
+      if (servers.isEmpty) {
+        setState(() => _plexStatus = '该账号下没有可用的 Plex 服务器');
+        return;
+      }
+      final chosen = servers.length == 1
+          ? servers.first
+          : await _choosePlexServer(servers);
+      if (!mounted || session != _plexSession) return;
+      if (chosen == null) {
+        setState(() => _plexStatus = '已登录，未选择服务器');
+        return;
+      }
+      setState(() {
+        _location.text = chosen.uri;
+        _name.text = chosen.name;
+        _password.text = chosen.token;
+        _plexStatus = '已登录：${chosen.name}';
+      });
+      await _connect();
+    } on PlexException catch (e) {
+      if (mounted && session == _plexSession)
+        setState(() => _plexStatus = '登录失败：${e.message}');
+    } catch (e) {
+      if (mounted && session == _plexSession)
+        setState(() => _plexStatus = '登录失败：$e');
+    } finally {
+      if (mounted && session == _plexSession) setState(() => _plexBusy = false);
+    }
+  }
+
+  Future<PlexServer?> _choosePlexServer(List<PlexServer> servers) =>
+      showDialog<PlexServer>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('选择 Plex 服务器'),
+          children: [
+            for (final server in servers)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, server),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(server.name, style: const TextStyle(fontSize: 14)),
+                    const SizedBox(height: 3),
+                    Text(
+                      server.uri,
+                      style: TextStyle(fontSize: 11, color: WowColors.muted),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      );
+
+  Future<void> _openPlexLink() async {
+    const url = 'https://plex.tv/link';
+    try {
+      if (Platform.isMacOS)
+        await Process.run('open', [url]);
+      else if (Platform.isLinux)
+        await Process.run('xdg-open', [url]);
+      else if (Platform.isWindows)
+        await Process.run('cmd', ['/c', 'start', '', url], runInShell: true);
+    } catch (_) {
+      // The code and link stay visible so the page can be opened by hand.
+    }
   }
 
   Future<void> _connect() async {
@@ -821,7 +943,8 @@ class _ConnectDialogState extends State<_ConnectDialog> {
       _error = null;
     });
     try {
-      final location = _location.text.trim();
+      var location = _location.text.trim();
+      if (_type == 'smb') location = SmbMounter.normalizeSmbLocation(location);
       if (_type == 'iptv') {
         if (!await importSubscription(
           context,
@@ -965,20 +1088,24 @@ class _ConnectDialogState extends State<_ConnectDialog> {
                       hintText: _hint,
                     ),
                     validator: (value) {
+                      if (_type == 'smb') {
+                        try {
+                          SmbMounter.normalizeSmbLocation(value ?? '');
+                        } on NativeException catch (e) {
+                          return e.message;
+                        }
+                        if (!(Platform.isMacOS ||
+                            Platform.isWindows ||
+                            Platform.isLinux))
+                          return '移动端 SMB 暂未接入，请使用 WebDAV';
+                        return null;
+                      }
                       final uri = Uri.tryParse(value?.trim() ?? '');
                       if (uri == null ||
                           uri.host.isEmpty ||
                           uri.userInfo.isNotEmpty)
                         return '填写完整地址，账号和密钥填在单独字段';
-                      if (_type == 'smb') {
-                        if (uri.scheme != 'smb' ||
-                            uri.pathSegments.where((s) => s.isNotEmpty).isEmpty)
-                          return '需要 smb://主机/共享目录';
-                        if (!(Platform.isMacOS ||
-                            Platform.isWindows ||
-                            Platform.isLinux))
-                          return '移动端 SMB 暂未接入，请使用 WebDAV';
-                      } else if (!['http', 'https'].contains(uri.scheme)) {
+                      if (!['http', 'https'].contains(uri.scheme)) {
                         return '需要 http:// 或 https:// 地址';
                       }
                       if (_type != 'iptv' && (uri.hasQuery || uri.hasFragment))
@@ -986,6 +1113,66 @@ class _ConnectDialogState extends State<_ConnectDialog> {
                       return null;
                     },
                   ),
+                  if (_type == 'plex') ...[
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _busy || _plexBusy ? null : _plexSignIn,
+                          icon: _plexBusy
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.login, size: 16),
+                          label: Text(
+                            _plexPin == null ? '使用 Plex 账号登录' : '重新获取验证码',
+                          ),
+                        ),
+                        if (_plexPin != null && !_plexBusy) ...[
+                          Text(
+                            'plex.tv/link · ${_plexPin!.code}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          IconButton(
+                            tooltip: '复制验证码',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () async {
+                              await Clipboard.setData(
+                                ClipboardData(text: _plexPin!.code),
+                              );
+                              if (mounted)
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('验证码已复制')),
+                                );
+                            },
+                            icon: const Icon(Icons.copy, size: 16),
+                          ),
+                          TextButton(
+                            onPressed: _openPlexLink,
+                            child: const Text('打开 plex.tv/link'),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (_plexStatus != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          _plexStatus!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: WowColors.muted,
+                          ),
+                        ),
+                      ),
+                  ],
                   if (_rooted) ...[
                     const SizedBox(height: 14),
                     TextFormField(

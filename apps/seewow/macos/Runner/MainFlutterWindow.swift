@@ -65,12 +65,21 @@ final class NativeBridge: NSObject {
     case "secret.delete":
       result(secretDelete(args["key"] as? String ?? ""))
     case "smb.mount":
-      do {
-        result(try smbMount(args))
-      } catch let error as BridgeError {
-        result(FlutterError(code: error.code, message: error.message, details: error.status))
-      } catch {
-        result(FlutterError(code: "mount_failed", message: error.localizedDescription, details: nil))
+      // NetFS blocks while the share is negotiated; mount off the main thread
+      // so the dialog keeps painting and can show a useful error message.
+      DispatchQueue.global(qos: .userInitiated).async {
+        do {
+          let path = try self.smbMount(args)
+          DispatchQueue.main.async { result(path) }
+        } catch let error as BridgeError {
+          DispatchQueue.main.async {
+            result(FlutterError(code: error.code, message: error.message, details: error.status))
+          }
+        } catch {
+          DispatchQueue.main.async {
+            result(FlutterError(code: "mount_failed", message: error.localizedDescription, details: nil))
+          }
+        }
       }
     case "smb.unmount":
       // Shares are mounted inside Application Support; leaving them is harmless
@@ -94,7 +103,11 @@ final class NativeBridge: NSObject {
     var attrs = keychainQuery(key)
     attrs[kSecValueData as String] = Data(value.utf8)
     attrs[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-    return SecItemAdd(attrs as CFDictionary, nil) == errSecSuccess
+    if SecItemAdd(attrs as CFDictionary, nil) == errSecSuccess { return true }
+    // Ad-hoc release builds have a new code signature on every update, so the
+    // Keychain may refuse (or prompt for) items written by the previous build.
+    // Keep working through a 0600 JSON fallback in Application Support.
+    return writeFileSecret(key, value)
   }
 
   private func secretRead(_ key: String) -> String? {
@@ -103,14 +116,64 @@ final class NativeBridge: NSObject {
     query[kSecReturnData as String] = true
     query[kSecMatchLimit as String] = kSecMatchLimitOne
     var item: CFTypeRef?
-    guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-          let data = item as? Data else { return nil }
-    return String(data: data, encoding: .utf8)
+    if SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+       let data = item as? Data,
+       let value = String(data: data, encoding: .utf8),
+       !value.isEmpty {
+      return value
+    }
+    return fileSecrets()[key]
   }
 
   private func secretDelete(_ key: String) -> Bool {
     guard !key.isEmpty else { return false }
-    return SecItemDelete(keychainQuery(key) as CFDictionary) == errSecSuccess
+    let keychain = SecItemDelete(keychainQuery(key) as CFDictionary) == errSecSuccess
+    let file = writeFileSecret(key, nil)
+    return keychain || file
+  }
+
+  // MARK: - File fallback (same secrets.json the non-Apple platforms use)
+
+  private func secretsFileURL() -> URL? {
+    let fm = FileManager.default
+    guard let support = try? fm.url(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask,
+      appropriateFor: nil,
+      create: true
+    ) else { return nil }
+    let bundle = Bundle.main.bundleIdentifier ?? "com.seewow.seewow"
+    let dir = support
+      .appendingPathComponent(bundle)
+      .appendingPathComponent("SeeWow")
+    try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir.appendingPathComponent("secrets.json")
+  }
+
+  private func fileSecrets() -> [String: String] {
+    guard let url = secretsFileURL(),
+          let data = try? Data(contentsOf: url),
+          let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { return [:] }
+    return raw.mapValues { String(describing: $0) }
+  }
+
+  private func writeFileSecret(_ key: String, _ value: String?) -> Bool {
+    var all = fileSecrets()
+    if let value = value { all[key] = value } else { all.removeValue(forKey: key) }
+    guard let url = secretsFileURL(),
+          let data = try? JSONSerialization.data(withJSONObject: all)
+    else { return false }
+    do {
+      try data.write(to: url, options: [.atomic])
+      try FileManager.default.setAttributes(
+        [.posixPermissions: 0o600],
+        ofItemAtPath: url.path
+      )
+      return true
+    } catch {
+      return false
+    }
   }
 
   // MARK: - SMB (NetFS)
@@ -163,7 +226,16 @@ final class NativeBridge: NSObject {
     }
     var mountpoints: CFArray?
     let point = URL(fileURLWithPath: mountPath)
-    let status = fn(url as CFURL, point as CFURL, username as CFString, password as CFString, nil, nil, &mountpoints)
+    // Empty credentials mean guest/current-user, not a literal empty password.
+    let status = fn(
+      url as CFURL,
+      point as CFURL,
+      username.isEmpty ? nil : username as CFString,
+      password.isEmpty ? nil : password as CFString,
+      nil,
+      nil,
+      &mountpoints
+    )
     if status != 0 {
       let authCodes: Set<Int32> = [-5995, -5996, -5997, -6003, -6004]
       throw BridgeError(

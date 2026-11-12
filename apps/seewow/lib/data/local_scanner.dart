@@ -35,147 +35,171 @@ class LocalScanner {
     if (!await root.exists())
       throw FileSystemException('文件夹不存在或未挂载', source.location);
     final results = <MediaItem>[];
-    await for (final entity in root.list(recursive: true, followLinks: false)) {
-      if (entity is! File) continue;
-      final name = entity.uri.pathSegments.last;
-      if (name.startsWith('.')) continue;
-      final dot = name.lastIndexOf('.');
-      if (dot <= 0) continue;
-      final ext = name.substring(dot + 1).toLowerCase();
-      if (!_videoExt.contains(ext)) continue;
-      if (name.toLowerCase().contains('sample')) continue;
-      final parent = entity.parent;
-      final segs = parent.uri.pathSegments.where((s) => s.isNotEmpty).toList();
-      final parentName = segs.isEmpty ? '' : segs.last;
-      final parsed = FilenameParser.parse(
-        name,
-        parentFolder: parsedShowFolder(parentName) ? parentName : null,
-      );
-      final isEpisode = parsed.season != null && parsed.episode != null;
-      // Artwork lives one level up for episodes: Show/poster.jpg, Show/fanart.jpg.
-      final artDir =
-          isEpisode &&
-              parsedShowFolder(parentName) &&
-              parent.parent.path != root.path
-          ? parent.parent
-          : parent;
-      final poster =
-          await _findArt(parent, [
-            '${name.substring(0, dot)}-poster.jpg',
-            '${name.substring(0, dot)}-poster.png',
-          ]) ??
-          await _findArt(artDir, const [
-            'poster.jpg',
-            'folder.jpg',
-            'cover.jpg',
-            'poster.png',
-          ]) ??
-          await _findArt(parent, const [
-            'poster.jpg',
-            'folder.jpg',
-            'cover.jpg',
-            'poster.png',
-          ]);
-      final fanart =
-          await _findArt(parent, [
-            '${name.substring(0, dot)}-fanart.jpg',
-            '${name.substring(0, dot)}-fanart.png',
-          ]) ??
-          await _findArt(artDir, const [
-            'fanart.jpg',
-            'backdrop.jpg',
-            'fanart.png',
-          ]) ??
-          await _findArt(parent, const [
-            'fanart.jpg',
-            'backdrop.jpg',
-            'fanart.png',
-          ]);
-      final stat = await entity.stat();
-      final id = sha1
-          .convert(utf8.encode(entity.path))
-          .toString()
-          .substring(0, 20);
-      final showTitle = isEpisode
-          ? (parsed.showTitle ?? _cleanFolder(artDir.path))
-          : null;
-      final title = isEpisode
-          ? (parsed.episode != null ? '第 ${parsed.episode} 集' : parsed.title)
-          : parsed.title;
-      final nfo = await NfoInfo.read([
-        File('${entity.path.substring(0, entity.path.lastIndexOf('.'))}.nfo'),
-        if (!isEpisode) File('${parent.path}/movie.nfo'),
-      ]);
-      final showNfo = isEpisode
-          ? await NfoInfo.read([
-              File('${artDir.path}/tvshow.nfo'),
-              File('${parent.parent.path}/tvshow.nfo'),
-            ])
-          : null;
-      final demo = source.name.contains('演示')
-          ? _demoMeta[_normalize(isEpisode ? (showTitle ?? '') : title)]
-          : null;
-      results.add(
-        MediaItem(
-          id: id,
-          sourceId: source.id,
-          aiAllowed: source.providerId != 'telegramLocal',
-          metadata: (nfo ?? showNfo)?.asMetadata(
-            fallbackTitle: title,
-            mediaType: isEpisode ? 'episode' : 'movie',
-            inherit: showNfo,
+    final files = <File>[];
+    final dirs = <Directory>[root];
+    while (dirs.isNotEmpty) {
+      final dir = dirs.removeLast();
+      try {
+        for (final entry in await dir.list(followLinks: false).toList()) {
+          if (entry is Directory)
+            dirs.add(entry);
+          else if (entry is File)
+            files.add(entry);
+        }
+      } on FileSystemException {
+        // A protected or disconnected subfolder must not abort the scan.
+        continue;
+      }
+    }
+    files.sort((a, b) => a.path.compareTo(b.path));
+    for (final entity in files) {
+      try {
+        final name = entity.uri.pathSegments.last;
+        if (name.startsWith('.')) continue;
+        final dot = name.lastIndexOf('.');
+        if (dot <= 0) continue;
+        final ext = name.substring(dot + 1).toLowerCase();
+        if (!_videoExt.contains(ext)) continue;
+        if (name.toLowerCase().contains('sample')) continue;
+        final parent = entity.parent;
+        final segs = parent.uri.pathSegments
+            .where((s) => s.isNotEmpty)
+            .toList();
+        final parentName = segs.isEmpty ? '' : segs.last;
+        final parsed = FilenameParser.parse(
+          name,
+          parentFolder: parsedShowFolder(parentName) ? parentName : null,
+        );
+        final isEpisode = parsed.season != null && parsed.episode != null;
+        // Artwork lives one level up for episodes: Show/poster.jpg, Show/fanart.jpg.
+        final artDir =
+            isEpisode &&
+                parsedShowFolder(parentName) &&
+                parent.parent.path != root.path
+            ? parent.parent
+            : parent;
+        final poster =
+            await _findArt(parent, [
+              '${name.substring(0, dot)}-poster.jpg',
+              '${name.substring(0, dot)}-poster.png',
+            ]) ??
+            await _findArt(artDir, const [
+              'poster.jpg',
+              'folder.jpg',
+              'cover.jpg',
+              'poster.png',
+            ]) ??
+            await _findArt(parent, const [
+              'poster.jpg',
+              'folder.jpg',
+              'cover.jpg',
+              'poster.png',
+            ]);
+        final fanart =
+            await _findArt(parent, [
+              '${name.substring(0, dot)}-fanart.jpg',
+              '${name.substring(0, dot)}-fanart.png',
+            ]) ??
+            await _findArt(artDir, const [
+              'fanart.jpg',
+              'backdrop.jpg',
+              'fanart.png',
+            ]) ??
+            await _findArt(parent, const [
+              'fanart.jpg',
+              'backdrop.jpg',
+              'fanart.png',
+            ]);
+        final stat = await entity.stat();
+        final id = sha1
+            .convert(utf8.encode(entity.path))
+            .toString()
+            .substring(0, 20);
+        final showTitle = isEpisode
+            ? (parsed.showTitle ?? _cleanFolder(artDir.path))
+            : null;
+        final title = isEpisode
+            ? (parsed.episode != null ? '第 ${parsed.episode} 集' : parsed.title)
+            : parsed.title;
+        final nfo = await NfoInfo.read([
+          File('${entity.path.substring(0, entity.path.lastIndexOf('.'))}.nfo'),
+          if (!isEpisode) File('${parent.path}/movie.nfo'),
+        ]);
+        final showNfo = isEpisode
+            ? await NfoInfo.read([
+                File('${artDir.path}/tvshow.nfo'),
+                File('${parent.parent.path}/tvshow.nfo'),
+              ])
+            : null;
+        final demo = source.name.contains('演示')
+            ? _demoMeta[_normalize(isEpisode ? (showTitle ?? '') : title)]
+            : null;
+        results.add(
+          MediaItem(
+            id: id,
+            sourceId: source.id,
+            aiAllowed: source.providerId != 'telegramLocal',
+            metadata: (nfo ?? showNfo)?.asMetadata(
+              fallbackTitle: title,
+              mediaType: isEpisode ? 'episode' : 'movie',
+              inherit: showNfo,
+            ),
+            kind: isEpisode ? MediaKind.episode : MediaKind.movie,
+            title: nfo?.title ?? title,
+            locator: entity.path,
+            showTitle: showNfo?.title ?? nfo?.showTitle ?? showTitle,
+            season: nfo?.season ?? parsed.season,
+            episode: nfo?.episode ?? parsed.episode,
+            year: nfo?.year ?? showNfo?.year ?? parsed.year ?? demo?.year,
+            quality: parsed.quality,
+            posterUrl:
+                poster?.path ??
+                NfoInfo.artwork(
+                  nfo?.poster ?? showNfo?.poster,
+                  (nfo?.poster != null ? nfo?.directory : showNfo?.directory) ??
+                      parent.uri,
+                ),
+            backdropUrl:
+                fanart?.path ??
+                NfoInfo.artwork(
+                  nfo?.backdrop ?? showNfo?.backdrop,
+                  (nfo?.backdrop != null
+                          ? nfo?.directory
+                          : showNfo?.directory) ??
+                      parent.uri,
+                ) ??
+                poster?.path,
+            addedAt: stat.modified,
+            fileSize: stat.size,
+            container: ext.toUpperCase(),
+            rating: nfo?.rating ?? showNfo?.rating ?? demo?.rating,
+            genres: nfo?.genres.isNotEmpty == true
+                ? nfo!.genres
+                : showNfo?.genres.isNotEmpty == true
+                ? showNfo!.genres
+                : demo?.genres ?? const [],
+            overview: nfo?.overview.isNotEmpty == true
+                ? nfo!.overview
+                : showNfo?.overview.isNotEmpty == true
+                ? showNfo!.overview
+                : demo?.overview ?? '',
+            duration: nfo != null && nfo.duration > 0
+                ? nfo.duration
+                : demo?.duration ?? 0,
+            position: demo == null
+                ? 0
+                : isEpisode
+                ? (_normalize(showTitle ?? '') == 'dark'
+                      ? demo.duration * 0.42
+                      : 0)
+                : (_normalize(title) == 'dune part two'
+                      ? demo.duration * 0.18
+                      : 0),
           ),
-          kind: isEpisode ? MediaKind.episode : MediaKind.movie,
-          title: nfo?.title ?? title,
-          locator: entity.path,
-          showTitle: showNfo?.title ?? nfo?.showTitle ?? showTitle,
-          season: nfo?.season ?? parsed.season,
-          episode: nfo?.episode ?? parsed.episode,
-          year: nfo?.year ?? showNfo?.year ?? parsed.year ?? demo?.year,
-          quality: parsed.quality,
-          posterUrl:
-              poster?.path ??
-              NfoInfo.artwork(
-                nfo?.poster ?? showNfo?.poster,
-                (nfo?.poster != null ? nfo?.directory : showNfo?.directory) ??
-                    parent.uri,
-              ),
-          backdropUrl:
-              fanart?.path ??
-              NfoInfo.artwork(
-                nfo?.backdrop ?? showNfo?.backdrop,
-                (nfo?.backdrop != null ? nfo?.directory : showNfo?.directory) ??
-                    parent.uri,
-              ) ??
-              poster?.path,
-          addedAt: stat.modified,
-          fileSize: stat.size,
-          container: ext.toUpperCase(),
-          rating: nfo?.rating ?? showNfo?.rating ?? demo?.rating,
-          genres: nfo?.genres.isNotEmpty == true
-              ? nfo!.genres
-              : showNfo?.genres.isNotEmpty == true
-              ? showNfo!.genres
-              : demo?.genres ?? const [],
-          overview: nfo?.overview.isNotEmpty == true
-              ? nfo!.overview
-              : showNfo?.overview.isNotEmpty == true
-              ? showNfo!.overview
-              : demo?.overview ?? '',
-          duration: nfo != null && nfo.duration > 0
-              ? nfo.duration
-              : demo?.duration ?? 0,
-          position: demo == null
-              ? 0
-              : isEpisode
-              ? (_normalize(showTitle ?? '') == 'dark'
-                    ? demo.duration * 0.42
-                    : 0)
-              : (_normalize(title) == 'dune part two'
-                    ? demo.duration * 0.18
-                    : 0),
-        ),
-      );
+        );
+      } on FileSystemException {
+        // Unreadable files are skipped; the rest of the folder remains usable.
+      }
     }
     results.sort(
       (a, b) =>
