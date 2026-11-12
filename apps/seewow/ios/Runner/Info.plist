@@ -27,7 +27,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>SeeWow 需要连接你选择的 NAS、媒体服务器和局域网网关，以浏览片库并播放影片。</string>
+	<string>SeeWow 需要连接你选择的 NAS、媒体服务器和局域网网关；手机遥控也需要访问同一 Wi-Fi 下的电脑。</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

@@ -5,6 +5,7 @@ import '../design/cinema_widgets.dart';
 import '../design/skin.dart';
 import '../design/tokens.dart';
 import 'metadata_dialog.dart';
+import 'remote_view.dart';
 import 'custom_scraper_view.dart';
 import 'cover_generation_view.dart';
 import 'playback_settings_view.dart';
@@ -61,6 +62,12 @@ class SettingsView extends StatelessWidget {
                 ),
                 Divider(color: WowColors.line),
                 const WatchAiSettingsTile(),
+                ListTile(
+                  leading: const Icon(Icons.settings_remote_outlined),
+                  title: const Text('手机遥控电脑'),
+                  subtitle: const Text('同一 Wi-Fi 下，用手机控制电脑上的播放'),
+                  onTap: () => showRemoteControl(context),
+                ),
                 ListTile(
                   leading: const Icon(Icons.record_voice_over_outlined),
                   title: const Text('语音译配 API · 实验性'),

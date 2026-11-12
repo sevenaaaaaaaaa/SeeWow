@@ -12,6 +12,8 @@ import '../design/theme.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import '../playback/playback_preferences.dart';
+import '../remote/remote_server.dart';
+import '../remote/remote_settings.dart';
 import 'app_shell.dart';
 
 class SeeWowApp extends StatefulWidget {
@@ -35,6 +37,17 @@ class _SeeWowAppState extends State<SeeWowApp> {
     await WowSkin.I.load();
     await WatchAiSettings.I.load();
     await PlaybackPreferences.I.load();
+    await RemoteSettings.instance.load();
+    if (RemoteSettings.instance.enabled) {
+      try {
+        await RemoteServer.instance.start(
+          code: RemoteSettings.instance.code,
+          name: Platform.localHostname,
+        );
+      } catch (_) {
+        // The switch page explains and retries if the port is unavailable.
+      }
+    }
     await _store.load();
     await _iptv.load();
     final scanner = SourceScanner();

@@ -33,6 +33,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../design/pressable.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
+import '../remote/remote_hub.dart';
 
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
@@ -54,7 +55,8 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver
+    implements RemotePlayback {
   late final WatchAiController _watchAi;
   StreamSubscription<List<String>>? _subtitleSub;
   late final Player _player;
@@ -128,6 +130,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _window.addListener(_aiChanged);
     _introDone = widget.isLive || widget.item.kind == MediaKind.audio;
     _prefs.addListener(_playbackPreferencesChanged);
+    RemoteHub.instance.attach(this);
     PlaybackWindow.channel.setMethodCallHandler(_platformEvent);
     _subtitleSub = _player.stream.subtitle.listen(
       (lines) => _watchAi.setSubtitle(
@@ -1003,8 +1006,44 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (mounted) _reveal();
   }
 
+  // Remote playback surface used by the LAN remote server.
+  @override
+  String get remoteTitle => widget.item.displayTitle;
+  @override
+  Duration get remotePosition =>
+      Duration(milliseconds: (_position * 1000).round());
+  @override
+  Duration get remoteDuration =>
+      Duration(milliseconds: (_duration * 1000).round());
+  @override
+  bool get remotePlaying => _playing;
+  @override
+  double get remoteVolume => _volume;
+  @override
+  Future<void> remoteToggle() async {
+    if (_playing) {
+      await _player.pause();
+    } else {
+      await _player.play();
+    }
+  }
+
+  @override
+  Future<void> remoteSeek(Duration position) async {
+    if (widget.isLive) return;
+    final total = remoteDuration;
+    var target = position;
+    if (target < Duration.zero) target = Duration.zero;
+    if (total > Duration.zero && target > total) target = total;
+    await _player.seek(target);
+  }
+
+  @override
+  Future<void> remoteSetVolume(double volume) => _changeVolume(volume);
+
   @override
   void dispose() {
+    RemoteHub.instance.detach(this);
     if (_mobileFullscreen) {
       unawaited(
         SystemChrome.setEnabledSystemUIMode(
