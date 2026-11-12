@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../agent/agent_controller.dart';
 import 'subscription_dialog.dart';
@@ -16,6 +17,18 @@ import '../sources/remote_files.dart';
 import '../sources/native_bridge.dart';
 import '../sources/plex_login.dart';
 import '../sources/smb_mounter.dart';
+
+/// Android 13+ scoped storage needs an explicit media grant before the raw
+/// path returned by the folder picker can be listed.
+Future<void> _requestAndroidMediaAccess() async {
+  if (!Platform.isAndroid) return;
+  try {
+    await const MethodChannel('seewow/native')
+        .invokeMethod<bool>('media.request');
+  } catch (_) {
+    // The system picker grant still applies where the plugin is unavailable.
+  }
+}
 
 List<SourceKind> _availableModes(List<SourceKind> modes) {
   final filtered = modes
@@ -108,6 +121,7 @@ Future<void> connectLocalMediaFolder(
   Future<String?> Function()? pickDirectory,
 }) async {
   try {
+    await _requestAndroidMediaAccess();
     final path = await (pickDirectory != null
         ? pickDirectory()
         : Platform.isIOS
@@ -923,16 +937,13 @@ class _ConnectDialogState extends State<_ConnectDialog> {
       );
 
   Future<void> _openPlexLink() async {
-    const url = 'https://plex.tv/link';
     try {
-      if (Platform.isMacOS)
-        await Process.run('open', [url]);
-      else if (Platform.isLinux)
-        await Process.run('xdg-open', [url]);
-      else if (Platform.isWindows)
-        await Process.run('cmd', ['/c', 'start', '', url], runInShell: true);
+      await launchUrl(
+        Uri.parse('https://plex.tv/link'),
+        mode: LaunchMode.externalApplication,
+      );
     } catch (_) {
-      // The code and link stay visible so the page can be opened by hand.
+      // The code stays visible and copyable if no browser is available.
     }
   }
 

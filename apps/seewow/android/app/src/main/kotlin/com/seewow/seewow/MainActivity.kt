@@ -3,6 +3,7 @@ package com.seewow.seewow
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import android.Manifest
 import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -55,8 +56,32 @@ class MainActivity : FlutterActivity() {
             playbackChannel?.invokeMethod("audio.routeChanged", route)
         }
     }
+    private var mediaPermissionResult: MethodChannel.Result? = null
+    private val mediaPermissionCode = 7711
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "seewow/native")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "media.request" -> {
+                        // Scoped storage: the SAF folder picker grants per-tree
+                        // access, but enumerating media by path still needs the
+                        // media runtime permission on Android 13+.
+                        val permissions = if (Build.VERSION.SDK_INT >= 33)
+                            arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_AUDIO)
+                        else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+                        val missing = permissions.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+                        if (missing.isEmpty()) result.success(true)
+                        else if (mediaPermissionResult != null) result.success(false)
+                        else {
+                            mediaPermissionResult = result
+                            requestPermissions(missing.toTypedArray(), mediaPermissionCode)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         playbackChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "seewow/playback")
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         audioManager.registerAudioDeviceCallback(audioCallback, Handler(Looper.getMainLooper()))
@@ -93,6 +118,15 @@ class MainActivity : FlutterActivity() {
             }
         }
     }
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == mediaPermissionCode) {
+            val granted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            mediaPermissionResult?.success(granted)
+            mediaPermissionResult = null
+        }
+    }
+
     override fun onPictureInPictureModeChanged(active: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(active, newConfig)
         playbackChannel?.invokeMethod("pip.mode", mapOf("active" to active))

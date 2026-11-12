@@ -193,6 +193,22 @@ void main() {
     expect(find.text('故事从这里开始'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('phone layout exposes Plex account sign-in', (tester) async {
+    addTearDown(tester.view.reset);
+    await mount(
+      tester,
+      SourcesView(store: store, iptv: iptv, onAgent: (_) {}),
+      375,
+    );
+    await tester.tap(find.text('Plex'));
+    await tester.pumpAndSettle();
+    expect(find.text('使用 Plex 账号登录'), findsOneWidget);
+    expect(find.text('Plex Token'), findsWidgets);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('library search changes the displayed results', (tester) async {
     addTearDown(tester.view.reset);
     await mount(tester, LibraryView(store: store, onOpen: (_) {}), 1440);
