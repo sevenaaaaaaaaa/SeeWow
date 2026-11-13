@@ -6,9 +6,16 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../domain/media_item.dart';
+import 'download_quality.dart';
 import 'download_task.dart';
 
-typedef DownloadItemResolver = Future<MediaItem?> Function(String itemId);
+class ResolvedMedia {
+  const ResolvedMedia(this.item, this.source);
+  final MediaItem item;
+  final MediaSource? source;
+}
+
+typedef DownloadItemResolver = Future<ResolvedMedia?> Function(String itemId);
 
 class DownloadManager extends ChangeNotifier {
   DownloadManager({this.directory, this.storageDirectory, this.resolver});
@@ -18,6 +25,7 @@ class DownloadManager extends ChangeNotifier {
   DownloadItemResolver? resolver;
   final List<DownloadTask> tasks = [];
   String? storagePath;
+  int speedLimitKbps = 0;
   bool loaded = false;
 
   Future<void> _writes = Future.value();
@@ -25,6 +33,7 @@ class DownloadManager extends ChangeNotifier {
   final Set<String> _paused = {};
   final Set<String> _cancelled = {};
   final Map<String, DateTime> _lastNotify = {};
+  final Map<String, List<(DateTime, int)>> _samples = {};
 
   int get activeCount => tasks.where((t) => t.isActive).length;
   int get completedCount => tasks.where((t) => t.isDone).length;
@@ -88,6 +97,7 @@ class DownloadManager extends ChangeNotifier {
         final raw =
             jsonDecode(await file.readAsString()) as Map<String, dynamic>;
         storagePath = raw['storagePath'] as String?;
+        speedLimitKbps = (raw['speedLimitKbps'] as num?)?.toInt() ?? 0;
         tasks
           ..clear()
           ..addAll(
@@ -112,6 +122,7 @@ class DownloadManager extends ChangeNotifier {
   Future<void> save() {
     final payload = jsonEncode({
       'storagePath': storagePath,
+      'speedLimitKbps': speedLimitKbps,
       'tasks': tasks.map((t) => t.toJson()).toList(),
     });
     final write = _writes.catchError((Object _) {}).then((_) async {
@@ -130,20 +141,31 @@ class DownloadManager extends ChangeNotifier {
     await save();
   }
 
+  Future<void> setSpeedLimit(int kbps) async {
+    speedLimitKbps = kbps.clamp(0, 1024 * 1024).toInt();
+    notifyListeners();
+    await save();
+  }
+
   Future<DownloadTask?> enqueue(
     MediaItem item, {
+    MediaSource? source,
     required String sourceName,
+    String qualityId = 'original',
   }) async {
     final existing = tasks
         .where((t) => t.itemId == item.id && !t.isFailed)
         .firstOrNull;
     if (existing != null) return existing;
+    final quality = qualityById(qualityId);
     final task = DownloadTask(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       itemId: item.id,
       title: item.displayTitle,
       sourceName: sourceName,
       sourceId: item.sourceId,
+      quality: quality.label,
+      qualityId: quality.id,
     );
     tasks.add(task);
     notifyListeners();
@@ -159,6 +181,7 @@ class DownloadManager extends ChangeNotifier {
     if (task.status == DownloadStatus.downloading ||
         task.status == DownloadStatus.queued) {
       task.status = DownloadStatus.paused;
+      task.bytesPerSecond = 0;
       notifyListeners();
       await save();
     }
@@ -169,6 +192,7 @@ class DownloadManager extends ChangeNotifier {
     if (task == null) return;
     _paused.remove(id);
     _cancelled.remove(id);
+    _samples.remove(id);
     task.status = DownloadStatus.queued;
     task.error = null;
     notifyListeners();
@@ -235,20 +259,28 @@ class DownloadManager extends ChangeNotifier {
     if (_cancelled.contains(task.id)) return;
     task.status = DownloadStatus.downloading;
     task.error = null;
+    task.bytesPerSecond = 0;
+    task.updatedAt = DateTime.now();
     notifyListeners();
     IOSink? sink;
     HttpClient? client;
     File? part;
+    final limiter = _RateLimiter(speedLimitKbps * 1024);
     try {
-      final item = await resolver?.call(task.itemId);
-      if (item == null) throw StateError('片库中找不到该条目，请重新添加');
+      final resolved = await resolver?.call(task.itemId);
+      if (resolved == null) throw StateError('片库中找不到该条目，请重新添加');
+      final item = _applyQuality(
+        resolved.item,
+        resolved.source,
+        task.qualityId,
+      );
       final uri = Uri.tryParse(item.locator);
       if (uri == null || uri.scheme.isEmpty) {
         throw StateError('该条目没有可下载的地址');
       }
-      if (uri.path.toLowerCase().endsWith('.m3u8') ||
-          item.locator.toLowerCase().contains('.m3u8')) {
-        throw StateError('HLS / 转码流暂不支持离线缓存，请选择直连片源');
+      if (uri.path.toLowerCase().endsWith('.m3u8')) {
+        await _downloadHls(task, item, uri, limiter);
+        return;
       }
       final dir = await storageDir();
       final extension = _extension(uri, item);
@@ -272,6 +304,8 @@ class DownloadManager extends ChangeNotifier {
           }
           sink.add(chunk);
           task.downloadedBytes += chunk.length;
+          _sampleSpeed(task);
+          await limiter.wait(chunk.length);
           _progressNotify(task);
         }
       } else if (uri.scheme == 'http' || uri.scheme == 'https') {
@@ -298,6 +332,8 @@ class DownloadManager extends ChangeNotifier {
           }
           sink.add(chunk);
           task.downloadedBytes += chunk.length;
+          _sampleSpeed(task);
+          await limiter.wait(chunk.length);
           _progressNotify(task);
         }
       } else {
@@ -320,11 +356,13 @@ class DownloadManager extends ChangeNotifier {
       task
         ..downloadedBytes = task.totalBytes
         ..status = DownloadStatus.completed
-        ..error = null;
+        ..error = null
+        ..bytesPerSecond = 0;
     } catch (error) {
       if (!_cancelled.contains(task.id)) {
         task.status = DownloadStatus.failed;
         task.error = _human(error);
+        task.bytesPerSecond = 0;
       }
     } finally {
       try {
@@ -340,6 +378,199 @@ class DownloadManager extends ChangeNotifier {
       notifyListeners();
       await save();
     }
+  }
+
+  Future<void> _downloadHls(
+    DownloadTask task,
+    MediaItem item,
+    Uri uri,
+    _RateLimiter limiter,
+  ) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final headers = item.httpHeaders;
+      var mediaUri = uri;
+      var body = await _fetchText(client, uri, headers);
+      final variants = _variants(body, uri);
+      if (variants.isNotEmpty) {
+        variants.sort((a, b) => a.$2.compareTo(b.$2));
+        mediaUri = variants.last.$1;
+        body = await _fetchText(client, mediaUri, headers);
+      }
+      if (RegExp(r'#EXT-X-KEY:(?!METHOD=NONE)').hasMatch(body)) {
+        throw StateError('加密 HLS 暂不支持离线缓存');
+      }
+      if (!body.contains('#EXT-X-ENDLIST')) {
+        throw StateError('直播 HLS 暂不支持离线缓存');
+      }
+      final segments = _segmentUris(body, mediaUri);
+      if (segments.isEmpty) throw StateError('HLS 播放列表没有分片');
+      final init = _mapUri(body, mediaUri);
+      final duration = _durationSeconds(body);
+      final quality = qualityById(task.qualityId);
+      final kbps = quality.bitrateKbps > 0 ? quality.bitrateKbps : 4000;
+      final dir = await storageDir();
+      final name = _safeName(item.displayTitle);
+      final suffix = task.id.length > 6
+          ? task.id.substring(task.id.length - 6)
+          : task.id;
+      final extension = init == null ? 'ts' : 'mp4';
+      final target = File('${dir.path}/$name [$suffix].$extension');
+      task.filePath = target.path;
+      final part = File('${target.path}.part');
+      if (await part.exists()) await part.delete();
+      task.downloadedBytes = 0;
+      task.totalBytes = duration > 0 ? (duration * kbps * 1000 / 8).round() : 0;
+      final sink = part.openWrite();
+      try {
+        if (init != null) {
+          await _appendHttpStream(client, init, headers, sink, task, limiter);
+        }
+        for (final segment in segments) {
+          if (_cancelled.contains(task.id) || _paused.contains(task.id)) {
+            break;
+          }
+          await _appendHttpStream(
+            client,
+            segment,
+            headers,
+            sink,
+            task,
+            limiter,
+          );
+        }
+      } finally {
+        await sink.close();
+      }
+      if (_cancelled.contains(task.id)) {
+        if (await part.exists()) await part.delete();
+        return;
+      }
+      if (_paused.contains(task.id) || task.status == DownloadStatus.paused) {
+        return;
+      }
+      task.totalBytes = task.downloadedBytes;
+      if (await target.exists()) await target.delete();
+      await part.rename(target.path);
+      task
+        ..downloadedBytes = task.totalBytes
+        ..status = DownloadStatus.completed
+        ..error = null
+        ..bytesPerSecond = 0;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<String> _fetchText(
+    HttpClient client,
+    Uri uri,
+    Map<String, String> headers,
+  ) async {
+    final request = await client.getUrl(uri);
+    headers.forEach(request.headers.set);
+    final response = await request.close();
+    if (response.statusCode != 200) {
+      throw HttpException('播放列表返回 HTTP ${response.statusCode}', uri: uri);
+    }
+    return utf8.decodeStream(response);
+  }
+
+  Future<void> _appendHttpStream(
+    HttpClient client,
+    Uri uri,
+    Map<String, String> headers,
+    IOSink sink,
+    DownloadTask task,
+    _RateLimiter limiter,
+  ) async {
+    final request = await client.getUrl(uri);
+    headers.forEach(request.headers.set);
+    final response = await request.close();
+    if (response.statusCode != 200 && response.statusCode != 206) {
+      throw HttpException('HLS 分片返回 HTTP ${response.statusCode}', uri: uri);
+    }
+    await for (final chunk in response) {
+      if (_cancelled.contains(task.id) || _paused.contains(task.id)) break;
+      sink.add(chunk);
+      task.downloadedBytes += chunk.length;
+      _sampleSpeed(task);
+      await limiter.wait(chunk.length);
+      _progressNotify(task);
+    }
+  }
+
+  List<(Uri, int)> _variants(String body, Uri base) {
+    final lines = const LineSplitter().convert(body);
+    final result = <(Uri, int)>[];
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (!line.startsWith('#EXT-X-STREAM-INF')) continue;
+      final match = RegExp(r'BANDWIDTH=(\d+)').firstMatch(line);
+      var j = i + 1;
+      while (j < lines.length &&
+          (lines[j].trim().isEmpty || lines[j].trim().startsWith('#'))) {
+        j++;
+      }
+      if (j < lines.length) {
+        result.add((
+          base.resolve(lines[j].trim()),
+          int.tryParse(match?.group(1) ?? '') ?? 0,
+        ));
+      }
+    }
+    return result;
+  }
+
+  List<Uri> _segmentUris(String body, Uri base) {
+    final result = <Uri>[];
+    for (final raw in const LineSplitter().convert(body)) {
+      final line = raw.trim();
+      if (line.isEmpty || line.startsWith('#')) continue;
+      final uri = Uri.tryParse(line);
+      if (uri != null) result.add(base.resolveUri(uri));
+    }
+    return result;
+  }
+
+  Uri? _mapUri(String body, Uri base) {
+    final match = RegExp(r'#EXT-X-MAP:URI="([^"]+)"').firstMatch(body);
+    final value = match?.group(1);
+    if (value == null || value.isEmpty) return null;
+    final uri = Uri.tryParse(value);
+    return uri == null ? null : base.resolveUri(uri);
+  }
+
+  double _durationSeconds(String body) {
+    var total = 0.0;
+    for (final match in RegExp(r'#EXTINF:([0-9.]+)').allMatches(body)) {
+      total += double.tryParse(match.group(1) ?? '') ?? 0;
+    }
+    return total;
+  }
+
+  MediaItem _applyQuality(
+    MediaItem item,
+    MediaSource? source,
+    String qualityId,
+  ) {
+    final locator = buildQualityLocator(item, source, qualityId);
+    if (locator == null) return item;
+    return item.copyWith(locator: locator);
+  }
+
+  void _sampleSpeed(DownloadTask task) {
+    final now = DateTime.now();
+    final samples = _samples.putIfAbsent(task.id, () => []);
+    samples.add((now, task.downloadedBytes));
+    samples.removeWhere((sample) => now.difference(sample.$1).inSeconds > 6);
+    if (samples.length < 2) return;
+    final elapsed = now.difference(samples.first.$1).inMilliseconds;
+    if (elapsed < 300) return;
+    final bytes = task.downloadedBytes - samples.first.$2;
+    if (bytes <= 0) return;
+    task.bytesPerSecond = (bytes * 1000 / elapsed).round();
   }
 
   void _progressNotify(DownloadTask task) {
@@ -378,5 +609,22 @@ class DownloadManager extends ChangeNotifier {
     if (error is FileSystemException) return '写入失败：${error.message}';
     final text = error.toString();
     return text.length > 140 ? text.substring(0, 140) : text;
+  }
+}
+
+class _RateLimiter {
+  _RateLimiter(this.bytesPerSecond);
+  final int bytesPerSecond;
+  final Stopwatch _clock = Stopwatch()..start();
+  int _sent = 0;
+
+  Future<void> wait(int bytes) async {
+    if (bytesPerSecond <= 0) return;
+    _sent += bytes;
+    final expectedMs = _sent * 1000 / bytesPerSecond;
+    final delta = expectedMs - _clock.elapsedMilliseconds;
+    if (delta > 0) {
+      await Future<void>.delayed(Duration(milliseconds: delta.ceil()));
+    }
   }
 }

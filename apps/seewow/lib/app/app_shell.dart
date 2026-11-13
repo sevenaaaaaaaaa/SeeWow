@@ -115,7 +115,7 @@ class _AppShellState extends State<AppShell> {
         final source = _store.sources
             .where((s) => s.id == item.sourceId)
             .firstOrNull;
-        return scanner.prepare(item, source);
+        return ResolvedMedia(await scanner.prepare(item, source), source);
       },
     );
     _downloads.load().catchError((Object error) {

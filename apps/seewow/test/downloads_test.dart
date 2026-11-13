@@ -41,53 +41,83 @@ void main() {
     expect(again.sourceName, 'Plex');
   });
 
-  test('copies a local file into the cache and exposes an offline path', () async {
-    final root = await Directory.systemTemp.createTemp('seewow-download-');
+  test(
+    'copies a local file into the cache and exposes an offline path',
+    () async {
+      final root = await Directory.systemTemp.createTemp('seewow-download-');
+      try {
+        final source = File('${root.path}/source.mp4');
+        await source.writeAsBytes(List<int>.generate(4096, (i) => i % 256));
+        final manager = DownloadManager(
+          directory: Directory('${root.path}/config'),
+          storageDirectory: Directory('${root.path}/cache'),
+          resolver: (_) async =>
+              ResolvedMedia(_item(Uri.file(source.path).toString()), null),
+        );
+        await manager.load();
+        final task = await manager.enqueue(
+          _item(Uri.file(source.path).toString()),
+          sourceName: '本地演示',
+        );
+        expect(task, isNotNull);
+        await _waitFor(manager, task!.id);
+      await manager.save();
+        final finished = manager.tasks.single;
+        expect(finished.isDone, isTrue, reason: finished.error);
+        final path = manager.pathFor('item-1');
+        expect(path, isNotNull);
+        expect(await File(path!).length(), 4096);
+        expect(manager.hasOffline('item-1'), isTrue);
+        expect(finished.title, 'Demo Movie');
+        expect(finished.totalBytes, 4096);
+      } finally {
+        await root.delete(recursive: true);
+      }
+    },
+  );
+
+  test('downloads an HLS playlist into a .ts cache file', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((request) async {
+      final response = request.response;
+      if (request.uri.path == '/playlist.m3u8') {
+        response.headers.contentType = ContentType(
+          'application',
+          'vnd.apple.mpegurl',
+        );
+        response.write(
+          '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:2\n'
+          '#EXTINF:1.0,\nseg1.ts\n#EXTINF:1.0,\nseg2.ts\n#EXT-X-ENDLIST\n',
+        );
+      } else if (request.uri.path == '/seg1.ts') {
+        response.add([1, 2, 3]);
+      } else if (request.uri.path == '/seg2.ts') {
+        response.add([4, 5, 6]);
+      } else {
+        response.statusCode = 404;
+      }
+      await response.close();
+    });
+    final root = await Directory.systemTemp.createTemp('seewow-hls-');
     try {
-      final source = File('${root.path}/source.mp4');
-      await source.writeAsBytes(List<int>.generate(4096, (i) => i % 256));
+      final url = 'http://127.0.0.1:${server.port}/playlist.m3u8';
       final manager = DownloadManager(
         directory: Directory('${root.path}/config'),
         storageDirectory: Directory('${root.path}/cache'),
-        resolver: (_) async => _item(Uri.file(source.path).toString()),
+        resolver: (_) async => ResolvedMedia(_item(url), null),
       );
       await manager.load();
-      final task = await manager.enqueue(
-        _item(Uri.file(source.path).toString()),
-        sourceName: '本地演示',
-      );
-      expect(task, isNotNull);
+      final task = await manager.enqueue(_item(url), sourceName: 'Plex');
       await _waitFor(manager, task!.id);
+      await manager.save();
       final finished = manager.tasks.single;
       expect(finished.isDone, isTrue, reason: finished.error);
       final path = manager.pathFor('item-1');
-      expect(path, isNotNull);
-      expect(await File(path!).length(), 4096);
-      expect(manager.hasOffline('item-1'), isTrue);
-      expect(finished.title, 'Demo Movie');
-      expect(finished.totalBytes, 4096);
+      expect(path, endsWith('.ts'));
+      expect(await File(path!).readAsBytes(), [1, 2, 3, 4, 5, 6]);
+      expect(finished.totalBytes, 6);
     } finally {
-      await root.delete(recursive: true);
-    }
-  });
-
-  test('rejects HLS playback locators for offline caching', () async {
-    final root = await Directory.systemTemp.createTemp('seewow-download-hls-');
-    try {
-      final manager = DownloadManager(
-        directory: Directory('${root.path}/config'),
-        storageDirectory: Directory('${root.path}/cache'),
-        resolver: (_) async => _item('https://example.test/movie.m3u8'),
-      );
-      await manager.load();
-      final task = await manager.enqueue(
-        _item('https://example.test/movie.m3u8'),
-        sourceName: 'Plex',
-      );
-      await _waitFor(manager, task!.id);
-      expect(manager.tasks.single.isFailed, isTrue);
-      expect(manager.tasks.single.error, contains('HLS'));
-    } finally {
+      await server.close(force: true);
       await root.delete(recursive: true);
     }
   });

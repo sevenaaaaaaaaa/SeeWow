@@ -8,6 +8,7 @@ class DownloadTask {
     required this.sourceName,
     this.sourceId = '',
     this.quality = '原始画质',
+    this.qualityId = 'original',
     this.filePath,
     this.totalBytes = 0,
     this.downloadedBytes = 0,
@@ -20,6 +21,8 @@ class DownloadTask {
 
   final String id, itemId, title, sourceName, sourceId;
   final String quality;
+  final String qualityId;
+  int bytesPerSecond = 0;
   final DateTime createdAt;
   String? filePath;
   int totalBytes;
@@ -48,6 +51,33 @@ class DownloadTask {
     DownloadStatus.failed => '失败',
   };
 
+  Duration? get remaining {
+    if (isDone || bytesPerSecond <= 0 || totalBytes <= 0) return null;
+    final left = totalBytes - downloadedBytes;
+    if (left <= 0) return null;
+    return Duration(seconds: (left / bytesPerSecond).ceil());
+  }
+
+  String get etaLabel {
+    final left = remaining;
+    if (left == null) return '';
+    if (left.inHours > 0) {
+      return '剩余 ${left.inHours} 小时 ${left.inMinutes % 60} 分';
+    }
+    if (left.inMinutes > 0) {
+      return '剩余 ${left.inMinutes} 分 ${left.inSeconds % 60} 秒';
+    }
+    return '剩余 ${left.inSeconds} 秒';
+  }
+
+  String get speedLabel {
+    if (bytesPerSecond <= 0) return '';
+    final mb = bytesPerSecond / (1024 * 1024);
+    return mb >= 1
+        ? '${mb.toStringAsFixed(1)} MB/s'
+        : '${(bytesPerSecond / 1024).toStringAsFixed(0)} KB/s';
+  }
+
   String get sizeLabel {
     if (totalBytes <= 0) return '计算中';
     final mb = totalBytes / (1024 * 1024);
@@ -62,6 +92,7 @@ class DownloadTask {
     'sourceName': sourceName,
     'sourceId': sourceId,
     'quality': quality,
+    'qualityId': qualityId,
     'filePath': filePath,
     'totalBytes': totalBytes,
     'downloadedBytes': downloadedBytes,
@@ -84,6 +115,7 @@ class DownloadTask {
       sourceName: json['sourceName'] as String? ?? '未知来源',
       sourceId: json['sourceId'] as String? ?? '',
       quality: json['quality'] as String? ?? '原始画质',
+      qualityId: json['qualityId'] as String? ?? 'original',
       filePath: json['filePath'] as String?,
       totalBytes: (json['totalBytes'] as num?)?.toInt() ?? 0,
       downloadedBytes: (json['downloadedBytes'] as num?)?.toInt() ?? 0,

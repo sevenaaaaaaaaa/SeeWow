@@ -183,20 +183,18 @@ class DetailView extends StatelessWidget {
                                           onPlay(current);
                                           return;
                                         }
-                                        final sourceName =
-                                            store.sources
-                                                .where(
-                                                  (s) =>
-                                                      s.id == current.sourceId,
-                                                )
-                                                .firstOrNull
-                                                ?.name ??
-                                            '本地';
+                                        final source = store.sources
+                                            .where(
+                                              (s) => s.id == current.sourceId,
+                                            )
+                                            .firstOrNull;
+                                        final sourceName = source?.name ?? '本地';
                                         final started = await showDownloadSheet(
                                           context,
                                           manager: manager,
                                           item: current,
                                           sourceName: sourceName,
+                                          source: source,
                                         );
                                         if (started == true &&
                                             context.mounted) {

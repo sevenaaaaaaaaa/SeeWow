@@ -7,6 +7,7 @@ import '../design/cinema_widgets.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import 'download_manager.dart';
+import 'download_quality.dart';
 import 'download_task.dart';
 
 Future<void> showDownloads(
@@ -77,6 +78,30 @@ class DownloadsPage extends StatelessWidget {
                   '${manager.completedCount} 部已离线 · ${_size(manager.offlineBytes)}',
                   style: TextStyle(fontSize: 11, color: WowColors.muted),
                 ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '限速',
+                      style: TextStyle(fontSize: 11, color: WowColors.muted),
+                    ),
+                    const SizedBox(width: 4),
+                    DropdownButton<int>(
+                      value: manager.speedLimitKbps,
+                      underline: const SizedBox.shrink(),
+                      style: TextStyle(fontSize: 12, color: WowColors.text),
+                      items: const [
+                        DropdownMenuItem(value: 0, child: Text('不限速')),
+                        DropdownMenuItem(value: 1024, child: Text('1 MB/s')),
+                        DropdownMenuItem(value: 2048, child: Text('2 MB/s')),
+                        DropdownMenuItem(value: 5120, child: Text('5 MB/s')),
+                        DropdownMenuItem(value: 10240, child: Text('10 MB/s')),
+                        DropdownMenuItem(value: 20480, child: Text('20 MB/s')),
+                      ],
+                      onChanged: (value) => manager.setSpeedLimit(value ?? 0),
+                    ),
+                  ],
+                ),
                 if (!Platform.isIOS)
                   OutlinedButton.icon(
                     onPressed: () => _chooseFolder(context),
@@ -98,6 +123,11 @@ class DownloadsPage extends StatelessWidget {
 
   Widget _taskCard(BuildContext context, DownloadTask task) {
     final failed = task.isFailed;
+    final progressText = [
+      '${(task.progress * 100).round()}% · ${_size(task.downloadedBytes)} / ${task.sizeLabel}',
+      if (task.speedLabel.isNotEmpty) task.speedLabel,
+      if (task.etaLabel.isNotEmpty) task.etaLabel,
+    ].join(' · ');
     return CinemaPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -153,7 +183,7 @@ class DownloadsPage extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              '${(task.progress * 100).round()}% · ${_size(task.downloadedBytes)} / ${task.sizeLabel}',
+              progressText,
               style: TextStyle(fontSize: 10, color: WowColors.muted),
             ),
           ],
@@ -237,10 +267,15 @@ Future<bool?> showDownloadSheet(
   required DownloadManager manager,
   required MediaItem item,
   required String sourceName,
+  MediaSource? source,
 }) => showDialog<bool>(
   context: context,
-  builder: (_) =>
-      _DownloadSheet(manager: manager, item: item, sourceName: sourceName),
+  builder: (_) => _DownloadSheet(
+    manager: manager,
+    item: item,
+    sourceName: sourceName,
+    source: source,
+  ),
 );
 
 class _DownloadSheet extends StatefulWidget {
@@ -248,10 +283,12 @@ class _DownloadSheet extends StatefulWidget {
     required this.manager,
     required this.item,
     required this.sourceName,
+    this.source,
   });
   final DownloadManager manager;
   final MediaItem item;
   final String sourceName;
+  final MediaSource? source;
 
   @override
   State<_DownloadSheet> createState() => _DownloadSheetState();
@@ -259,6 +296,7 @@ class _DownloadSheet extends StatefulWidget {
 
 class _DownloadSheetState extends State<_DownloadSheet> {
   bool _busy = false;
+  String _qualityId = 'original';
 
   @override
   Widget build(BuildContext context) => AlertDialog(
@@ -283,26 +321,25 @@ class _DownloadSheetState extends State<_DownloadSheet> {
           const SizedBox(height: 16),
           Text('画质', style: WowType.monoLabel(10, color: WowColors.muted)),
           const SizedBox(height: 4),
-          ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(
-              Icons.radio_button_checked,
-              color: WowColors.accent,
+          for (final quality in downloadQualitiesFor(widget.source))
+            RadioListTile<String>(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              value: quality.id,
+              groupValue: _qualityId,
+              onChanged: _busy
+                  ? null
+                  : (value) => setState(() => _qualityId = value ?? 'original'),
+              title: Text(quality.label, style: const TextStyle(fontSize: 13)),
             ),
-            title: const Text('原始画质（直连文件）', style: TextStyle(fontSize: 13)),
-          ),
-          const ListTile(
-            dense: true,
-            enabled: false,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.radio_button_off),
-            title: Text('数据节省（转码）', style: TextStyle(fontSize: 13)),
-            subtitle: Text(
-              '当前片源只提供直连文件，暂不支持转码下载',
-              style: TextStyle(fontSize: 10),
+          if (downloadQualitiesFor(widget.source).length == 1)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                '该片源只提供直连文件；转码下载仅支持 Plex / Emby。',
+                style: TextStyle(fontSize: 10, color: WowColors.muted),
+              ),
             ),
-          ),
           const SizedBox(height: 8),
           Text('存放位置', style: WowType.monoLabel(10, color: WowColors.muted)),
           const SizedBox(height: 4),
@@ -343,7 +380,12 @@ class _DownloadSheetState extends State<_DownloadSheet> {
   Future<void> _start() async {
     setState(() => _busy = true);
     try {
-      await widget.manager.enqueue(widget.item, sourceName: widget.sourceName);
+      await widget.manager.enqueue(
+        widget.item,
+        source: widget.source,
+        sourceName: widget.sourceName,
+        qualityId: _qualityId,
+      );
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
       if (!mounted) return;
