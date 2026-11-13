@@ -316,6 +316,33 @@ class _AppShellState extends State<AppShell> {
                               ),
                               const SizedBox(width: 10),
                               IconButton(
+                                tooltip: '刷新片库',
+                                onPressed: widget.store.scanning
+                                    ? null
+                                    : () async {
+                                        await widget.store.refreshAll();
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('片库已刷新'),
+                                            duration: Duration(seconds: 1),
+                                          ),
+                                        );
+                                      },
+                                icon: widget.store.scanning
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.refresh, size: 19),
+                              ),
+                              const SizedBox(width: 4),
+                              IconButton(
                                 tooltip: '我的待看',
                                 onPressed: () =>
                                     _library(watch: WatchFilter.watchlist),

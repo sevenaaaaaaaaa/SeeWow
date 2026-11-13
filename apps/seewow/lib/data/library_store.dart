@@ -258,6 +258,19 @@ class LibraryStore extends ChangeNotifier {
     }
   }
 
+  /// Pull-to-refresh: rescan every enabled source once, keeping partial
+  /// results when one source is offline.
+  Future<void> refreshAll() async {
+    for (final source in List<MediaSource>.from(sources)) {
+      if (!source.enabled) continue;
+      try {
+        await rescan(source);
+      } catch (_) {
+        // rescan already records sourceErrors; keep going for the rest.
+      }
+    }
+  }
+
   Future<List<MediaItem>> Function(MediaSource source)? scanner;
   Future<void> updatePosition(
     MediaItem item,

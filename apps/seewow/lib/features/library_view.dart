@@ -5,6 +5,7 @@ import '../design/cinema_widgets.dart';
 import '../design/tokens.dart';
 import '../design/skin.dart';
 import '../domain/library_intelligence.dart';
+import '../domain/catalog_category.dart';
 import '../domain/media_item.dart';
 import 'metadata_language_batch.dart';
 
@@ -34,6 +35,7 @@ class _LibraryViewState extends State<LibraryView> {
   late final TextEditingController _search;
   String? _source, _genre;
   MediaKind? _kind;
+  CatalogCategory _category = CatalogCategory.all;
   late WatchFilter _watch;
   LibrarySort _sort = LibrarySort.recent;
   bool _list = false, _selecting = false, _audit = false;
@@ -72,6 +74,9 @@ class _LibraryViewState extends State<LibraryView> {
           items = items
               .where((i) => widget.collection!.itemIds.contains(i.id))
               .toList();
+        if (_category != CatalogCategory.all) {
+          items = filterCategory(items, _category);
+        }
         final audit = LibraryAudit(store.items);
         if (_audit) {
           final ids = {
@@ -89,346 +94,396 @@ class _LibraryViewState extends State<LibraryView> {
         final selectedItems = store.items
             .where((i) => _selected.contains(i.id))
             .toList();
-        return CustomScrollView(
-          slivers: [
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(pad, 24, pad, 20),
-              sliver: SliverToBoxAdapter(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    PageIntro(
-                      eyebrow: widget.collection == null
-                          ? 'THE COLLECTION'
-                          : 'SAVED PLAYLIST',
-                      title:
-                          widget.collection?.name ??
-                          (widget.initialKind == MediaKind.audio
-                              ? '你的音乐库'
-                              : '你的媒体库'),
-                      description:
-                          widget.collection?.description.isNotEmpty == true
-                          ? widget.collection!.description
-                          : '${store.movies.length} 部电影 · ${store.series.length} 部剧集 · ${store.items.where((i) => i.kind == MediaKind.audio).length} 首音乐 · ${store.sources.length} 个来源，统一管理。',
-                      action: OutlinedButton.icon(
-                        onPressed: widget.onSources,
-                        icon: const Icon(Icons.add, size: 16),
-                        label: const Text('连接片源'),
+        return RefreshIndicator(
+          onRefresh: _refresh,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(pad, 24, pad, 20),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      PageIntro(
+                        eyebrow: widget.collection == null
+                            ? 'THE COLLECTION'
+                            : 'SAVED PLAYLIST',
+                        title:
+                            widget.collection?.name ??
+                            (widget.initialKind == MediaKind.audio
+                                ? '你的音乐库'
+                                : '你的媒体库'),
+                        description:
+                            widget.collection?.description.isNotEmpty == true
+                            ? widget.collection!.description
+                            : '${store.movies.length} 部电影 · ${store.series.length} 部剧集 · ${store.items.where((i) => i.kind == MediaKind.audio).length} 首音乐 · ${store.sources.length} 个来源，统一管理。',
+                        action: OutlinedButton.icon(
+                          onPressed: widget.onSources,
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text('连接片源'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _search,
-                            onChanged: (_) => setState(() {}),
-                            decoration: InputDecoration(
-                              hintText: '搜索片名、年份、类型、简介…',
-                              prefixIcon: const Icon(Icons.search, size: 19),
-                              suffixIcon: _search.text.isEmpty
-                                  ? null
-                                  : IconButton(
-                                      tooltip: '清空搜索',
-                                      onPressed: () => setState(_search.clear),
-                                      icon: const Icon(Icons.close, size: 18),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _search,
+                              onChanged: (_) => setState(() {}),
+                              decoration: InputDecoration(
+                                hintText: '搜索片名、年份、类型、简介…',
+                                prefixIcon: const Icon(Icons.search, size: 19),
+                                suffixIcon: _search.text.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        tooltip: '清空搜索',
+                                        onPressed: () =>
+                                            setState(_search.clear),
+                                        icon: const Icon(Icons.close, size: 18),
+                                      ),
+                                isDense: true,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          IconButton(
+                            tooltip: _list ? '海报视图' : '列表视图',
+                            onPressed: () => setState(() => _list = !_list),
+                            icon: Icon(
+                              _list
+                                  ? Icons.grid_view_rounded
+                                  : Icons.view_list_rounded,
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: '批量选择',
+                            isSelected: _selecting,
+                            onPressed: () => setState(() {
+                              _selecting = !_selecting;
+                              _selected.clear();
+                            }),
+                            icon: const Icon(Icons.checklist_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final category in CatalogCategory.values)
+                            ChoiceChip(
+                              label: Text(
+                                categoryLabel(category),
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              selected: _category == category,
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              onSelected: (_) =>
+                                  setState(() => _category = category),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _filter<String>('全部来源', _source, [
+                            for (final s in store.sources)
+                              DropdownMenuItem(
+                                value: s.id,
+                                child: Text(s.name),
+                              ),
+                          ], (v) => setState(() => _source = v)),
+                          _filter<String>('全部类型', _genre, [
+                            for (final g in genres)
+                              DropdownMenuItem(value: g, child: Text(g)),
+                          ], (v) => setState(() => _genre = v)),
+                          _filter<MediaKind>('全部媒体', _kind, const [
+                            DropdownMenuItem(
+                              value: MediaKind.movie,
+                              child: Text('电影'),
+                            ),
+                            DropdownMenuItem(
+                              value: MediaKind.episode,
+                              child: Text('剧集'),
+                            ),
+                            DropdownMenuItem(
+                              value: MediaKind.audio,
+                              child: Text('音乐'),
+                            ),
+                          ], (v) => setState(() => _kind = v)),
+                          SizedBox(
+                            width: 138,
+                            child: DropdownButtonFormField<WatchFilter>(
+                              initialValue: _watch,
+                              isExpanded: true,
+                              decoration: const InputDecoration(isDense: true),
+                              items: [
+                                for (final f in WatchFilter.values)
+                                  DropdownMenuItem(
+                                    value: f,
+                                    child: Text(
+                                      _watchLabel(f),
+                                      style: const TextStyle(fontSize: 12),
                                     ),
-                              isDense: true,
+                                  ),
+                              ],
+                              onChanged: (v) => setState(() => _watch = v!),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 138,
+                            child: DropdownButtonFormField<LibrarySort>(
+                              initialValue: _sort,
+                              isExpanded: true,
+                              decoration: const InputDecoration(isDense: true),
+                              items: [
+                                for (final f in LibrarySort.values)
+                                  DropdownMenuItem(
+                                    value: f,
+                                    child: Text(switch (f) {
+                                      LibrarySort.recent => '最近添加',
+                                      LibrarySort.title => '片名排序',
+                                      LibrarySort.rating => '评分优先',
+                                      LibrarySort.year => '最新年份',
+                                    }, style: const TextStyle(fontSize: 12)),
+                                  ),
+                              ],
+                              onChanged: (v) => setState(() => _sort = v!),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_category == CatalogCategory.shortDrama)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Text(
+                            '短剧模式 · 单集 20 分钟内优先 · ${items.length} 部',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: WowColors.accent,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        IconButton(
-                          tooltip: _list ? '海报视图' : '列表视图',
-                          onPressed: () => setState(() => _list = !_list),
-                          icon: Icon(
-                            _list
-                                ? Icons.grid_view_rounded
-                                : Icons.view_list_rounded,
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: '批量选择',
-                          isSelected: _selecting,
-                          onPressed: () => setState(() {
-                            _selecting = !_selecting;
-                            _selected.clear();
-                          }),
-                          icon: const Icon(Icons.checklist_rounded),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        _filter<String>('全部来源', _source, [
-                          for (final s in store.sources)
-                            DropdownMenuItem(value: s.id, child: Text(s.name)),
-                        ], (v) => setState(() => _source = v)),
-                        _filter<String>('全部类型', _genre, [
-                          for (final g in genres)
-                            DropdownMenuItem(value: g, child: Text(g)),
-                        ], (v) => setState(() => _genre = v)),
-                        _filter<MediaKind>('全部媒体', _kind, const [
-                          DropdownMenuItem(
-                            value: MediaKind.movie,
-                            child: Text('电影'),
-                          ),
-                          DropdownMenuItem(
-                            value: MediaKind.episode,
-                            child: Text('剧集'),
-                          ),
-                          DropdownMenuItem(
-                            value: MediaKind.audio,
-                            child: Text('音乐'),
-                          ),
-                        ], (v) => setState(() => _kind = v)),
-                        SizedBox(
-                          width: 138,
-                          child: DropdownButtonFormField<WatchFilter>(
-                            initialValue: _watch,
-                            isExpanded: true,
-                            decoration: const InputDecoration(isDense: true),
-                            items: [
-                              for (final f in WatchFilter.values)
-                                DropdownMenuItem(
-                                  value: f,
-                                  child: Text(
-                                    _watchLabel(f),
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                ),
-                            ],
-                            onChanged: (v) => setState(() => _watch = v!),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 138,
-                          child: DropdownButtonFormField<LibrarySort>(
-                            initialValue: _sort,
-                            isExpanded: true,
-                            decoration: const InputDecoration(isDense: true),
-                            items: [
-                              for (final f in LibrarySort.values)
-                                DropdownMenuItem(
-                                  value: f,
-                                  child: Text(switch (f) {
-                                    LibrarySort.recent => '最近添加',
-                                    LibrarySort.title => '片名排序',
-                                    LibrarySort.rating => '评分优先',
-                                    LibrarySort.year => '最新年份',
-                                  }, style: const TextStyle(fontSize: 12)),
-                                ),
-                            ],
-                            onChanged: (v) => setState(() => _sort = v!),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          '${items.length} 个条目',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: WowColors.muted,
-                          ),
-                        ),
-                        FilterChip(
-                          selected: _audit,
-                          avatar: const Icon(
-                            Icons.fact_check_outlined,
-                            size: 16,
-                          ),
-                          label: Text(
-                            '待整理 · ${audit.duplicates.length} 组重复 / ${audit.missingMetadata.length} 项信息缺失',
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                          onSelected: (v) => setState(() => _audit = v),
-                        ),
-                        if (items.isNotEmpty)
-                          TextButton.icon(
-                            onPressed: () => _save(items),
-                            icon: const Icon(Icons.playlist_add, size: 17),
-                            label: const Text('结果保存为片单'),
-                          ),
-                      ],
-                    ),
-                    if (_selecting)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: CinemaPanel(
-                          padding: const EdgeInsets.all(12),
-                          child: Wrap(
-                            spacing: 10,
-                            runSpacing: 8,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              Text(
-                                '已选 ${_selected.length} 项',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              TextButton(
-                                onPressed: () => setState(() {
-                                  _selected.clear();
-                                  _selected.addAll(items.map((i) => i.id));
-                                }),
-                                child: const Text('选择当前结果'),
-                              ),
-                              TextButton(
-                                onPressed: selectedItems.isEmpty
-                                    ? null
-                                    : () => store.markWatched(
-                                        selectedItems,
-                                        true,
-                                      ),
-                                child: const Text('标为已看'),
-                              ),
-                              TextButton(
-                                onPressed: selectedItems.isEmpty
-                                    ? null
-                                    : () => store.markWatched(
-                                        selectedItems,
-                                        false,
-                                      ),
-                                child: const Text('标为未看'),
-                              ),
-                              TextButton(
-                                onPressed: selectedItems.isEmpty
-                                    ? null
-                                    : () => _save(selectedItems),
-                                child: const Text('保存片单'),
-                              ),
-                              TextButton.icon(
-                                onPressed: selectedItems.isEmpty
-                                    ? null
-                                    : () => manageMetadataLanguages(
-                                        context,
-                                        store,
-                                        selectedItems,
-                                      ),
-                                icon: const Icon(Icons.translate, size: 17),
-                                label: const Text('多语言采集／本机补译'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            if (items.isEmpty)
-              SliverToBoxAdapter(
-                child: EmptyCinema(
-                  icon: Icons.video_library_outlined,
-                  title: store.items.isEmpty ? '片库还空着' : '没有匹配的影片',
-                  description: store.items.isEmpty
-                      ? '连接片源后，电影、剧集与观看进度会出现在这里。'
-                      : '试试更短的关键词，或调整来源、类型和观看状态。',
-                  action: store.items.isEmpty
-                      ? FilledButton(
-                          onPressed: widget.onSources,
-                          child: const Text('连接片源'),
-                        )
-                      : null,
-                ),
-              )
-            else if (_list)
-              SliverPadding(
-                padding: EdgeInsets.symmetric(horizontal: pad),
-                sliver: SliverList.builder(
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final i = items[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Material(
-                        color: WowColors.panel,
-                        borderRadius: BorderRadius.circular(
-                          WowSkin.I.spec.posterRadius,
-                        ),
-                        child: ListTile(
-                          onTap: () =>
-                              _selecting ? _toggle(i.id) : widget.onOpen(i),
-                          leading: _selecting
-                              ? Checkbox(
-                                  value: _selected.contains(i.id),
-                                  onChanged: (_) => _toggle(i.id),
-                                )
-                              : ClipRRect(
-                                  borderRadius: BorderRadius.circular(5),
-                                  child: SizedBox(
-                                    width: 38,
-                                    height: 52,
-                                    child: FilmArtwork(item: i),
-                                  ),
-                                ),
-                          title: Text(
-                            i.displayTitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                          subtitle: Text(
-                            '${i.year ?? '年份未知'} · ${store.sources.where((s) => s.id == i.sourceId).firstOrNull?.name ?? '未知来源'} · ${i.watched ? '已看' : '未看完'}',
+                      const SizedBox(height: 18),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            '${items.length} 个条目',
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 12,
                               color: WowColors.muted,
                             ),
                           ),
-                          trailing: IconButton(
-                            tooltip: store.taste.watchlist.contains(i.id)
-                                ? '移出待看'
-                                : '加入待看',
-                            onPressed: () => store.toggleWatchlist(i),
-                            icon: Icon(
-                              store.taste.watchlist.contains(i.id)
-                                  ? Icons.bookmark_rounded
-                                  : Icons.bookmark_border_rounded,
-                              size: 20,
+                          FilterChip(
+                            selected: _audit,
+                            visualDensity: VisualDensity.compact,
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            avatar: const Icon(
+                              Icons.fact_check_outlined,
+                              size: 14,
+                            ),
+                            label: Text(
+                              '待整理 · ${audit.duplicates.length} 组重复 / ${audit.missingMetadata.length} 项信息缺失',
+                              style: const TextStyle(fontSize: 10.5),
+                            ),
+                            onSelected: (v) => setState(() => _audit = v),
+                          ),
+                          if (items.isNotEmpty)
+                            TextButton.icon(
+                              onPressed: () => _save(items),
+                              icon: const Icon(Icons.playlist_add, size: 17),
+                              label: const Text('结果保存为片单'),
+                            ),
+                        ],
+                      ),
+                      if (_selecting)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: CinemaPanel(
+                            padding: const EdgeInsets.all(12),
+                            child: Wrap(
+                              spacing: 10,
+                              runSpacing: 8,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Text(
+                                  '已选 ${_selected.length} 项',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                TextButton(
+                                  onPressed: () => setState(() {
+                                    _selected.clear();
+                                    _selected.addAll(items.map((i) => i.id));
+                                  }),
+                                  child: const Text('选择当前结果'),
+                                ),
+                                TextButton(
+                                  onPressed: selectedItems.isEmpty
+                                      ? null
+                                      : () => store.markWatched(
+                                          selectedItems,
+                                          true,
+                                        ),
+                                  child: const Text('标为已看'),
+                                ),
+                                TextButton(
+                                  onPressed: selectedItems.isEmpty
+                                      ? null
+                                      : () => store.markWatched(
+                                          selectedItems,
+                                          false,
+                                        ),
+                                  child: const Text('标为未看'),
+                                ),
+                                TextButton(
+                                  onPressed: selectedItems.isEmpty
+                                      ? null
+                                      : () => _save(selectedItems),
+                                  child: const Text('保存片单'),
+                                ),
+                                TextButton.icon(
+                                  onPressed: selectedItems.isEmpty
+                                      ? null
+                                      : () => manageMetadataLanguages(
+                                          context,
+                                          store,
+                                          selectedItems,
+                                        ),
+                                  icon: const Icon(Icons.translate, size: 17),
+                                  label: const Text('多语言采集／本机补译'),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  },
-                ),
-              )
-            else
-              SliverPadding(
-                padding: EdgeInsets.symmetric(horizontal: pad),
-                sliver: SliverGrid.builder(
-                  itemCount: items.length,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 24,
-                    childAspectRatio: .57,
-                  ),
-                  itemBuilder: (context, n) => FilmCard(
-                    item: items[n],
-                    store: store,
-                    onOpen: () => widget.onOpen(items[n]),
-                    selectionMode: _selecting,
-                    selected: _selected.contains(items[n].id),
-                    onSelect: () => _toggle(items[n].id),
+                    ],
                   ),
                 ),
               ),
-            const SliverToBoxAdapter(child: SizedBox(height: 48)),
-          ],
+              if (items.isEmpty)
+                SliverToBoxAdapter(
+                  child: EmptyCinema(
+                    icon: Icons.video_library_outlined,
+                    title: store.items.isEmpty ? '片库还空着' : '没有匹配的影片',
+                    description: store.items.isEmpty
+                        ? '连接片源后，电影、剧集与观看进度会出现在这里。'
+                        : '试试更短的关键词，或调整来源、类型和观看状态。',
+                    action: store.items.isEmpty
+                        ? FilledButton(
+                            onPressed: widget.onSources,
+                            child: const Text('连接片源'),
+                          )
+                        : null,
+                  ),
+                )
+              else if (_list)
+                SliverPadding(
+                  padding: EdgeInsets.symmetric(horizontal: pad),
+                  sliver: SliverList.builder(
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final i = items[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Material(
+                          color: WowColors.panel,
+                          borderRadius: BorderRadius.circular(
+                            WowSkin.I.spec.posterRadius,
+                          ),
+                          child: ListTile(
+                            onTap: () =>
+                                _selecting ? _toggle(i.id) : widget.onOpen(i),
+                            leading: _selecting
+                                ? Checkbox(
+                                    value: _selected.contains(i.id),
+                                    onChanged: (_) => _toggle(i.id),
+                                  )
+                                : ClipRRect(
+                                    borderRadius: BorderRadius.circular(5),
+                                    child: SizedBox(
+                                      width: 38,
+                                      height: 52,
+                                      child: FilmArtwork(item: i),
+                                    ),
+                                  ),
+                            title: Text(
+                              i.displayTitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            subtitle: Text(
+                              '${i.year ?? '年份未知'} · ${store.sources.where((s) => s.id == i.sourceId).firstOrNull?.name ?? '未知来源'} · ${i.watched ? '已看' : '未看完'}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: WowColors.muted,
+                              ),
+                            ),
+                            trailing: IconButton(
+                              tooltip: store.taste.watchlist.contains(i.id)
+                                  ? '移出待看'
+                                  : '加入待看',
+                              onPressed: () => store.toggleWatchlist(i),
+                              icon: Icon(
+                                store.taste.watchlist.contains(i.id)
+                                    ? Icons.bookmark_rounded
+                                    : Icons.bookmark_border_rounded,
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: EdgeInsets.symmetric(horizontal: pad),
+                  sliver: SliverGrid.builder(
+                    itemCount: items.length,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: columns,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 24,
+                      childAspectRatio: .57,
+                    ),
+                    itemBuilder: (context, n) => FilmCard(
+                      item: items[n],
+                      store: store,
+                      onOpen: () => widget.onOpen(items[n]),
+                      selectionMode: _selecting,
+                      selected: _selected.contains(items[n].id),
+                      onSelect: () => _toggle(items[n].id),
+                    ),
+                  ),
+                ),
+              const SliverToBoxAdapter(child: SizedBox(height: 48)),
+            ],
+          ),
         );
       },
     ),
   );
+  Future<void> _refresh() async {
+    await widget.store.refreshAll();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('片库已刷新'), duration: Duration(seconds: 1)),
+    );
+  }
+
   void _toggle(String id) => setState(() {
     if (!_selected.remove(id)) _selected.add(id);
   });
@@ -451,7 +506,7 @@ class _LibraryViewState extends State<LibraryView> {
     List<DropdownMenuItem<T>> items,
     ValueChanged<T?> onChanged,
   ) => SizedBox(
-    width: 145,
+    width: 122,
     child: DropdownButtonFormField<T>(
       key: ValueKey('$label:$value'),
       initialValue: value,

@@ -1883,10 +1883,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                   _tool(Icons.forward_30_rounded, () => _seekBy(30)),
                 ],
                 if (compact)
-                  _tool(
-                    _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                    _toggleMute,
-                  ),
+                  _tool(Icons.repeat_rounded, _markLoop, active: _ab.enabled),
                 if (!compact) ...[
                   const SizedBox(width: 16),
                   _tool(
@@ -1911,19 +1908,31 @@ class _PlayerScreenState extends State<PlayerScreen>
                     ),
                   ),
                 ],
+                if (!compact) ...[
+                  const SizedBox(width: 6),
+                  _tool(Icons.repeat_rounded, _markLoop, active: _ab.enabled),
+                  _tool(Icons.picture_in_picture_alt_rounded, _miniPlayer),
+                ],
                 const Spacer(),
-                PopupMenuButton<double>(
-                  tooltip: '播放速度',
-                  icon: const Icon(Icons.speed, color: Colors.white, size: 20),
-                  onSelected: (v) async {
-                    if (_voice?.active == true) await _stopDubbing();
-                    await _player.setRate(v);
-                  },
-                  itemBuilder: (_) => [
-                    for (final rate in [0.75, 1.0, 1.25, 1.5, 2.0])
-                      PopupMenuItem(value: rate, child: Text('${rate}x')),
-                  ],
-                ),
+                if (compact)
+                  _tool(Icons.picture_in_picture_alt_rounded, _miniPlayer),
+                if (!compact)
+                  PopupMenuButton<double>(
+                    tooltip: '播放速度',
+                    icon: const Icon(
+                      Icons.speed,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    onSelected: (v) async {
+                      if (_voice?.active == true) await _stopDubbing();
+                      await _player.setRate(v);
+                    },
+                    itemBuilder: (_) => [
+                      for (final rate in [0.75, 1.0, 1.25, 1.5, 2.0])
+                        PopupMenuItem(value: rate, child: Text('${rate}x')),
+                    ],
+                  ),
                 _tool(
                   (_mobileFullscreen || _window.fullscreen)
                       ? Icons.fullscreen_exit_rounded
@@ -1996,7 +2005,12 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
   }
 
-  Widget _tool(IconData icon, VoidCallback onTap, {bool big = false}) {
+  Widget _tool(
+    IconData icon,
+    VoidCallback onTap, {
+    bool big = false,
+    bool active = false,
+  }) {
     return Semantics(
       button: true,
       label: icon == Icons.pause_rounded
@@ -2010,6 +2024,10 @@ class _PlayerScreenState extends State<PlayerScreen>
           : icon == Icons.fullscreen_rounded ||
                 icon == Icons.fullscreen_exit_rounded
           ? '切换全屏'
+          : icon == Icons.repeat_rounded
+          ? (active ? 'AB 循环已开启' : '设置 AB 循环')
+          : icon == Icons.picture_in_picture_alt_rounded
+          ? '画中画或小窗'
           : icon == Icons.volume_off_rounded
           ? '取消静音'
           : '静音',
@@ -2024,7 +2042,11 @@ class _PlayerScreenState extends State<PlayerScreen>
           child: Icon(
             icon,
             size: big ? 24 : 18,
-            color: big ? Colors.black : Colors.white.withValues(alpha: 0.85),
+            color: big
+                ? Colors.black
+                : active
+                ? WowColors.accent
+                : Colors.white.withValues(alpha: 0.85),
           ),
         ),
       ),
