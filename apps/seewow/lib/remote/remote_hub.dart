@@ -12,6 +12,35 @@ abstract class RemotePlayback {
   Future<void> remoteSetVolume(double volume);
 }
 
+/// One item exposed to the paired phone. Never includes file paths or tokens.
+class RemoteLibraryItem {
+  const RemoteLibraryItem({
+    required this.id,
+    required this.title,
+    required this.year,
+    required this.kind,
+    required this.duration,
+  });
+  final String id, title, kind;
+  final int year;
+  final int duration;
+
+  Map<String, Object> toJson() => {
+    'id': id,
+    'title': title,
+    'year': year,
+    'kind': kind,
+    'duration': duration,
+  };
+}
+
+/// The desktop app registers this to let a phone browse the library and open
+/// an item on the big screen.
+abstract class RemoteLibraryHost {
+  Future<List<RemoteLibraryItem>> remoteItems();
+  Future<bool> remoteOpen(String id);
+}
+
 /// One open player can be remote-controlled at a time.
 class RemoteHub {
   RemoteHub._();
@@ -20,6 +49,8 @@ class RemoteHub {
   RemotePlayback? _active;
   RemotePlayback? get active => _active;
   bool get hasPlayback => _active != null;
+
+  RemoteLibraryHost? library;
 
   void attach(RemotePlayback playback) => _active = playback;
   void detach(RemotePlayback playback) {

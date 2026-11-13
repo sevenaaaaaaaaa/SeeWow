@@ -144,6 +144,23 @@ class RemoteServer {
         } else {
           response.write(jsonEncode(_status()));
         }
+      } else if (request.uri.path == '/api/library' &&
+          request.method == 'GET') {
+        final token = _token(request);
+        if (token == null) {
+          response.statusCode = HttpStatus.unauthorized;
+          response.write(jsonEncode({'error': '未配对'}));
+        } else {
+          await _library(request, response);
+        }
+      } else if (request.uri.path == '/api/open' && request.method == 'POST') {
+        final token = _token(request);
+        if (token == null) {
+          response.statusCode = HttpStatus.unauthorized;
+          response.write(jsonEncode({'error': '未配对'}));
+        } else {
+          await _open(request, response);
+        }
       } else if (request.uri.path == '/api/command' &&
           request.method == 'POST') {
         final token = _token(request);
@@ -170,6 +187,49 @@ class RemoteServer {
   String? _token(HttpRequest request) {
     final token = request.headers.value('X-SeeWow-Token');
     return token != null && _tokens.containsKey(token) ? token : null;
+  }
+
+  Future<void> _library(HttpRequest request, HttpResponse response) async {
+    final host = _hub.library;
+    if (host == null) {
+      response.write(jsonEncode({'items': <Object>[], 'total': 0}));
+      return;
+    }
+    final query = (request.uri.queryParameters['q'] ?? '').trim().toLowerCase();
+    final limit =
+        (int.tryParse(request.uri.queryParameters['limit'] ?? '') ?? 100).clamp(
+          1,
+          100,
+        );
+    var items = await host.remoteItems();
+    if (query.isNotEmpty) {
+      items = items
+          .where((item) => item.title.toLowerCase().contains(query))
+          .toList();
+    }
+    response.write(
+      jsonEncode({
+        'total': items.length,
+        'items': items.take(limit).map((item) => item.toJson()).toList(),
+      }),
+    );
+  }
+
+  Future<void> _open(HttpRequest request, HttpResponse response) async {
+    final payload = await _jsonBody(request);
+    final id = payload['id']?.toString() ?? '';
+    final host = _hub.library;
+    if (host == null) {
+      response.statusCode = HttpStatus.conflict;
+      response.write(jsonEncode({'error': '桌面片库尚未就绪'}));
+      return;
+    }
+    if (id.isEmpty || !await host.remoteOpen(id)) {
+      response.statusCode = HttpStatus.notFound;
+      response.write(jsonEncode({'error': '片库中找不到该影片'}));
+      return;
+    }
+    response.write(jsonEncode(_status()));
   }
 
   Future<void> _pair(HttpRequest request, HttpResponse response) async {

@@ -19,6 +19,7 @@ import '../features/live_view.dart';
 import '../features/settings_view.dart';
 import '../features/sources_view.dart';
 import '../playback/player_screen.dart';
+import '../remote/remote_hub.dart';
 import '../sources/source_scanner.dart';
 
 enum Section {
@@ -51,6 +52,31 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
+class _ShellRemoteLibrary implements RemoteLibraryHost {
+  _ShellRemoteLibrary(this.shell);
+  final _AppShellState shell;
+
+  @override
+  Future<List<RemoteLibraryItem>> remoteItems() async => [
+    for (final item in shell.widget.store.items)
+      RemoteLibraryItem(
+        id: item.id,
+        title: item.displayTitle,
+        year: item.year ?? 0,
+        kind: item.kind.name,
+        duration: item.duration.round(),
+      ),
+  ];
+
+  @override
+  Future<bool> remoteOpen(String id) async {
+    final matches = shell.widget.store.items.where((item) => item.id == id);
+    if (matches.isEmpty) return false;
+    shell._play(matches.first);
+    return true;
+  }
+}
+
 class _AppShellState extends State<AppShell> {
   Section _section = Section.home;
   late final AgentController _agent;
@@ -63,6 +89,7 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
+    RemoteHub.instance.library = _ShellRemoteLibrary(this);
     _agent = AgentController(widget.store);
     _agent.load().catchError((Object e) {
       debugPrint('Agent history unavailable');

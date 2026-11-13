@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../design/tokens.dart';
 import '../remote/remote_client.dart';
+import '../remote/remote_hub.dart';
 import '../remote/remote_server.dart';
 import '../remote/remote_settings.dart';
 
@@ -384,6 +385,13 @@ class _RemoteClientPageState extends State<RemoteClientPage> {
     ],
   );
 
+  Future<void> _browse() async {
+    final opened = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => _RemoteLibraryPage(client: _client)),
+    );
+    if (opened == true) await _tick();
+  }
+
   Widget _buildRemote(RemoteStatus status) {
     final duration = status.duration;
     final max = duration.inMilliseconds
@@ -488,7 +496,13 @@ class _RemoteClientPageState extends State<RemoteClientPage> {
             padding: const EdgeInsets.only(top: 12),
             child: Text(_error!, style: TextStyle(color: WowColors.error)),
           ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: _browse,
+          icon: const Icon(Icons.video_library_outlined, size: 18),
+          label: const Text('浏览电脑片库'),
+        ),
+        const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: _disconnect,
           icon: const Icon(Icons.link_off, size: 18),
@@ -498,3 +512,133 @@ class _RemoteClientPageState extends State<RemoteClientPage> {
     );
   }
 }
+
+class _RemoteLibraryPage extends StatefulWidget {
+  const _RemoteLibraryPage({required this.client});
+  final RemoteClient client;
+  @override
+  State<_RemoteLibraryPage> createState() => _RemoteLibraryPageState();
+}
+
+class _RemoteLibraryPageState extends State<_RemoteLibraryPage> {
+  final _search = TextEditingController();
+  Timer? _debounce;
+  List<RemoteLibraryItem> _items = [];
+  bool _loading = true;
+  String? _error;
+  String? _opening;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final items = await widget.client.library(query: _search.text);
+      if (mounted) setState(() => _items = items);
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _onQueryChanged(String _) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), _load);
+  }
+
+  Future<void> _open(RemoteLibraryItem item) async {
+    setState(() => _opening = item.id);
+    try {
+      await widget.client.open(item.id);
+      if (mounted) Navigator.pop(context, true);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = error.toString();
+          _opening = null;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: WowColors.ink,
+    appBar: AppBar(backgroundColor: WowColors.ink, title: const Text('电脑片库')),
+    body: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: TextField(
+            controller: _search,
+            onChanged: _onQueryChanged,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: '搜索片名',
+            ),
+          ),
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              _error!,
+              style: TextStyle(color: WowColors.error, fontSize: 12),
+            ),
+          ),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _items.isEmpty
+              ? const Center(child: Text('片库里没有找到影片'))
+              : ListView.separated(
+                  itemCount: _items.length,
+                  separatorBuilder: (_, _) =>
+                      Divider(height: 1, color: WowColors.line),
+                  itemBuilder: (context, index) {
+                    final item = _items[index];
+                    return ListTile(
+                      title: Text(item.title, maxLines: 1),
+                      subtitle: Text(
+                        '${item.year > 0 ? item.year : ''} · '
+                        '${_kindLabel(item.kind)} · '
+                        '${_clock(Duration(seconds: item.duration))}',
+                      ),
+                      trailing: _opening == item.id
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.play_circle_outline),
+                      onTap: _opening == null ? () => _open(item) : null,
+                    );
+                  },
+                ),
+        ),
+      ],
+    ),
+  );
+}
+
+String _kindLabel(String kind) => switch (kind) {
+  'movie' => '电影',
+  'episode' => '剧集',
+  'audio' => '音频',
+  _ => '视频',
+};

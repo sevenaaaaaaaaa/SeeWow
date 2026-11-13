@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'remote_hub.dart';
+
 class RemoteDevice {
   const RemoteDevice({
     required this.name,
@@ -123,6 +125,34 @@ class RemoteClient {
     final token = json['token']?.toString() ?? '';
     if (token.isEmpty) throw RemoteException('配对失败');
     _token = token;
+  }
+
+  Future<List<RemoteLibraryItem>> library({
+    String query = '',
+    int limit = 100,
+  }) async {
+    final params = Uri(queryParameters: {'q': query, 'limit': '$limit'}).query;
+    final json = await _get('/api/library?$params');
+    final list = json['items'];
+    if (list is! List) throw RemoteException('片库格式无效');
+    return list
+        .whereType<Map>()
+        .map(
+          (item) => RemoteLibraryItem(
+            id: item['id']?.toString() ?? '',
+            title: item['title']?.toString() ?? '',
+            year: (item['year'] as num?)?.toInt() ?? 0,
+            kind: item['kind']?.toString() ?? '',
+            duration: (item['duration'] as num?)?.toInt() ?? 0,
+          ),
+        )
+        .where((item) => item.id.isNotEmpty)
+        .toList();
+  }
+
+  Future<RemoteStatus> open(String id) async {
+    final json = await _post('/api/open', {'id': id});
+    return RemoteStatus.fromJson(json);
   }
 
   Future<RemoteStatus> status() async {
