@@ -11,6 +11,9 @@ import '../design/tokens.dart';
 import '../design/skin_surface.dart';
 import '../domain/library_intelligence.dart';
 import '../domain/media_item.dart';
+import '../downloads/download_manager.dart';
+import '../downloads/download_task.dart';
+import '../downloads/downloads_view.dart';
 import '../features/agent_view.dart';
 import '../features/detail_view.dart';
 import '../features/home_view.dart';
@@ -87,6 +90,7 @@ class _AppShellState extends State<AppShell> {
   int _libraryKey = 0;
   bool _playerOpen = false;
   late final LibraryStore _spaceStore;
+  late final DownloadManager _downloads;
   bool _inSpace = false;
   LibraryStore get _store => _inSpace ? _spaceStore : widget.store;
   @override
@@ -104,6 +108,19 @@ class _AppShellState extends State<AppShell> {
         .catchError((Object error) {
           debugPrint('space library unavailable: $error');
         });
+    _downloads = DownloadManager(
+      resolver: (id) async {
+        final item = _store.items.where((i) => i.id == id).firstOrNull;
+        if (item == null) return null;
+        final source = _store.sources
+            .where((s) => s.id == item.sourceId)
+            .firstOrNull;
+        return scanner.prepare(item, source);
+      },
+    );
+    _downloads.load().catchError((Object error) {
+      debugPrint('downloads unavailable: $error');
+    });
     RemoteHub.instance.library = _ShellRemoteLibrary(this);
     _agent = AgentController(_store);
     _agent.load().catchError((Object e) {
@@ -170,8 +187,12 @@ class _AppShellState extends State<AppShell> {
 
   void _open(MediaItem item) => Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) =>
-          DetailView(item: _store.current(item), store: _store, onPlay: _play),
+      builder: (_) => DetailView(
+        item: _store.current(item),
+        store: _store,
+        onPlay: _play,
+        downloads: _downloads,
+      ),
     ),
   );
   void _play(MediaItem item) => _playLive(_store.current(item), live: false);
@@ -186,10 +207,21 @@ class _AppShellState extends State<AppShell> {
             isLive: live,
             resolve: live
                 ? null
-                : (i) => SourceScanner().prepare(
-                    i,
-                    _store.sources.where((s) => s.id == i.sourceId).firstOrNull,
-                  ),
+                : (i) async {
+                    final offline = _downloads.pathFor(i.id);
+                    if (offline != null) {
+                      return i.copyWith(
+                        locator: Uri.file(offline).toString(),
+                        httpHeaders: const {},
+                      );
+                    }
+                    return SourceScanner().prepare(
+                      i,
+                      _store.sources
+                          .where((s) => s.id == i.sourceId)
+                          .firstOrNull,
+                    );
+                  },
             onProgress: live
                 ? null
                 : (position, duration) {
@@ -201,6 +233,18 @@ class _AppShellState extends State<AppShell> {
     } finally {
       _playerOpen = false;
     }
+  }
+
+  Future<void> _playDownload(DownloadTask task) async {
+    final item = _store.items.where((i) => i.id == task.itemId).firstOrNull;
+    if (item == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('片库中已没有该条目，无法播放缓存')));
+      }
+      return;
+    }
+    _play(item);
   }
 
   void _launch() {
@@ -749,6 +793,12 @@ class _AppShellState extends State<AppShell> {
           child: SettingsView(
             agent: _agent,
             store: _store,
+            downloads: _downloads,
+            onOpenDownloads: () => showDownloads(
+              context,
+              manager: _downloads,
+              onPlay: _playDownload,
+            ),
             onConfigureAgent: () => configureAgent(context, _agent),
             onSources: () => _select(Section.sources),
           ),

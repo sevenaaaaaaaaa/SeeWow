@@ -4,6 +4,8 @@ import '../data/library_store.dart';
 import '../design/cinema_widgets.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
+import '../downloads/download_manager.dart';
+import '../downloads/downloads_view.dart';
 import 'metadata_dialog.dart';
 import 'metadata_editor.dart';
 import 'metadata_facts.dart';
@@ -17,15 +19,24 @@ class DetailView extends StatelessWidget {
     required this.item,
     required this.store,
     required this.onPlay,
+    this.downloads,
   });
   final MediaItem item;
   final LibraryStore store;
   final ValueChanged<MediaItem> onPlay;
+  final DownloadManager? downloads;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: store,
+    listenable: downloads == null
+        ? store
+        : Listenable.merge([store, downloads!]),
     builder: (context, _) {
       final current = store.current(item);
+      final heroButton = OutlinedButton.styleFrom(
+        foregroundColor: Colors.white,
+        backgroundColor: Colors.black.withValues(alpha: .28),
+        side: BorderSide(color: Colors.white.withValues(alpha: .35)),
+      );
       final episodes = item.kind == MediaKind.episode
           ? store.episodes
                 .where(
@@ -148,6 +159,7 @@ class DetailView extends StatelessWidget {
                                     ),
                                   ),
                                   OutlinedButton.icon(
+                                    style: heroButton,
                                     onPressed: () =>
                                         store.toggleWatchlist(current),
                                     icon: Icon(
@@ -162,7 +174,55 @@ class DetailView extends StatelessWidget {
                                           : '加入待看',
                                     ),
                                   ),
+                                  if (downloads != null)
+                                    OutlinedButton.icon(
+                                      style: heroButton,
+                                      onPressed: () async {
+                                        final manager = downloads!;
+                                        if (manager.hasOffline(current.id)) {
+                                          onPlay(current);
+                                          return;
+                                        }
+                                        final sourceName =
+                                            store.sources
+                                                .where(
+                                                  (s) =>
+                                                      s.id == current.sourceId,
+                                                )
+                                                .firstOrNull
+                                                ?.name ??
+                                            '本地';
+                                        final started = await showDownloadSheet(
+                                          context,
+                                          manager: manager,
+                                          item: current,
+                                          sourceName: sourceName,
+                                        );
+                                        if (started == true &&
+                                            context.mounted) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('已加入离线缓存'),
+                                                ),
+                                              );
+                                        }
+                                      },
+                                      icon: Icon(
+                                        downloads!.hasOffline(current.id)
+                                            ? Icons.offline_pin
+                                            : Icons
+                                                  .download_for_offline_outlined,
+                                        size: 18,
+                                      ),
+                                      label: Text(
+                                        downloads!.hasOffline(current.id)
+                                            ? '离线播放'
+                                            : '缓存到本地',
+                                      ),
+                                    ),
                                   OutlinedButton.icon(
+                                    style: heroButton,
                                     onPressed: () => store.setFavorite(
                                       current,
                                       !current.isFavorite,

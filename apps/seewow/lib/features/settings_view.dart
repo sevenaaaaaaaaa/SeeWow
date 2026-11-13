@@ -16,6 +16,7 @@ import '../metadata/subtitles.dart';
 import 'skin_studio.dart';
 import 'watch_ai_view.dart';
 import '../agent/agent_controller.dart';
+import '../downloads/download_manager.dart';
 
 class SettingsView extends StatelessWidget {
   const SettingsView({
@@ -24,13 +25,19 @@ class SettingsView extends StatelessWidget {
     this.onConfigureAgent,
     this.onSources,
     this.agent,
+    this.downloads,
+    this.onOpenDownloads,
   });
   final LibraryStore store;
   final AgentController? agent;
   final VoidCallback? onConfigureAgent, onSources;
+  final DownloadManager? downloads;
+  final VoidCallback? onOpenDownloads;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: WowSkin.I,
+    listenable: downloads == null
+        ? WowSkin.I
+        : Listenable.merge([WowSkin.I, downloads!]),
     builder: (context, _) => LayoutBuilder(
       builder: (context, box) => ListView(
         padding: EdgeInsets.all(box.maxWidth < 700 ? 20 : 32),
@@ -62,6 +69,19 @@ class SettingsView extends StatelessWidget {
                 ),
                 Divider(color: WowColors.line),
                 const WatchAiSettingsTile(),
+                if (downloads != null)
+                  ListTile(
+                    leading: const Icon(Icons.download_for_offline_outlined),
+                    title: const Text('离线缓存'),
+                    subtitle: Text(
+                      downloads!.completedCount > 0
+                          ? '${downloads!.completedCount} 部已离线 · ${downloads!.activeCount} 个进行中'
+                          : '缓存到本地，片源离线也能播放',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: onOpenDownloads,
+                  ),
                 ListTile(
                   leading: const Icon(Icons.settings_remote_outlined),
                   title: const Text('手机遥控电脑'),
