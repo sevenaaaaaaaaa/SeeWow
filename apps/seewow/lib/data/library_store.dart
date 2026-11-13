@@ -14,8 +14,11 @@ import '../domain/library_intelligence.dart';
 import '../metadata/cover_generator.dart';
 
 class LibraryStore extends ChangeNotifier {
-  LibraryStore({this.directory});
+  LibraryStore({this.directory, this.space = 1});
   final Directory? directory;
+
+  /// 1 = main cinema, 2+ = decoupled spaces with their own folders and library.
+  final int space;
   final List<MediaItem> items = [];
   final List<MediaSource> sources = [];
   final List<FilmCollection> collections = [];
@@ -62,9 +65,11 @@ class LibraryStore extends ChangeNotifier {
   MediaItem current(MediaItem item) =>
       items.where((i) => i.id == item.id).firstOrNull ?? item;
   Future<Directory> _dir() async {
-    final d =
-        directory ??
-        Directory('${(await getApplicationSupportDirectory()).path}/SeeWow');
+    var d = directory;
+    if (d == null) {
+      final root = '${(await getApplicationSupportDirectory()).path}/SeeWow';
+      d = Directory(space == 1 ? root : '$root/space$space');
+    }
     if (!await d.exists()) await d.create(recursive: true);
     return d;
   }

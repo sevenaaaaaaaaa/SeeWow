@@ -58,7 +58,7 @@ class _ShellRemoteLibrary implements RemoteLibraryHost {
 
   @override
   Future<List<RemoteLibraryItem>> remoteItems() async => [
-    for (final item in shell.widget.store.items)
+    for (final item in shell._store.items)
       RemoteLibraryItem(
         id: item.id,
         title: item.displayTitle,
@@ -70,7 +70,7 @@ class _ShellRemoteLibrary implements RemoteLibraryHost {
 
   @override
   Future<bool> remoteOpen(String id) async {
-    final matches = shell.widget.store.items.where((item) => item.id == id);
+    final matches = shell._store.items.where((item) => item.id == id);
     if (matches.isEmpty) return false;
     shell._play(matches.first);
     return true;
@@ -79,18 +79,33 @@ class _ShellRemoteLibrary implements RemoteLibraryHost {
 
 class _AppShellState extends State<AppShell> {
   Section _section = Section.home;
-  late final AgentController _agent;
+  late AgentController _agent;
   FilmCollection? _collection;
   WatchFilter _watch = WatchFilter.all;
   MediaKind? _kind;
   String _query = '';
   int _libraryKey = 0;
   bool _playerOpen = false;
+  late final LibraryStore _spaceStore;
+  bool _inSpace = false;
+  LibraryStore get _store => _inSpace ? _spaceStore : widget.store;
   @override
   void initState() {
     super.initState();
+    _spaceStore = LibraryStore(space: 2);
+    final scanner = SourceScanner();
+    _spaceStore.scanner = scanner.scan;
+    _spaceStore
+        .load()
+        .then((_) async {
+          await _spaceStore.hydrateCredentials(scanner.headersFor);
+          if (mounted) setState(() {});
+        })
+        .catchError((Object error) {
+          debugPrint('space library unavailable: $error');
+        });
     RemoteHub.instance.library = _ShellRemoteLibrary(this);
-    _agent = AgentController(widget.store);
+    _agent = AgentController(_store);
     _agent.load().catchError((Object e) {
       debugPrint('Agent history unavailable');
     });
@@ -131,17 +146,35 @@ class _AppShellState extends State<AppShell> {
     if (prompt.isNotEmpty) _agent.run(prompt);
   }
 
+  void _toggleSpace() {
+    setState(() {
+      _inSpace = !_inSpace;
+      _section = Section.home;
+      _collection = null;
+      _agent = AgentController(_store);
+    });
+    _agent.load().catchError((Object error) {
+      debugPrint('Agent history unavailable');
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_inSpace ? '已进入解耦空间' : '已回到主空间'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  void _enterSpace() {
+    if (!_inSpace) _toggleSpace();
+  }
+
   void _open(MediaItem item) => Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => DetailView(
-        item: widget.store.current(item),
-        store: widget.store,
-        onPlay: _play,
-      ),
+      builder: (_) =>
+          DetailView(item: _store.current(item), store: _store, onPlay: _play),
     ),
   );
-  void _play(MediaItem item) =>
-      _playLive(widget.store.current(item), live: false);
+  void _play(MediaItem item) => _playLive(_store.current(item), live: false);
   Future<void> _playLive(MediaItem item, {bool live = true}) async {
     if (_playerOpen) return;
     _playerOpen = true;
@@ -155,14 +188,12 @@ class _AppShellState extends State<AppShell> {
                 ? null
                 : (i) => SourceScanner().prepare(
                     i,
-                    widget.store.sources
-                        .where((s) => s.id == i.sourceId)
-                        .firstOrNull,
+                    _store.sources.where((s) => s.id == i.sourceId).firstOrNull,
                   ),
             onProgress: live
                 ? null
                 : (position, duration) {
-                    widget.store.updatePosition(item, position, duration);
+                    _store.updatePosition(item, position, duration);
                   },
           ),
         ),
@@ -181,12 +212,12 @@ class _AppShellState extends State<AppShell> {
     }
     final section = Section.values.where((s) => s.name == launch).firstOrNull;
     if (section != null) _select(section);
-    if (launch == 'detail' && widget.store.items.isNotEmpty)
-      _open(widget.store.movies.firstOrNull ?? widget.store.items.first);
-    if (launch == 'play' && widget.store.items.isNotEmpty)
-      _play(widget.store.movies.firstOrNull ?? widget.store.items.first);
+    if (launch == 'detail' && _store.items.isNotEmpty)
+      _open(_store.movies.firstOrNull ?? _store.items.first);
+    if (launch == 'play' && _store.items.isNotEmpty)
+      _play(_store.movies.firstOrNull ?? _store.items.first);
     if (launch == 'playweb') {
-      final i = widget.store.items
+      final i = _store.items
           .where((i) => i.locator.startsWith('http'))
           .firstOrNull;
       if (i != null) _play(i);
@@ -208,7 +239,7 @@ class _AppShellState extends State<AppShell> {
   Future<void> _search() async {
     final selection = await showDialog<Object>(
       context: context,
-      builder: (_) => _CommandPalette(store: widget.store),
+      builder: (_) => _CommandPalette(store: _store),
     );
     if (!mounted) return;
     if (selection is MediaItem) _open(selection);
@@ -218,7 +249,7 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([widget.store, _agent]),
+    listenable: Listenable.merge([widget.store, _spaceStore, _agent]),
     builder: (context, _) {
       final width = MediaQuery.sizeOf(context).width;
       final sidebar = width >= 1180;
@@ -315,23 +346,39 @@ class _AppShellState extends State<AppShell> {
                                 ),
                               ),
                               const SizedBox(width: 10),
+                              ActionChip(
+                                avatar: Icon(
+                                  _inSpace
+                                      ? Icons.layers_rounded
+                                      : Icons.home_work_outlined,
+                                  size: 14,
+                                ),
+                                label: Text(
+                                  _inSpace ? '解耦空间' : '主空间',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                onPressed: _toggleSpace,
+                              ),
+                              const SizedBox(width: 6),
                               IconButton(
                                 tooltip: '刷新片库',
-                                onPressed: widget.store.scanning
+                                onPressed: _store.scanning
                                     ? null
                                     : () async {
-                                        await widget.store.refreshAll();
+                                        await _store.refreshAll();
                                         if (!mounted) return;
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('片库已刷新'),
-                                            duration: Duration(seconds: 1),
-                                          ),
-                                        );
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                              const SnackBar(
+                                                content: Text('片库已刷新'),
+                                                duration: Duration(seconds: 1),
+                                              ),
+                                            );
                                       },
-                                icon: widget.store.scanning
+                                icon: _store.scanning
                                     ? const SizedBox(
                                         width: 16,
                                         height: 16,
@@ -362,7 +409,39 @@ class _AppShellState extends State<AppShell> {
                             ],
                           ),
                         ),
-                        if (widget.store.scanning)
+                        if (_inSpace)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 6,
+                            ),
+                            color: WowColors.panel,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.layers_outlined,
+                                  size: 15,
+                                  color: WowColors.accent,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '解耦空间 · 独立文件夹与片库，与主空间互不影响',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: WowColors.muted,
+                                    ),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: _toggleSpace,
+                                  child: const Text('返回主空间'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (_store.scanning)
                           const LinearProgressIndicator(minHeight: 2),
                         Expanded(child: _content()),
                       ],
@@ -553,7 +632,7 @@ class _AppShellState extends State<AppShell> {
                     const Eyebrow('LIBRARY STATUS'),
                     const SizedBox(height: 12),
                     Text(
-                      '${widget.store.items.length} 部影片已入库',
+                      '${_store.items.length} 部影片已入库',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
@@ -565,18 +644,18 @@ class _AppShellState extends State<AppShell> {
                         Icon(
                           Icons.circle,
                           size: 6,
-                          color: widget.store.sourceErrors.isEmpty
+                          color: _store.sourceErrors.isEmpty
                               ? WowColors.success
                               : WowColors.error,
                         ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            widget.store.scanning
+                            _store.scanning
                                 ? '正在同步片源'
-                                : widget.store.sourceErrors.isEmpty
-                                ? '${widget.store.sources.length} 个来源已添加'
-                                : '${widget.store.sourceErrors.length} 个来源需要检查',
+                                : _store.sourceErrors.isEmpty
+                                ? '${_store.sources.length} 个来源已添加'
+                                : '${_store.sourceErrors.length} 个来源需要检查',
                             style: TextStyle(
                               fontSize: 10,
                               color: WowColors.muted,
@@ -606,22 +685,23 @@ class _AppShellState extends State<AppShell> {
   Widget _content() => switch (_section) {
     Section.music => LibraryView(
       key: const ValueKey('music'),
-      store: widget.store,
+      store: _store,
       onOpen: _open,
       initialKind: MediaKind.audio,
       onSources: () => _select(Section.sources),
     ),
     Section.home => HomeView(
-      store: widget.store,
+      store: _store,
       onOpen: _open,
       onPlay: _play,
       onAgent: _run,
       onSources: () => _select(Section.sources),
       onLibrary: () => _library(),
+      onLongPull: _inSpace ? null : _enterSpace,
     ),
     Section.library => LibraryView(
       key: ValueKey(_libraryKey),
-      store: widget.store,
+      store: _store,
       onOpen: _open,
       initialText: _query,
       initialKind: _kind,
@@ -630,13 +710,13 @@ class _AppShellState extends State<AppShell> {
       onSources: () => _select(Section.sources),
     ),
     Section.collections => CollectionsView(
-      store: widget.store,
+      store: _store,
       onOpen: (c) => _library(collection: c),
       onAgent: () => _run('按我的口味生成片单'),
       onWatchlist: () => _library(watch: WatchFilter.watchlist),
     ),
     Section.sources => SourcesView(
-      store: widget.store,
+      store: _store,
       iptv: widget.iptv,
       onAgent: _run,
     ),
@@ -668,7 +748,7 @@ class _AppShellState extends State<AppShell> {
         Expanded(
           child: SettingsView(
             agent: _agent,
-            store: widget.store,
+            store: _store,
             onConfigureAgent: () => configureAgent(context, _agent),
             onSources: () => _select(Section.sources),
           ),
