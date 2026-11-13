@@ -185,6 +185,42 @@ class _AppShellState extends State<AppShell> {
     if (!_inSpace) _toggleSpace();
   }
 
+  Future<void> _showMore() async {
+    final section = await showModalBottomSheet<Section>(
+      context: context,
+      backgroundColor: WowColors.panel,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.bookmarks_outlined),
+              title: const Text('我的片单'),
+              onTap: () => Navigator.pop(context, Section.collections),
+            ),
+            ListTile(
+              leading: const Icon(Icons.sensors_rounded),
+              title: const Text('直播'),
+              onTap: () => Navigator.pop(context, Section.live),
+            ),
+            ListTile(
+              leading: const Icon(Icons.library_music_outlined),
+              title: const Text('音乐库'),
+              onTap: () => Navigator.pop(context, Section.music),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('设置'),
+              onTap: () => Navigator.pop(context, Section.settings),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (section != null && mounted) _select(section);
+  }
+
   void _open(MediaItem item) => Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => DetailView(
@@ -390,22 +426,34 @@ class _AppShellState extends State<AppShell> {
                                 ),
                               ),
                               const SizedBox(width: 10),
-                              ActionChip(
-                                avatar: Icon(
-                                  _inSpace
-                                      ? Icons.layers_rounded
-                                      : Icons.home_work_outlined,
-                                  size: 14,
+                              if (width >= 600)
+                                ActionChip(
+                                  avatar: Icon(
+                                    _inSpace
+                                        ? Icons.layers_rounded
+                                        : Icons.home_work_outlined,
+                                    size: 14,
+                                  ),
+                                  label: Text(
+                                    _inSpace ? '解耦空间' : '主空间',
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  onPressed: _toggleSpace,
+                                )
+                              else
+                                IconButton(
+                                  tooltip: _inSpace ? '解耦空间' : '主空间',
+                                  onPressed: _toggleSpace,
+                                  icon: Icon(
+                                    _inSpace
+                                        ? Icons.layers_rounded
+                                        : Icons.home_work_outlined,
+                                    size: 19,
+                                  ),
                                 ),
-                                label: Text(
-                                  _inSpace ? '解耦空间' : '主空间',
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                                visualDensity: VisualDensity.compact,
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                                onPressed: _toggleSpace,
-                              ),
                               const SizedBox(width: 6),
                               IconButton(
                                 tooltip: '刷新片库',
@@ -456,8 +504,8 @@ class _AppShellState extends State<AppShell> {
                         if (_inSpace)
                           Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 32,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: width < 760 ? 16 : 32,
                               vertical: 6,
                             ),
                             color: WowColors.panel,
@@ -511,15 +559,21 @@ class _AppShellState extends State<AppShell> {
                           Section.sources,
                           Section.settings,
                         ].indexOf(_section).clamp(0, 4),
-                  onDestinationSelected: (n) => _select(
-                    [
-                      Section.home,
-                      Section.library,
-                      Section.agent,
-                      Section.sources,
-                      Section.settings,
-                    ][n],
-                  ),
+                  onDestinationSelected: (n) {
+                    if (n == 4) {
+                      _showMore();
+                      return;
+                    }
+                    _select(
+                      [
+                        Section.home,
+                        Section.library,
+                        Section.agent,
+                        Section.sources,
+                        Section.settings,
+                      ][n],
+                    );
+                  },
                   destinations: const [
                     NavigationDestination(
                       icon: Icon(Icons.home_outlined),

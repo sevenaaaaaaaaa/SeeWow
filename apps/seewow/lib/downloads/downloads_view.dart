@@ -102,17 +102,24 @@ class DownloadsPage extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (!Platform.isIOS)
+                if (Platform.isMacOS ||
+                    Platform.isWindows ||
+                    Platform.isLinux) ...[
                   OutlinedButton.icon(
                     onPressed: () => _chooseFolder(context),
                     icon: const Icon(Icons.folder_open, size: 16),
                     label: const Text('选择存放位置'),
                   ),
-                OutlinedButton.icon(
-                  onPressed: () => _openFolder(path),
-                  icon: const Icon(Icons.open_in_new, size: 16),
-                  label: const Text('打开文件夹'),
-                ),
+                  OutlinedButton.icon(
+                    onPressed: () => _openFolder(path),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('打开文件夹'),
+                  ),
+                ] else
+                  Text(
+                    '手机缓存保存在应用文档目录，可在系统「文件」中查看',
+                    style: TextStyle(fontSize: 10, color: WowColors.muted),
+                  ),
               ],
             ),
           ],
