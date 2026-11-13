@@ -6,6 +6,7 @@ import 'synology_scanner.dart';
 import 'navidrome_scanner.dart';
 
 import '../data/local_scanner.dart';
+import 'bridge_scanner.dart';
 import 'media_server_scanner.dart';
 import '../domain/media_item.dart';
 import 'native_bridge.dart';
@@ -33,6 +34,16 @@ class SourceScanner {
         return _scanWebDav(source);
       case SourceKind.smb:
         return _scanSmb(source);
+      case SourceKind.bridge:
+        final bridge = BridgeScanner(
+          source,
+          await _readSecret(sourceSecretKey(source)) ?? '',
+        );
+        try {
+          return await bridge.scan();
+        } finally {
+          bridge.close();
+        }
       case SourceKind.jellyfin:
       case SourceKind.emby:
         return MediaServerScanner().scan(

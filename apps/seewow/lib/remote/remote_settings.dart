@@ -15,6 +15,7 @@ class RemoteSettings extends ChangeNotifier {
   bool enabled = false;
   int port = 47834;
   String code = '';
+  String bridgeKey = '';
 
   Future<File> _file() async {
     final dir =
@@ -33,23 +34,40 @@ class RemoteSettings extends ChangeNotifier {
       enabled = raw['enabled'] == true;
       port = (raw['port'] as num?)?.toInt() ?? 47834;
       code = raw['code']?.toString() ?? '';
+      bridgeKey = raw['bridgeKey']?.toString() ?? '';
     } catch (_) {
       // A damaged file simply starts with remote control disabled.
     }
     if (code.length != 6) code = newCode();
+    if (bridgeKey.length < 32) bridgeKey = newBridgeKey();
   }
 
   Future<void> save() async {
     try {
       final file = await _file();
       await file.writeAsString(
-        jsonEncode({'enabled': enabled, 'port': port, 'code': code}),
+        jsonEncode({
+          'enabled': enabled,
+          'port': port,
+          'code': code,
+          'bridgeKey': bridgeKey,
+        }),
       );
     } catch (_) {}
     notifyListeners();
   }
 
   String newCode() => (Random.secure().nextInt(900000) + 100000).toString();
+
+  String newBridgeKey() => List.generate(
+    32,
+    (_) => Random.secure().nextInt(16).toRadixString(16),
+  ).join();
+
+  String rotateBridgeKey() {
+    bridgeKey = newBridgeKey();
+    return bridgeKey;
+  }
 
   String rotateCode() {
     code = newCode();

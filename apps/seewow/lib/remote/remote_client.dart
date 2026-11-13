@@ -60,6 +60,7 @@ class RemoteClient {
   HttpClient? _client;
 
   bool get paired => _token != null;
+  String? get token => _token;
 
   Future<List<RemoteDevice>> discover({
     Duration timeout = const Duration(seconds: 2),

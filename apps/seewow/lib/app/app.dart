@@ -43,6 +43,7 @@ class _SeeWowAppState extends State<SeeWowApp> {
         await RemoteServer.instance.start(
           code: RemoteSettings.instance.code,
           name: Platform.localHostname,
+          bridgeKey: RemoteSettings.instance.bridgeKey,
         );
       } catch (_) {
         // The switch page explains and retries if the port is unavailable.

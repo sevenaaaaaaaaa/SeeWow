@@ -23,6 +23,7 @@ import '../features/settings_view.dart';
 import '../features/sources_view.dart';
 import '../playback/player_screen.dart';
 import '../remote/remote_hub.dart';
+import '../remote/remote_server.dart';
 import '../sources/source_scanner.dart';
 
 enum Section {
@@ -53,6 +54,24 @@ class AppShell extends StatefulWidget {
   final IPTVStore iptv;
   @override
   State<AppShell> createState() => _AppShellState();
+}
+
+class _ShellBridgeHost implements RemoteBridgeHost {
+  _ShellBridgeHost(this.shell);
+  final _AppShellState shell;
+
+  @override
+  List<MediaItem> get bridgeItems => shell._store.items;
+
+  @override
+  Future<MediaItem?> bridgeItem(String id) async =>
+      shell._store.items.where((item) => item.id == id).firstOrNull;
+
+  @override
+  Future<MediaItem> bridgePrepare(MediaItem item) => SourceScanner().prepare(
+    item,
+    shell._store.sources.where((s) => s.id == item.sourceId).firstOrNull,
+  );
 }
 
 class _ShellRemoteLibrary implements RemoteLibraryHost {
@@ -122,6 +141,7 @@ class _AppShellState extends State<AppShell> {
       debugPrint('downloads unavailable: $error');
     });
     RemoteHub.instance.library = _ShellRemoteLibrary(this);
+    RemoteServer.instance.bridgeHost = _ShellBridgeHost(this);
     _agent = AgentController(_store);
     _agent.load().catchError((Object e) {
       debugPrint('Agent history unavailable');

@@ -200,6 +200,8 @@ void main() {
       SourcesView(store: store, iptv: iptv, onAgent: (_) {}),
       375,
     );
+    await tester.ensureVisible(find.text('Plex'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Plex'));
     await tester.pumpAndSettle();
     expect(find.text('使用 Plex 账号登录'), findsOneWidget);

@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import '../domain/media_item.dart';
+
 /// Playback surface the desktop exposes to a paired phone.
 abstract class RemotePlayback {
   String get remoteTitle;
@@ -39,6 +41,15 @@ class RemoteLibraryItem {
 abstract class RemoteLibraryHost {
   Future<List<RemoteLibraryItem>> remoteItems();
   Future<bool> remoteOpen(String id);
+}
+
+/// Desktop-side bridge used by the phone's "computer library" source.
+/// It exposes real library items over the LAN so phones can play SMB files and
+/// authenticated Plex/Emby streams without needing headers.
+abstract class RemoteBridgeHost {
+  List<MediaItem> get bridgeItems;
+  Future<MediaItem?> bridgeItem(String id);
+  Future<MediaItem> bridgePrepare(MediaItem item);
 }
 
 /// One open player can be remote-controlled at a time.

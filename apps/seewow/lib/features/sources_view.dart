@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../agent/agent_controller.dart';
+import 'bridge_source_dialog.dart';
 import 'subscription_dialog.dart';
 import '../data/iptv_store.dart';
 import '../data/library_store.dart';
@@ -344,6 +345,13 @@ class _SourcesViewState extends State<SourcesView> {
                   '本地文件夹',
                   '选择目录，递归扫描电影与剧集',
                   _folderBusy ? null : _folder,
+                ),
+                _entry(
+                  box,
+                  Icons.computer_outlined,
+                  '电脑媒体库（局域网）',
+                  '用电脑读取 SMB / 本地片库，手机免挂载',
+                  () => connectBridgeLibrary(context, store),
                 ),
                 _entry(
                   box,

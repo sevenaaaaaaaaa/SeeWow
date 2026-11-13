@@ -76,7 +76,11 @@ class _RemoteHostPageState extends State<RemoteHostPage> {
     try {
       if (enabled) {
         if (_settings.code.length != 6) _settings.rotateCode();
-        await _server.start(code: _settings.code, name: Platform.localHostname);
+        await _server.start(
+          code: _settings.code,
+          name: Platform.localHostname,
+          bridgeKey: _settings.bridgeKey,
+        );
         _addresses = await _server.addresses();
       } else {
         await _server.stop();
@@ -171,7 +175,8 @@ class _RemoteHostPageState extends State<RemoteHostPage> {
             ),
           const SizedBox(height: 6),
           Text(
-            '手机端：设置 → 手机遥控 → 搜索电脑或手动输入上面的地址，再输入配对码。',
+            '手机端：设置 → 手机遥控 → 搜索电脑或手动输入上面的地址，再输入配对码。'
+            '\n片源 → 电脑媒体库（局域网）可用这台电脑读取 SMB 与带令牌片源。',
             style: WowType.body(12, color: WowColors.muted),
           ),
           const SizedBox(height: 12),

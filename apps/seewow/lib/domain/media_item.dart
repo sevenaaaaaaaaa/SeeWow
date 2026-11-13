@@ -265,6 +265,7 @@ enum SourceKind {
   openlist,
   synology,
   navidrome,
+  bridge,
 }
 
 class MediaSource {

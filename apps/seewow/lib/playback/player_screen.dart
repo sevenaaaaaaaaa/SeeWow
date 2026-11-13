@@ -15,6 +15,7 @@ import '../features/playback_settings_view.dart';
 import 'playback_preferences.dart';
 import 'cinema_entrance.dart';
 import 'playback_window.dart';
+import 'local_stream_proxy.dart';
 import 'frame_bookmarks.dart';
 import 'audio_level.dart';
 import 'audio_privacy.dart';
@@ -284,7 +285,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       return;
     }
     if (call.method == 'pip.mode') {
-      setState(() => _systemPip = args['active'] == true);
+      final active = args['active'] == true;
+      if (!active) LocalStreamProxy.instance.clear();
+      setState(() => _systemPip = active);
     }
     if (call.method == 'pip.restore') {
       setState(() => _systemPip = false);
@@ -336,10 +339,23 @@ class _PlayerScreenState extends State<PlayerScreen>
         final target = _target ?? widget.item;
         final resume = _player.state.playing;
         if (Platform.isIOS) await _player.pause();
+        var pipUrl = target.locator;
+        var pipHeaders = target.httpHeaders;
+        if (Platform.isIOS && pipHeaders.isNotEmpty) {
+          try {
+            pipUrl = await LocalStreamProxy.instance.urlFor(
+              Uri.parse(target.locator),
+              Map.of(pipHeaders),
+            );
+            pipHeaders = const {};
+          } catch (_) {
+            // Fall back and let the native side explain the limitation.
+          }
+        }
         try {
           final ok = await PlaybackWindow.channel.invokeMethod<bool>('pip', {
-            'url': target.locator,
-            'headers': target.httpHeaders,
+            'url': pipUrl,
+            'headers': pipHeaders,
             'position': (_position * 1000).round(),
             'playing': resume,
             'volume': _privacy.effectiveVolume / 100,
