@@ -2,19 +2,19 @@
 
 **Cinema, made personal.** 一个以私人媒体库为中心的跨平台播放器，使用 Flutter + media_kit / libmpv。
 
-当前工作区为 **1.12.0 体验预览版**。手机端（iPhone / iPad / Android）补齐 Plex 账号登录、本地目录权限与扫描；桌面安装包同步更新。新增地区与多语言资料、本机批量补译、自定义资料服务、AI 封面、字幕检索、更多直播订阅格式，以及手势、音量隐私、AB 循环、精彩帧、小窗与语音译配等放映能力。默认关闭的 [AI 字幕与小映陪看](docs/ai-watch.md) 保持可用；支持三套主题、皮肤工作室和 design.md 生成，详见 [皮肤说明](skins/README.md) 与 [design.md 模板](design.md)。
+当前工作区为 **1.13.0 体验预览版**。手机端（iPhone / iPad / Android）补齐 Plex 账号登录、本地目录权限与扫描；桌面安装包同步更新。新增地区与多语言资料、本机批量补译、自定义资料服务、AI 封面、字幕检索、更多直播订阅格式，以及手势、音量隐私、AB 循环、精彩帧、小窗与语音译配等放映能力。默认关闭的 [AI 字幕与小映陪看](docs/ai-watch.md) 保持可用；支持三套主题、皮肤工作室和 design.md 生成，详见 [皮肤说明](skins/README.md) 与 [design.md 模板](design.md)。
 
-## 下载 1.12.0 体验预览版
+## 下载 1.13.0 体验预览版
 
-完整更新记录见 [1.12.0 发布说明](docs/releases/1.12.0.md)，安装包与 SHA-256 校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.12.0)。
+完整更新记录见 [1.13.0 发布说明](docs/releases/1.13.0.md)，安装包与 SHA-256 校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.13.0)。
 
 | 平台 | 安装包 | 安装与签名状态 |
 | --- | --- | --- |
-| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.12.0/SeeWow-macos-1.12.0-preview.zip) | 解压后将应用移到「应用程序」；临时签名、未公证 |
-| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.12.0/SeeWow-Android-1.12.0-preview.apk) | Android 7.0+；Release 编译、开发签名预览包 |
-| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.12.0/SeeWow-iOS-1.12.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
+| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.13.0/SeeWow-macos-1.13.0-preview.zip) | 解压后将应用移到「应用程序」；临时签名、未公证 |
+| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.13.0/SeeWow-Android-1.13.0-preview.apk) | Android 7.0+；Release 编译、开发签名预览包 |
+| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.13.0/SeeWow-iOS-1.13.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
 
-Windows / Linux 本轮未提供 1.12.0 安装包。AI 功能默认关闭，需要用户自行配置 API；使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
+Windows / Linux 本轮未提供 1.13.0 安装包。AI 功能默认关闭，需要用户自行配置 API；使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
 
 片源能力包括服务选择器、Plex / File Station / Navidrome 适配、OpenList / Alist API 扫描与动态直链，以及本地 / SMB / WebDAV 的多语言 NFO 读取。以下区分已经实现与尚未支持的能力。
 
@@ -65,7 +65,7 @@ iOS / iPadOS 已提供真机 ARM64 可重签 IPA，最低 iOS 15。包含钥匙�
 | 放映入场 | 光盘旋入／SeeWow 聚光片头／直接放映；约 2.1 秒，可跳过，尊重系统减少动态效果；先准备影片，片头结束再播放，不截掉正片开头 |
 | 精彩帧与学习 | 收藏当前原始画面、播放时间点与备注，仅保存本机；图库查看、缩放、移除及从本片回到该时间点；AB 两点循环，B 点需晚于 A 点至少 0.5 秒，直播不启用 |
 | 音频电平 | 根据实际 PCM 样本计算 RMS，原片按需独立采样，译音复用返回的 PCM；不读取麦克风或显示随机波形，不支持采样时显示不可用 |
-| 离线缓存 | 详情页选择画质与存放位置后加入下载队列；支持暂停 / 续传 / 重试 / 删除；完成后优先播放本地文件，Plex / Emby 直连片源可缓存 |
+| 离线缓存 | 详情页选择画质（Plex / Emby 支持 1080p / 720p / 480p 转码）与存放位置；下载队列支持限速、暂停 / 续传 / 重试 / 删除，显示实时速度与剩余时间；完成后优先本地播放 |
 | 解耦空间 | 首页超长下拉进入第二个独立片库；桌面点顶栏「主空间 / 解耦空间」切换；空间有自己的文件夹、片库、观看记录与 Agent，主空间不受影响 |
 | 刷新与发现 | 首页 / 媒体库下拉刷新全部片源（桌面顶栏也有刷新按钮）；首页新增最近加入、纪录片、短剧三条推荐维度 |
 | 纪录片与短剧 | 本地按类型与单集时长归类；媒体库新增纪录片 / 短剧筛选，短剧模式显示单集 20 分钟内优先 |
@@ -238,7 +238,7 @@ flutter run -d macos
 flutter build macos --release
 ```
 
-现有代码仍有历史 info 级 lint；验证要求无 analyzer error / warning。测试覆盖文件名、M3U/XMLTV、WebDAV/SMB 解析，以及偏好/片单持久化、扫描失败恢复、并发扫描、模型规划校验、错误恢复、链接收集、搜索交互和响应式布局。兼容模型、TMDB 和媒体服务器协议通过本机模拟 HTTP 服务验证；元数据确认流程、窄屏服务选择器、服务器 / 网关表单有组件测试。1.6.0 发布基线共 94 项测试，1.12.0 基线为 227 项通过、2 项原生解码器测试按需跳过；1.6.0 新增换肤、皮肤导入、design.md 生成、草稿取消与恢复、AI 生成协议测试；其余测试覆盖目录递归、分页中断、动态直链、跨域跳转的 Token 隔离、群晖会话、Navidrome 盐值签名、NFO 与来源编辑。后续列表兼容测试覆盖多仓预览、确认后导入、格式错误、重定向/大小/超时/局域网限制、刷新与收藏迁移、节目单隔离，以及 Telegram 本地扫描、AI 数据隔离与窄屏交互。没有使用用户的真实模型、TMDB 或 NAS 凭据进行外部调用，真实服务器兼容性还需实际连接验证。
+现有代码仍有历史 info 级 lint；验证要求无 analyzer error / warning。测试覆盖文件名、M3U/XMLTV、WebDAV/SMB 解析，以及偏好/片单持久化、扫描失败恢复、并发扫描、模型规划校验、错误恢复、链接收集、搜索交互和响应式布局。兼容模型、TMDB 和媒体服务器协议通过本机模拟 HTTP 服务验证；元数据确认流程、窄屏服务选择器、服务器 / 网关表单有组件测试。1.6.0 发布基线共 94 项测试，1.13.0 基线为 231 项通过、2 项原生解码器测试按需跳过；1.6.0 新增换肤、皮肤导入、design.md 生成、草稿取消与恢复、AI 生成协议测试；其余测试覆盖目录递归、分页中断、动态直链、跨域跳转的 Token 隔离、群晖会话、Navidrome 盐值签名、NFO 与来源编辑。后续列表兼容测试覆盖多仓预览、确认后导入、格式错误、重定向/大小/超时/局域网限制、刷新与收藏迁移、节目单隔离，以及 Telegram 本地扫描、AI 数据隔离与窄屏交互。没有使用用户的真实模型、TMDB 或 NAS 凭据进行外部调用，真实服务器兼容性还需实际连接验证。
 
 区域资料测试覆盖港／台版本独立保存、多语言与 Unicode 搜索、TMDB 部分地区失败和身份校验、本机请求字段与脚本校验、AI 来源限制、取消、并发编辑保护、重扫保留与过期提示，以及 375 / 768 / 1440px 的批量预览与确认。真实 TMDB 目录完整度和本地模型翻译质量尚未通过外部服务实测。
 
