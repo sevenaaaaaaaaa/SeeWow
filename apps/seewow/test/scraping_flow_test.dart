@@ -201,8 +201,8 @@ void main() {
       );
       await tester.ensureVisible(language);
       await tester.enterText(language, 'ja-JP');
-      await tester.ensureVisible(find.byTooltip('搜索 TMDB'));
-      await tester.tap(find.byTooltip('搜索 TMDB'));
+      await tester.ensureVisible(find.byTooltip('搜索资料目录'));
+      await tester.tap(find.byTooltip('搜索资料目录'));
       await tester.pumpAndSettle();
       expect(tmdb.requestedLanguage, 'ja-JP');
       await tester.ensureVisible(find.text('日本語題名'));

@@ -19,16 +19,20 @@ import 'local_stream_proxy.dart';
 import 'frame_bookmarks.dart';
 import 'audio_level.dart';
 import 'audio_privacy.dart';
+import 'commentary_controller.dart';
 import 'playback_gestures.dart';
+import 'speech_synthesizer.dart';
 import 'sensitive_content.dart';
 import 'voice_translation.dart';
 import 'dubbing_controller.dart';
+import '../features/commentary_view.dart';
 import '../features/voice_translation_view.dart';
 import '../sources/native_bridge.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../design/pressable.dart';
@@ -89,6 +93,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       _loopSeeking = false;
   double get _volume => _privacy.effectiveVolume;
   DubbingController? _voice;
+  CommentaryController? _commentary;
   String? _voiceErrorShown;
   VideoTrack? _backgroundVideoTrack;
   bool get _playbackRunning =>
@@ -677,6 +682,42 @@ class _PlayerScreenState extends State<PlayerScreen>
     setState(() {});
   }
 
+  /// Opens the commentary panel, creating the controller on first use so a
+  /// film that never asks for commentary never builds a second player.
+  Future<void> _openCommentary() async {
+    if (!mounted) return;
+    if (_commentary?.speaking == true) {
+      await _commentary!.stop();
+      if (mounted) _message('已停止解说，原声音量已恢复');
+      return;
+    }
+    final controller = _commentary ??= await _createCommentary();
+    if (controller == null) {
+      if (mounted) _message('AI 陪看尚未配置，请先在 AI 设置里填写模型与地址');
+      return;
+    }
+    if (!mounted) return;
+    await showCommentaryDialog(
+      context,
+      controller: controller,
+      config: _watchAi.config,
+      durationSeconds: _duration > 0 ? _duration : 0,
+    );
+  }
+
+  Future<CommentaryController?> _createCommentary() async {
+    if (!_watchAi.config.enabled || !_watchAi.config.configured) return null;
+    final base = await getApplicationSupportDirectory();
+    return CommentaryController(
+      video: _player,
+      source: widget.item,
+      client: _watchAi.client,
+      synthesizer: SpeechSynthesizer(),
+      outputDirectory: Directory('${base.path}/commentary'),
+      config: _watchAi.config,
+    );
+  }
+
   Future<void> _stopDubbing({bool resumeOriginal = true}) async {
     await _voice?.stop(resumeOriginal: resumeOriginal);
     _watchAi.suspend(!_foreground);
@@ -1106,6 +1147,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _subtitleSub?.cancel();
     _watchAi.dispose();
     _hideTimer?.cancel();
+    _commentary?.close();
     _completedSub?.cancel();
     _posSub?.cancel();
     _durSub?.cancel();
@@ -1645,6 +1687,8 @@ class _PlayerScreenState extends State<PlayerScreen>
                 await _startDubbing();
               case 'voice-stop':
                 await _stopDubbing();
+              case 'commentary':
+                await _openCommentary();
             }
             if (mounted) _reveal();
           },
@@ -1686,6 +1730,13 @@ class _PlayerScreenState extends State<PlayerScreen>
               const PopupMenuItem(
                 value: 'voice-config',
                 child: Text('配置语音译配 API'),
+              ),
+            if (widget.item.aiAllowed && !widget.isLive)
+              PopupMenuItem(
+                value: 'commentary',
+                child: Text(
+                  _commentary?.speaking == true ? '停止自动解说' : '自动解说 · 生成并朗读',
+                ),
               ),
           ],
         ),

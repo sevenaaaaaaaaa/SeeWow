@@ -112,6 +112,7 @@ class MediaMetadata {
     this.alternativeTitles = const {},
     this.preferredLanguages = const [],
     this.generatedCover = const {},
+    this.fieldSources = const {},
   });
   final int id;
   final String mediaType, title, overview;
@@ -137,6 +138,11 @@ class MediaMetadata {
 
   /// AI artwork provenance, separate from provider metadata and ratings.
   final Map<String, String> generatedCover;
+
+  /// Which catalogue answered for each field: 'title' -> 'TVmaze'.
+  /// A merged record can therefore say "故事简介来自 Bangumi, 评分来自 TMDB"
+  /// instead of pretending one service produced everything.
+  final Map<String, String> fieldSources;
   String get multilingualSearchText => [
     originalTitle,
     for (final text in localized.values) '${text.title} ${text.overview}',
@@ -170,6 +176,7 @@ class MediaMetadata {
     'alternativeTitles': alternativeTitles,
     'preferredLanguages': preferredLanguages,
     'generatedCover': generatedCover,
+    'fieldSources': fieldSources,
   };
   factory MediaMetadata.fromJson(Map<String, dynamic> j) => MediaMetadata(
     id: j['id'] as int,
@@ -218,7 +225,13 @@ class MediaMetadata {
     ),
     preferredLanguages: (j['preferredLanguages'] as List? ?? []).cast<String>(),
     generatedCover: (j['generatedCover'] as Map? ?? {}).cast<String, String>(),
+    fieldSources: (j['fieldSources'] as Map? ?? {}).cast<String, String>(),
   );
+  MediaMetadata withFieldSources(Map<String, String> sources) =>
+      MediaMetadata.fromJson({
+        ...toJson(),
+        'fieldSources': sources,
+      });
   MediaMetadata withArtwork(bool replace) =>
       MediaMetadata.fromJson({...toJson(), 'replaceArtwork': replace});
   MediaMetadata withImages({String? poster, String? backdrop}) =>

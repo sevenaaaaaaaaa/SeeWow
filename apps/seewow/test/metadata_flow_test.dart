@@ -75,7 +75,7 @@ void main() {
     );
     await tester.tap(find.text('匹配'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('搜索 TMDB'));
+    await tester.tap(find.byTooltip('搜索资料目录'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认后的电影'));
     await tester.pumpAndSettle();

@@ -4,6 +4,7 @@ import '../domain/media_metadata.dart';
 import '../domain/metadata_languages.dart';
 import '../sources/json_api.dart';
 import '../sources/native_bridge.dart';
+import 'metadata_source.dart';
 
 class MetadataLocale {
   const MetadataLocale({
@@ -47,7 +48,16 @@ class MetadataLocale {
   );
 }
 
-class TmdbClient {
+class TmdbClient implements MetadataSource {
+  @override
+  String get id => 'tmdb';
+
+  @override
+  String get label => 'TMDB（电影与剧集）';
+
+  @override
+  bool get seriesOnly => false;
+
   TmdbClient(String token, {Uri? base, this.locale = const MetadataLocale()})
     : _api = JsonApi(
         base ?? Uri.parse('https://api.themoviedb.org/3'),
@@ -104,6 +114,7 @@ class TmdbClient {
       ? 'https://image.tmdb.org/t/p/${backdrop ? 'w1280' : 'w500'}$path'
       : null;
 
+  @override
   Future<List<MediaMetadata>> search(
     String query, {
     bool series = false,
@@ -133,6 +144,7 @@ class TmdbClient {
         .toList();
   }
 
+  @override
   Future<MediaMetadata> details(MediaMetadata candidate) async {
     if (!['movie', 'tv'].contains(candidate.mediaType) || candidate.id <= 0)
       throw const FormatException('此条目不是有效的 TMDB 电影或剧集');
@@ -426,5 +438,6 @@ class TmdbClient {
     );
   }
 
+  @override
   void close() => _api.close();
 }

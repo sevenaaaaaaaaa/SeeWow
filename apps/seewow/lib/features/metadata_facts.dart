@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../domain/media_metadata.dart';
+import '../metadata/metadata_registry.dart';
 import 'metadata_languages_view.dart';
 
 class MetadataFacts extends StatelessWidget {
@@ -11,6 +12,24 @@ class MetadataFacts extends StatelessWidget {
   });
   final MediaMetadata metadata;
   final bool compact;
+
+  /// Chinese labels for the provenance map, so the reader sees "简介" instead
+  /// of a JSON key.
+  static const _fieldLabels = <String, String>{
+    MetadataFields.title: '标题',
+    MetadataFields.originalTitle: '原名',
+    MetadataFields.overview: '简介',
+    MetadataFields.year: '年份',
+    MetadataFields.genres: '类型',
+    MetadataFields.rating: '评分',
+    MetadataFields.poster: '海报',
+    MetadataFields.backdrop: '背景图',
+    MetadataFields.duration: '时长',
+    MetadataFields.people: '演职人员',
+    MetadataFields.countries: '地区',
+    MetadataFields.externalIds: '外部 ID',
+  };
+
   @override
   Widget build(BuildContext context) {
     final m = metadata;
@@ -30,6 +49,34 @@ class MetadataFacts extends StatelessWidget {
                 if (m.countries.isNotEmpty) '地区 ${m.countries.join(' / ')}',
               ].join(' · '),
             ),
+          ),
+        if (m.fieldSources.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: compact
+                ? Text(
+                    '资料来源 · ${[
+                      for (final entry in m.fieldSources.entries)
+                        if (_fieldLabels[entry.key] != null)
+                          '${_fieldLabels[entry.key]} ${entry.value}',
+                    ].join('、')}',
+                    style: const TextStyle(fontSize: 11),
+                  )
+                : Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final entry in m.fieldSources.entries)
+                        if (_fieldLabels[entry.key] != null)
+                          Chip(
+                            visualDensity: VisualDensity.compact,
+                            label: Text(
+                              '${_fieldLabels[entry.key]} · ${entry.value}',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                    ],
+                  ),
           ),
         MetadataLanguagesView(metadata: m, compact: compact),
         if (m.ratings.isNotEmpty)

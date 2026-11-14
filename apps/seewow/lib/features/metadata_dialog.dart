@@ -5,7 +5,13 @@ import '../design/artwork.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import '../domain/media_metadata.dart';
+import '../metadata/bangumi_client.dart';
+import '../metadata/emby_metadata_client.dart';
+import '../metadata/metadata_registry.dart';
+import '../metadata/metadata_source.dart';
 import '../metadata/tmdb_client.dart';
+import '../metadata/tvmaze_client.dart';
+import '../sources/native_bridge.dart';
 import 'metadata_facts.dart';
 import 'metadata_languages_view.dart';
 import '../domain/metadata_languages.dart';
@@ -239,10 +245,18 @@ class _MetadataDialogState extends State<_MetadataDialog> {
       _region = TextEditingController(),
       _year = TextEditingController();
   String _mediaType = 'movie';
+
+  /// Which catalogue answers first. "auto" walks the whole chain, so a dead
+  /// service or an unconfigured TMDB still returns something.
+  String _sourceId = 'auto';
   bool _currentEpisode = false, _localeEdited = false;
   int _page = 1;
   bool _regionalSearch = false;
-  TmdbClient? _client;
+  TmdbClient? _tmdb;
+  MetadataRegistry? _registry;
+  String _sourcesSummary = '';
+  String? _answeredBy;
+  String? _tmdbUnavailable;
   List<MediaMetadata> _candidates = [];
   MediaMetadata? _selected;
   String? _error;
@@ -268,7 +282,7 @@ class _MetadataDialogState extends State<_MetadataDialog> {
 
   @override
   void dispose() {
-    _client?.close();
+    _registry?.close();
     _query.dispose();
     _language.dispose();
     _region.dispose();
@@ -281,6 +295,8 @@ class _MetadataDialogState extends State<_MetadataDialog> {
       _selected = null;
       _candidates = [];
       _searched = false;
+      _answeredBy = null;
+      _sourcesSummary = '';
     });
   }
 
@@ -291,20 +307,6 @@ class _MetadataDialogState extends State<_MetadataDialog> {
       _selected = null;
     });
     try {
-      _client?.close();
-      final client = await (widget.clientFactory ?? TmdbClient.configured)();
-      if (!mounted) {
-        client.close();
-        return;
-      }
-      _client = client;
-      _client!.locale = MetadataLocale(
-        language: _language.text.trim(),
-        region: _region.text.trim().toUpperCase(),
-        fallback: client.locale.fallback,
-        includeAdult: client.locale.includeAdult,
-        additionalLanguages: client.locale.additionalLanguages,
-      );
       final targetPage = next ? _page + 1 : 1;
       final year = _year.text.trim();
       if (year.isNotEmpty &&
@@ -312,21 +314,66 @@ class _MetadataDialogState extends State<_MetadataDialog> {
               int.parse(year) < 1 ||
               int.parse(year) > 9999))
         throw const FormatException('年份需要为 1 到 9999');
-      final search = _regionalSearch
-          ? _client!.searchRegional
-          : _client!.search;
-      final results = await search(
-        _query.text,
-        series: _mediaType == 'tv',
-        year: year.isEmpty ? null : int.parse(year),
-        page: targetPage,
-      );
+      final parsedYear = year.isEmpty ? null : int.parse(year);
+      final series = _mediaType == 'tv';
+      final registry = await _buildRegistry();
+      if (!mounted) return;
+      _registry = registry;
+      // Page 2 must ask the catalogue that answered page 1, or the list mixes
+      // two catalogues' paging into one.
+      final preferred = _sourceId != 'auto'
+          ? _sourceId
+          : (next ? _answeredBy : null);
+      if (preferred != null) {
+        final chosen = registry.byId(preferred);
+        if (chosen == null) {
+          throw FormatException(
+            preferred == 'tvmaze'
+                ? '这条记录没有对应的数据源；请改用「自动回退」，或先连接该服务器'
+                : '数据源 $preferred 当前不可用',
+          );
+        }
+        if (chosen.seriesOnly && !series) {
+          throw const FormatException('TVmaze 只有剧集数据；电影请用 TMDB 或 Bangumi');
+        }
+      }
+      List<MediaMetadata> results;
+      if (_regionalSearch) {
+        // Only TMDB can merge several languages in one lookup.
+        final client = _tmdb;
+        if (client == null) throw const FormatException('多语言合并搜索需要先配置 TMDB');
+        results = [
+          for (final item in await client.searchRegional(
+            _query.text,
+            series: series,
+            year: parsedYear,
+            page: targetPage,
+          ))
+            annotateFields(item, providerLabel(item.provider)),
+        ];
+        _sourcesSummary = 'TMDB 多语言合并 · ${results.length} 条';
+      } else {
+        final outcome = await registry.search(
+          _query.text,
+          series: series,
+          year: parsedYear,
+          page: targetPage,
+          preferred: preferred,
+          minimum: next ? 1 : 3,
+        );
+        results = outcome.results;
+        _answeredBy = outcome.answeredBy ?? _answeredBy;
+        _sourcesSummary = outcome.summary;
+        if (_tmdbUnavailable != null && !_sourcesSummary.contains('TMDB')) {
+          _sourcesSummary = '$_sourcesSummary · $_tmdbUnavailable';
+        }
+      }
       if (mounted)
         setState(() {
           _page = targetPage;
           _candidates = {
             for (final c in [if (next) ..._candidates, ...results])
-              '${c.mediaType}:${c.id}': c,
+              '${c.provider}:${c.mediaType}:${c.id}': c,
           }.values.toList();
           _searched = true;
         });
@@ -337,23 +384,117 @@ class _MetadataDialogState extends State<_MetadataDialog> {
     }
   }
 
+  /// The picker lists "auto" plus whatever this library can actually reach.
+  List<(String, String)> get _sourceChoices {
+    final registry = _registry;
+    if (registry == null) {
+      return const [
+        ('auto', '自动回退（多源合并）'),
+        ('tmdb', 'TMDB（电影与剧集）'),
+        ('tvmaze', 'TVmaze（仅剧集）'),
+        ('bangumi', 'Bangumi（动画）'),
+      ];
+    }
+    final choices = <(String, String)>[('auto', '自动回退（多源合并）')];
+    for (final source in registry.sources) {
+      choices.add((source.id, source.label));
+    }
+    if (!choices.any((choice) => choice.$1 == _sourceId)) {
+      choices.add((_sourceId, _sourceId));
+    }
+    return choices;
+  }
+
+  /// Builds the catalogue chain for one search: TMDB when a key exists, the
+  /// two keyless catalogues, and every connected Jellyfin/Emby server.
+  Future<MetadataRegistry> _buildRegistry() async {
+    _releaseClients();
+    _tmdbUnavailable = null;
+    final sources = <MetadataSource>[];
+    try {
+      final client = await (widget.clientFactory ?? TmdbClient.configured)();
+      client.locale = MetadataLocale(
+        language: _language.text.trim(),
+        region: _region.text.trim().toUpperCase(),
+        fallback: client.locale.fallback,
+        includeAdult: client.locale.includeAdult,
+        additionalLanguages: client.locale.additionalLanguages,
+      );
+      _tmdb = client;
+      sources.add(client);
+    } catch (error) {
+      _tmdbUnavailable = 'TMDB 未配置（${_short(error)}）';
+    }
+    sources
+      ..add(TvMazeClient())
+      ..add(BangumiClient());
+    for (final source in widget.library.sources) {
+      if (!source.enabled) continue;
+      if (source.kind != SourceKind.jellyfin &&
+          source.kind != SourceKind.emby) {
+        continue;
+      }
+      try {
+        final token = await NativeBridge.secretRead(sourceSecretKey(source)) ?? '';
+        if (token.trim().isEmpty) continue;
+        sources.add(
+          EmbyMetadataSource(
+            base: Uri.parse(source.location),
+            token: token.trim(),
+            userId: source.username,
+            kind: source.kind.name,
+            serverName: source.name,
+          ),
+        );
+      } catch (error) {
+        debugPrint('跳过元数据服务器 ${source.name}: $error');
+      }
+    }
+    return MetadataRegistry(sources);
+  }
+
+  void _releaseClients() {
+    _registry?.close();
+    _registry = null;
+    _tmdb = null;
+  }
+
+  static String _short(Object error) {
+    final text = error.toString();
+    return text.startsWith('FormatException: ')
+        ? text.substring('FormatException: '.length)
+        : text;
+  }
+
   Future<void> _preview(MediaMetadata candidate) async {
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final match =
+      final registry = _registry;
+      if (registry == null) throw const FormatException('请先搜索一次再预览');
+      // Episode-level lookup only exists on TMDB; every other catalogue answers
+      // for the work as a whole and is completed from the other candidates.
+      final episode =
+          _tmdb != null &&
           _currentEpisode &&
-              candidate.mediaType == 'tv' &&
-              widget.item.season != null &&
-              widget.item.episode != null
-          ? await _client!.episodeDetails(
-              candidate,
-              widget.item.season!,
-              widget.item.episode!,
+          candidate.mediaType == 'tv' &&
+          widget.item.season != null &&
+          widget.item.episode != null;
+      final match = episode
+          ? annotateFields(
+              await _tmdb!.episodeDetails(
+                candidate,
+                widget.item.season!,
+                widget.item.episode!,
+              ),
+              providerLabel('tmdb'),
             )
-          : await _client!.details(candidate);
+          : await registry.details(
+              candidate,
+              supplements: _candidates,
+            );
       if (mounted) setState(() => _selected = match);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -406,7 +547,7 @@ class _MetadataDialogState extends State<_MetadataDialog> {
                 decoration: InputDecoration(
                   labelText: '电影或剧集名称',
                   suffixIcon: IconButton(
-                    tooltip: '搜索 TMDB',
+                    tooltip: '搜索资料目录',
                     onPressed: _busy || _applying ? null : _search,
                     icon: const Icon(Icons.search),
                   ),
@@ -417,6 +558,35 @@ class _MetadataDialogState extends State<_MetadataDialog> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
+                  SizedBox(
+                    width: 210,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _sourceId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: '数据源'),
+                      items: [
+                        for (final source in _sourceChoices)
+                          DropdownMenuItem(
+                            value: source.$1,
+                            enabled:
+                                source.$1 != 'tvmaze' || _mediaType == 'tv',
+                            child: Text(
+                              source.$2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: _busy || _applying
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+                              setState(() {
+                                _sourceId = value;
+                                _invalidate();
+                              });
+                            },
+                    ),
+                  ),
                   Chip(label: Text(_mediaType == 'tv' ? '剧集／节目目录' : '电影／单片目录')),
                   SizedBox(
                     width: 130,
@@ -460,6 +630,14 @@ class _MetadataDialogState extends State<_MetadataDialog> {
                   ),
                 ],
               ),
+              if (_sourcesSummary.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    '数据源：$_sourcesSummary',
+                    style: WowType.body(11, color: WowColors.muted),
+                  ),
+                ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _regionalSearch,
@@ -472,8 +650,8 @@ class _MetadataDialogState extends State<_MetadataDialog> {
                 title: const Text('按所选地区语言同时搜索'),
                 subtitle: const Text('合并同一作品的 ID；当前仅查询资料目录，不获取播放源'),
               ),
-              if (_client?.regionalErrors.isNotEmpty == true)
-                Text('部分语言查询未成功：${_client!.regionalErrors.join(', ')}'),
+              if (_tmdb != null && _tmdb!.regionalErrors.isNotEmpty)
+                Text('部分语言查询未成功：${_tmdb!.regionalErrors.join(', ')}'),
               if (widget.item.kind == MediaKind.episode &&
                   widget.item.season != null &&
                   widget.item.episode != null &&
@@ -529,13 +707,13 @@ class _MetadataDialogState extends State<_MetadataDialog> {
                     ),
                     title: Text(c.title, style: const TextStyle(fontSize: 14)),
                     subtitle: Text(
-                      '${c.year ?? '年份未知'} · TMDB ${c.id}',
+                      '${c.year ?? '年份未知'} · ${providerLabel(c.provider)} ${c.id}',
                       style: const TextStyle(fontSize: 11),
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _preview(c),
                   ),
-                if (_client?.hasMore == true)
+                if (_tmdb?.hasMore == true)
                   TextButton(
                     onPressed: _busy || _applying
                         ? null
@@ -643,7 +821,7 @@ class _MetadataDialogState extends State<_MetadataDialog> {
                       ? null
                       : (v) => setState(() => _replaceArt = v!),
                   title: const Text(
-                    '使用 TMDB 海报和剧照替换现有图片',
+                    '使用数据源海报和剧照替换现有图片',
                     style: TextStyle(fontSize: 12),
                   ),
                   subtitle: const Text(
