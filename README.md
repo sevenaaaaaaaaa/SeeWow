@@ -4,17 +4,19 @@
 
 当前工作区为 **1.15.0 体验预览版**。手机端（iPhone / iPad / Android）补齐 Plex 账号登录、本地目录权限与扫描；桌面安装包同步更新。新增地区与多语言资料、本机批量补译、自定义资料服务、AI 封面、字幕检索、更多直播订阅格式，以及手势、音量隐私、AB 循环、精彩帧、小窗与语音译配等放映能力。默认关闭的 [AI 字幕与小映陪看](docs/ai-watch.md) 保持可用；支持三套主题、皮肤工作室和 design.md 生成，详见 [皮肤说明](skins/README.md) 与 [design.md 模板](design.md)。
 
-## 下载 1.15.0 体验预览版
+## 下载 1.16.0 体验预览版
 
-完整更新记录见 [1.15.0 发布说明](docs/releases/1.15.0.md)，安装包与 SHA-256 校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.15.0)。
+完整更新记录见 [1.16.0 发布说明](docs/releases/1.16.0.md)，安装包与 SHA-256 校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.16.0)。
+
+这一版把入口和发现重做了一遍：手机摇一摇 / 电脑晃窗口刷新，首页按片库自动生成专题，短剧有独立入口并自动连播，Plex 可以只导入选中的资料库，新装用户可以直接播放内置的免版权示例片库。
 
 | 平台 | 安装包 | 安装与签名状态 |
 | --- | --- | --- |
-| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.15.0/SeeWow-macos-1.15.0-preview.zip) | 解压后将应用移到「应用程序」；临时签名、未公证 |
-| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.15.0/SeeWow-Android-1.15.0-preview.apk) | Android 7.0+；Release 编译、开发签名预览包 |
-| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.15.0/SeeWow-iOS-1.15.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
+| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.16.0/SeeWow-macos-1.16.0-preview.zip) | 解压后将应用移到「应用程序」；临时签名、未公证 |
+| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.16.0/SeeWow-Android-1.16.0-preview.apk) | Android 7.0+；Release 编译、开发签名预览包 |
+| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.16.0/SeeWow-iOS-1.16.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
 
-Windows / Linux 本轮未提供 1.15.0 安装包。AI 功能默认关闭，需要用户自行配置 API；使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
+Windows / Linux 本轮未提供 1.16.0 安装包。AI 功能默认关闭，需要用户自行配置 API；使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
 
 片源能力包括服务选择器、Plex / File Station / Navidrome 适配、OpenList / Alist API 扫描与动态直链，以及本地 / SMB / WebDAV 的多语言 NFO 读取。以下区分已经实现与尚未支持的能力。
 
