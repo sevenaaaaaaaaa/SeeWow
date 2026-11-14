@@ -5,6 +5,7 @@ import '../design/cinema_widgets.dart';
 import '../design/tokens.dart';
 import '../design/skin.dart';
 import '../domain/catalog_category.dart';
+import '../domain/collection_engine.dart';
 import '../domain/media_item.dart';
 
 class HomeView extends StatefulWidget {
@@ -17,12 +18,20 @@ class HomeView extends StatefulWidget {
     this.onSources,
     this.onLibrary,
     this.onLongPull,
+    this.onInteract,
+    this.onSamples,
   });
   final LibraryStore store;
   final ValueChanged<MediaItem> onOpen, onPlay;
   final ValueChanged<String>? onAgent;
   final VoidCallback? onSources, onLibrary;
   final VoidCallback? onLongPull;
+
+  /// Fired on any pointer-down: a shake right after a tap is never intended.
+  final VoidCallback? onInteract;
+
+  /// Loads the built-in public-domain starter library.
+  final VoidCallback? onSamples;
   @override
   State<HomeView> createState() => _HomeViewState();
 }
@@ -31,6 +40,21 @@ class _HomeViewState extends State<HomeView> {
   final _prompt = TextEditingController();
   double _pull = 0;
   bool _spaceTriggered = false;
+
+  // Shelves are rebuilt only when the library actually changes: the engine
+  // walks every item, and the home feed rebuilds on every taste or progress
+  // notification.
+  List<AutoCollection> _shelves = const [];
+  String _shelfSignature = '';
+
+  List<AutoCollection> _autoShelves(LibraryStore store) {
+    final items = store.items;
+    final signature = '${store.revision}:${items.length}:${store.taste.genres.length}';
+    if (signature == _shelfSignature) return _shelves;
+    _shelfSignature = signature;
+    _shelves = const CollectionEngine().build(items);
+    return _shelves;
+  }
 
   bool _onScroll(ScrollNotification notification) {
     if (notification is ScrollEndNotification) {
@@ -62,16 +86,9 @@ class _HomeViewState extends State<HomeView> {
   }
 
   void _send() {
-    if (_prompt.text.trim().isNotEmpty)
+    if (_prompt.text.trim().isNotEmpty) {
       widget.onAgent?.call(_prompt.text.trim());
-  }
-
-  Future<void> _refresh() async {
-    await widget.store.refreshAll();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('片库已刷新'), duration: Duration(seconds: 1)),
-    );
+    }
   }
 
   Widget _shelf(String title, String subtitle, List<MediaItem> items) {
@@ -136,10 +153,10 @@ class _HomeViewState extends State<HomeView> {
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 700;
           final pad = compact ? 20.0 : 32.0;
-          return NotificationListener<ScrollNotification>(
-            onNotification: _onScroll,
-            child: RefreshIndicator(
-              onRefresh: _refresh,
+          return Listener(
+            onPointerDown: (_) => widget.onInteract?.call(),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onScroll,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.fromLTRB(pad, 24, pad, 48),
@@ -158,7 +175,7 @@ class _HomeViewState extends State<HomeView> {
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
-                        '继续下拉，进入解耦空间',
+                        '摇一摇刷新片库 · 继续下拉进入解耦空间',
                         style: TextStyle(fontSize: 10, color: WowColors.muted),
                       ),
                     ),
@@ -169,11 +186,23 @@ class _HomeViewState extends State<HomeView> {
                         icon: Icons.video_library_outlined,
                         title: '你的私人影院，从第一部开始',
                         description:
-                            '连接本地文件夹、NAS 或网盘 WebDAV。影片会汇入同一个片库，推荐也从你的真实收藏开始。',
-                        action: FilledButton.icon(
-                          onPressed: widget.onSources,
-                          icon: const Icon(Icons.add),
-                          label: const Text('连接第一个片源'),
+                            '连接本地文件夹、NAS 或网盘 WebDAV。影片会汇入同一个片库，推荐也从你的真实收藏开始。'
+                            '还没有片源？先看几部免版权影片，不用登录、不用配置。',
+                        action: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: widget.onSources,
+                              icon: const Icon(Icons.add),
+                              label: const Text('连接第一个片源'),
+                            ),
+                            if (widget.onSamples != null)
+                              TextButton.icon(
+                                onPressed: widget.onSamples,
+                                icon: const Icon(Icons.public, size: 16),
+                                label: const Text('载入免版权示例片库'),
+                              ),
+                          ],
                         ),
                       ),
                     )
@@ -528,11 +557,13 @@ class _HomeViewState extends State<HomeView> {
                     ),
                   ],
                   if (recent.isNotEmpty)
-                    _shelf('最近加入', '刚入库的影片，下拉可刷新', recent.take(12).toList()),
+                    _shelf('最近加入', '刚入库的影片 · 摇一摇可刷新', recent.take(12).toList()),
                   if (documentaries.isNotEmpty)
                     _shelf('纪录片', '纪实、自然与人文片单', documentaries),
                   if (shortDramas.isNotEmpty)
                     _shelf('短剧', '单集 20 分钟内 · 竖屏短剧优先', shortDramas),
+                  for (final shelf in _autoShelves(store))
+                    _shelf(shelf.title, shelf.subtitle, shelf.items),
                   const SizedBox(height: 30),
                   SectionTitle(
                     '为你，再多一点发现',

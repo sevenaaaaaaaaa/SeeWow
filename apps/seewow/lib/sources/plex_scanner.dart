@@ -2,13 +2,59 @@ import '../domain/media_item.dart';
 import '../domain/media_metadata.dart';
 import 'json_api.dart';
 
+/// One library on a Plex server, as shown to the user before scanning.
+class PlexSection {
+  const PlexSection({
+    required this.key,
+    required this.title,
+    required this.type,
+    required this.count,
+  });
+  final String key, title, type;
+  final int count;
+}
+
 class PlexScanner {
-  Future<List<MediaItem>> scan(MediaSource source, String token) async {
+  /// Lists the libraries the token can see, so a connection can be narrowed to
+  /// the folders the user actually wants in the library.
+  Future<List<PlexSection>> sections(MediaSource source, String token) async {
+    if (token.isEmpty) throw const FormatException('请提供 Plex Token');
+    final api = JsonApi(
+      Uri.parse(source.location),
+      headers: {'X-Plex-Token': token},
+    );
+    try {
+      final root = await api.get('library/sections');
+      final raw = (root['MediaContainer'] as Map?)?['Directory'];
+      if (raw is! List) throw const FormatException('Plex 资料库响应无效');
+      return [
+        for (final section in raw.whereType<Map>())
+          if (['movie', 'show'].contains(section['type']))
+            PlexSection(
+              key: section['key']?.toString() ?? '',
+              title: section['title']?.toString() ?? '未命名资料库',
+              type: section['type'].toString(),
+              count: (section['count'] as num?)?.toInt() ?? 0,
+            ),
+      ];
+    } finally {
+      api.close();
+    }
+  }
+
+  Future<List<MediaItem>> scan(
+    MediaSource source,
+    String token, {
+    Set<String>? sectionKeys,
+  }) async {
     if (token.isEmpty) throw const FormatException('请提供 Plex Token');
     final headers = {'X-Plex-Token': token};
     final api = JsonApi(Uri.parse(source.location), headers: headers);
     final items = <MediaItem>[];
     final ids = <String>{};
+    // An empty selection means "everything", exactly as before this option
+    // existed.
+    final allowed = sectionKeys ?? source.folders.toSet();
     try {
       final root = await api.get('library/sections');
       final sections = (root['MediaContainer'] as Map?)?['Directory'];
@@ -16,6 +62,9 @@ class PlexScanner {
       for (final section in sections.whereType<Map>()) {
         if (!['movie', 'show'].contains(section['type'])) continue;
         final key = section['key']?.toString() ?? '';
+        if (allowed.isNotEmpty && !allowed.contains(key)) {
+          continue;
+        }
         if (!RegExp(r'^\d+$').hasMatch(key))
           throw const FormatException('Plex 资料库标识无效');
         var offset = 0;

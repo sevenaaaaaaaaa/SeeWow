@@ -17,6 +17,7 @@ import '../domain/source_catalog.dart';
 import '../sources/remote_files.dart';
 import '../sources/native_bridge.dart';
 import '../sources/plex_login.dart';
+import '../sources/plex_scanner.dart';
 import '../sources/smb_mounter.dart';
 
 /// Android 13+ scoped storage needs an explicit media grant before the raw
@@ -795,6 +796,9 @@ class _ConnectDialogState extends State<_ConnectDialog> {
   String? _plexStatus;
   bool _plexBusy = false;
   int _plexSession = 0;
+
+  /// Plex library keys to import. Empty means the whole server.
+  Set<String> _folders = {};
   SourceProvider? get _provider => providerById(widget.providerId);
   SourceKind get _kind => SourceKind.values.firstWhere(
     (k) => k.name == _type,
@@ -848,6 +852,7 @@ class _ConnectDialogState extends State<_ConnectDialog> {
     _root = TextEditingController(text: widget.existing?.rootPath ?? '/');
     _name.text = widget.existing?.name ?? _provider?.name ?? '';
     _user.text = widget.existing?.username ?? '';
+    _folders = {...?widget.existing?.folders};
   }
 
   @override
@@ -907,6 +912,13 @@ class _ConnectDialogState extends State<_ConnectDialog> {
         _password.text = chosen.token;
         _plexStatus = '已登录：${chosen.name}';
       });
+      final libraries = await _plexLibraries(chosen);
+      if (!mounted || session != _plexSession) return;
+      if (libraries != null) {
+        final picked = await _choosePlexSections(libraries);
+        if (!mounted || session != _plexSession) return;
+        if (picked != null) setState(() => _folders = picked);
+      }
       await _connect();
     } on PlexException catch (e) {
       if (mounted && session == _plexSession)
@@ -917,6 +929,88 @@ class _ConnectDialogState extends State<_ConnectDialog> {
     } finally {
       if (mounted && session == _plexSession) setState(() => _plexBusy = false);
     }
+  }
+
+  Future<List<PlexSection>?> _plexLibraries(PlexServer server) async {
+    setState(() => _plexStatus = '正在读取 ${server.name} 的资料库…');
+    try {
+      final sections = await PlexScanner().sections(
+        MediaSource(
+          id: 'probe',
+          kind: SourceKind.plex,
+          name: server.name,
+          location: server.uri,
+        ),
+        server.token,
+      );
+      if (sections.isEmpty) return null;
+      return sections;
+    } catch (error) {
+      if (!mounted) return null;
+      setState(() => _plexStatus = '已登录：${server.name}（资料库列表读取失败，导入全部）');
+      return null;
+    }
+  }
+
+  Future<Set<String>?> _choosePlexSections(List<PlexSection> sections) {
+    final selected = {
+      if (_folders.isEmpty) ...sections.map((s) => s.key) else ..._folders,
+    };
+    return showDialog<Set<String>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('选择要导入的资料库'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '只导入勾选的资料库。之后可以在「编辑连接」里重新选择。',
+                  style: TextStyle(fontSize: 12, color: WowColors.muted),
+                ),
+                const SizedBox(height: 10),
+                for (final section in sections)
+                  CheckboxListTile(
+                    value: selected.contains(section.key),
+                    onChanged: (value) => setDialogState(() {
+                      if (value == true) {
+                        selected.add(section.key);
+                      } else {
+                        selected.remove(section.key);
+                      }
+                    }),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(section.title),
+                    subtitle: Text(
+                      '${section.type == 'show' ? '剧集' : '电影'} · ${section.count} 项',
+                      style: TextStyle(fontSize: 11, color: WowColors.muted),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, <String>{}),
+              child: const Text('导入全部'),
+            ),
+            FilledButton(
+              // An empty set already means "everything" to the scanner, so a
+              // user who unticks every box must not silently get all of it.
+              onPressed: selected.isEmpty
+                  ? null
+                  : () => Navigator.pop(context, selected),
+              child: const Text('只导入勾选的'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<PlexServer?> _choosePlexServer(List<PlexServer> servers) =>
@@ -995,6 +1089,7 @@ class _ConnectDialogState extends State<_ConnectDialog> {
           username: _userVisible ? _user.text.trim() : '',
           rootPath: root,
           providerId: widget.providerId,
+          folders: _folders.toList(),
           enabled: previous?.enabled ?? true,
           lastScan: previous?.lastScan,
         );

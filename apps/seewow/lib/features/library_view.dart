@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/library_store.dart';
+import '../downloads/download_manager.dart';
 import '../design/cinema_widgets.dart';
 import '../design/tokens.dart';
 import '../design/skin.dart';
@@ -19,10 +20,18 @@ class LibraryView extends StatefulWidget {
     this.initialKind,
     this.initialWatch = WatchFilter.all,
     this.onSources,
+    this.onInteract,
+    this.downloads,
   });
   final LibraryStore store;
   final ValueChanged<MediaItem> onOpen;
   final VoidCallback? onSources;
+
+  /// Fired on any pointer-down: a shake right after a tap is never intended.
+  final VoidCallback? onInteract;
+
+  /// Optional: when present, a selection can be cached to disk in one go.
+  final DownloadManager? downloads;
   final String initialText;
   final FilmCollection? collection;
   final MediaKind? initialKind;
@@ -94,8 +103,8 @@ class _LibraryViewState extends State<LibraryView> {
         final selectedItems = store.items
             .where((i) => _selected.contains(i.id))
             .toList();
-        return RefreshIndicator(
-          onRefresh: _refresh,
+        return Listener(
+          onPointerDown: (_) => widget.onInteract?.call(),
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
@@ -353,6 +362,18 @@ class _LibraryViewState extends State<LibraryView> {
                                   child: const Text('保存片单'),
                                 ),
                                 TextButton.icon(
+                                  onPressed:
+                                      selectedItems.isEmpty ||
+                                          widget.downloads == null
+                                      ? null
+                                      : () => _cacheSelected(selectedItems),
+                                  icon: const Icon(
+                                    Icons.download_for_offline_outlined,
+                                    size: 16,
+                                  ),
+                                  label: const Text('缓存选中'),
+                                ),
+                                TextButton.icon(
                                   onPressed: selectedItems.isEmpty
                                       ? null
                                       : () => manageMetadataLanguages(
@@ -476,11 +497,32 @@ class _LibraryViewState extends State<LibraryView> {
       },
     ),
   );
-  Future<void> _refresh() async {
-    await widget.store.refreshAll();
+  /// Caches a whole selection (a season, a shelf) in one action, skipping
+  /// anything already on disk.
+  Future<void> _cacheSelected(List<MediaItem> items) async {
+    final manager = widget.downloads;
+    if (manager == null) return;
+    var queued = 0;
+    for (final item in items) {
+      if (manager.hasOffline(item.id)) continue;
+      final source = widget.store.sources
+          .where((s) => s.id == item.sourceId)
+          .firstOrNull;
+      await manager.enqueue(
+        item,
+        source: source,
+        sourceName: source?.name ?? '本地',
+      );
+      queued++;
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('片库已刷新'), duration: Duration(seconds: 1)),
+      SnackBar(
+        content: Text(
+          queued == 0 ? '选中的影片都已缓存' : '已加入缓存队列 $queued 项',
+        ),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 

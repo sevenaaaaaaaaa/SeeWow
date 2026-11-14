@@ -279,6 +279,7 @@ class MediaSource {
     this.lastScan,
     this.providerId = '',
     this.rootPath = '/',
+    this.folders = const [],
   });
   final String id;
   final SourceKind kind;
@@ -288,6 +289,11 @@ class MediaSource {
   final bool enabled;
   final DateTime? lastScan;
   final String providerId, rootPath;
+
+  /// Which libraries/folders inside one server this source may read.
+  /// Empty means "everything the account can see", which keeps older
+  /// connections working exactly as they did.
+  final List<String> folders;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -299,6 +305,7 @@ class MediaSource {
     'lastScan': lastScan?.toIso8601String(),
     'providerId': providerId,
     'rootPath': rootPath,
+    'folders': folders,
   };
   factory MediaSource.fromJson(Map<String, dynamic> j) => MediaSource(
     id: j['id'] as String,
@@ -312,6 +319,7 @@ class MediaSource {
     enabled: (j['enabled'] as bool?) ?? true,
     providerId: j['providerId'] as String? ?? '',
     rootPath: j['rootPath'] as String? ?? '/',
+    folders: (j['folders'] as List?)?.cast<String>() ?? const [],
     lastScan: j['lastScan'] != null
         ? DateTime.tryParse(j['lastScan'] as String)
         : null,

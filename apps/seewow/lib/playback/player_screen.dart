@@ -44,12 +44,18 @@ class PlayerScreen extends StatefulWidget {
     this.isLive = false,
     this.onProgress,
     this.resolve,
+    this.onCompleted,
   });
   final MediaItem item;
   final double? startAt;
   final bool isLive;
   final Future<MediaItem> Function(MediaItem)? resolve;
   final void Function(double position, double duration)? onProgress;
+
+  /// Fired once when the media reaches its end. Used by short-drama mode to
+  /// roll into the next episode without a tap. The screen closes itself with
+  /// `true` only when it still owns the top route.
+  final VoidCallback? onCompleted;
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -100,6 +106,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<Duration>? _durSub;
   StreamSubscription<bool>? _playSub;
+  StreamSubscription<bool>? _completedSub;
+  bool _completionFired = false;
 
   double _position = 0;
   double _duration = 0;
@@ -155,6 +163,19 @@ class _PlayerScreenState extends State<PlayerScreen>
     });
     _durSub = _player.stream.duration.listen((d) {
       if (mounted) setState(() => _duration = d.inMilliseconds / 1000);
+    });
+    _completedSub = _player.stream.completed.listen((done) {
+      if (!done || _completionFired) return;
+      _completionFired = true;
+      final handler = widget.onCompleted;
+      if (handler == null) return;
+      handler();
+      if (!mounted) return;
+      // Only close the player when it is still the top route: a settings or
+      // subtitle sheet on top must stay put, and the caller reads the null
+      // result as "the user did not finish".
+      final route = ModalRoute.of(context);
+      if (route?.isCurrent == true) Navigator.of(context).maybePop(true);
     });
     _playSub = _player.stream.playing.listen((p) {
       if (mounted) setState(() => _playing = p);
@@ -1085,6 +1106,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _subtitleSub?.cancel();
     _watchAi.dispose();
     _hideTimer?.cancel();
+    _completedSub?.cancel();
     _posSub?.cancel();
     _durSub?.cancel();
     _playSub?.cancel();

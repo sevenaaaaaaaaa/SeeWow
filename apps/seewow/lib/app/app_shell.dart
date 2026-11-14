@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../agent/agent_controller.dart';
+import 'shake_refresh.dart';
 import '../data/iptv_store.dart';
 import '../data/library_store.dart';
 import '../design/cinema_widgets.dart';
@@ -20,14 +24,17 @@ import '../features/home_view.dart';
 import '../features/library_view.dart';
 import '../features/live_view.dart';
 import '../features/settings_view.dart';
+import '../features/short_drama_view.dart';
 import '../features/sources_view.dart';
 import '../playback/player_screen.dart';
 import '../remote/remote_hub.dart';
 import '../remote/remote_server.dart';
+import '../sources/public_domain_library.dart';
 import '../sources/source_scanner.dart';
 
 enum Section {
   home,
+  shortDramas,
   library,
   collections,
   sources,
@@ -39,6 +46,7 @@ enum Section {
 
 const _destinations = [
   (Section.home, Icons.space_dashboard_outlined, '为你放映'),
+  (Section.shortDramas, Icons.movie_filter_outlined, '短剧'),
   (Section.library, Icons.video_library_outlined, '媒体库'),
   (Section.collections, Icons.bookmarks_outlined, '我的片单'),
   (Section.sources, Icons.hub_outlined, '片源与订阅'),
@@ -112,6 +120,11 @@ class _AppShellState extends State<AppShell> {
   late final DownloadManager _downloads;
   bool _inSpace = false;
   LibraryStore get _store => _inSpace ? _spaceStore : widget.store;
+
+  late final RefreshGestureGate _shakeGate;
+  late final ShakeRefreshController _shaker;
+  StreamSubscription<AccelerometerEvent>? _accel;
+  _WindowShakeListener? _windowShake;
   @override
   void initState() {
     super.initState();
@@ -146,11 +159,84 @@ class _AppShellState extends State<AppShell> {
     _agent.load().catchError((Object e) {
       debugPrint('Agent history unavailable');
     });
+    _wireShake();
     WidgetsBinding.instance.addPostFrameCallback((_) => _launch());
+  }
+
+  /// Shake-to-refresh: a real accelerometer on phones, a shaken window on the
+  /// desktop, and no gesture at all where neither exists.
+  void _wireShake() {
+    _shakeGate = RefreshGestureGate();
+    // Widget tests must never open a real sensor or window listener: the
+    // platform implementation installs timers that keep pumpAndSettle waiting.
+    final underTest = Platform.environment.containsKey('FLUTTER_TEST');
+    if (underTest) {
+      _shaker = ShakeRefreshController(
+        gate: _shakeGate,
+        onRefresh: _shakeRefresh,
+      );
+      return;
+    }
+    final surface = shakeSurfaceFor(
+      isMobile: Platform.isAndroid || Platform.isIOS,
+      isDesktop: Platform.isMacOS || Platform.isWindows || Platform.isLinux,
+      sensorsAvailable: Platform.isAndroid || Platform.isIOS,
+    );
+    _shaker = ShakeRefreshController(
+      gate: _shakeGate,
+      detector: ReversalShakeDetector(
+        // Pixels for a window drag, m/s² for a phone.
+        minAmplitude: surface == ShakeSurface.window ? 48 : 14,
+      ),
+      onRefresh: _shakeRefresh,
+    );
+    if (surface == ShakeSurface.accelerometer) {
+      // 20 ms sampling: the detector needs four or five samples inside
+      // 1.1 s, and the package default (200 ms) only provides five.
+      _accel = accelerometerEventStream(
+        samplingPeriod: SensorInterval.gameInterval,
+      ).listen((event) {
+        _shaker.feed(event.x, DateTime.now());
+      });
+    } else if (surface == ShakeSurface.window) {
+      final listener = _WindowShakeListener(
+        (x, at) => _shaker.feed(x, at),
+      );
+      windowManager.addListener(listener);
+      _windowShake = listener;
+    }
+  }
+
+  /// Loads the bundled public-domain titles so a new install has something to
+  /// play before any source is configured.
+  Future<void> _loadSamples() async {
+    final added = await _store.addItems(buildPublicDomainItems());
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          added == 0 ? '示例片库已经载入过了' : '已载入 $added 部免版权影片',
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+    setState(() {});
+  }
+
+  Future<void> _shakeRefresh() async {
+    if (!mounted) return;
+    await _store.refreshAll();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('片库已刷新'), duration: Duration(seconds: 1)),
+    );
   }
 
   @override
   void dispose() {
+    _accel?.cancel();
+    if (_windowShake != null) windowManager.removeListener(_windowShake!);
+    _shaker.dispose();
     _agent.dispose();
     super.dispose();
   }
@@ -214,6 +300,11 @@ class _AppShellState extends State<AppShell> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.movie_filter_outlined),
+              title: const Text('短剧'),
+              onTap: () => Navigator.pop(context, Section.shortDramas),
+            ),
+            ListTile(
               leading: const Icon(Icons.bookmarks_outlined),
               title: const Text('我的片单'),
               onTap: () => Navigator.pop(context, Section.collections),
@@ -252,12 +343,26 @@ class _AppShellState extends State<AppShell> {
     ),
   );
   void _play(MediaItem item) => _playLive(_store.current(item), live: false);
-  Future<void> _playLive(MediaItem item, {bool live = true}) async {
+  /// Plays a short-drama queue from [index] and rolls on to the next episode
+  /// when the current one ends.
+  void _playDramaQueue(List<MediaItem> queue, int index) {
+    if (queue.isEmpty || index >= queue.length) return;
+    _playLive(queue[index], live: false, queue: queue, index: index);
+  }
+
+  Future<void> _playLive(
+    MediaItem item, {
+    bool live = true,
+    List<MediaItem>? queue,
+    int index = 0,
+  }) async {
     if (_playerOpen) return;
     _playerOpen = true;
+    _shakeGate.playing = true;
+    var advanced = false;
     try {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
+      final result = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
           builder: (_) => PlayerScreen(
             item: item,
             isLive: live,
@@ -283,11 +388,29 @@ class _AppShellState extends State<AppShell> {
                 : (position, duration) {
                     _store.updatePosition(item, position, duration);
                   },
+            // The player closes itself and reports `true`; anything else
+            // (a user who pressed back, a sheet on top) must not roll on.
+            onCompleted: queue == null || index + 1 >= queue.length
+                ? null
+                : () => advanced = true,
           ),
         ),
       );
+      if (result != true) advanced = false;
     } finally {
       _playerOpen = false;
+      _shakeGate.playing = false;
+      _shakeGate.markInteraction();
+      if (mounted && advanced && queue != null && index + 1 < queue.length) {
+        unawaited(
+          _playLive(
+            queue[index + 1],
+            live: false,
+            queue: queue,
+            index: index + 1,
+          ),
+        );
+      }
     }
   }
 
@@ -570,7 +693,8 @@ class _AppShellState extends State<AppShell> {
                   selectedIndex:
                       _section == Section.collections ||
                           _section == Section.live ||
-                          _section == Section.music
+                          _section == Section.music ||
+                          _section == Section.shortDramas
                       ? 4
                       : [
                           Section.home,
@@ -801,12 +925,19 @@ class _AppShellState extends State<AppShell> {
     ),
   );
   Widget _content() => switch (_section) {
+    Section.shortDramas => ShortDramaView(
+      store: _store,
+      onPlayQueue: _playDramaQueue,
+      onSources: () => _select(Section.sources),
+    ),
     Section.music => LibraryView(
       key: const ValueKey('music'),
       store: _store,
       onOpen: _open,
       initialKind: MediaKind.audio,
       onSources: () => _select(Section.sources),
+      onInteract: _shakeGate.markInteraction,
+      downloads: _downloads,
     ),
     Section.home => HomeView(
       store: _store,
@@ -816,6 +947,8 @@ class _AppShellState extends State<AppShell> {
       onSources: () => _select(Section.sources),
       onLibrary: () => _library(),
       onLongPull: _inSpace ? null : _enterSpace,
+      onInteract: _shakeGate.markInteraction,
+      onSamples: _loadSamples,
     ),
     Section.library => LibraryView(
       key: ValueKey(_libraryKey),
@@ -826,6 +959,8 @@ class _AppShellState extends State<AppShell> {
       initialWatch: _watch,
       collection: _collection,
       onSources: () => _select(Section.sources),
+      onInteract: _shakeGate.markInteraction,
+      downloads: _downloads,
     ),
     Section.collections => CollectionsView(
       store: _store,
@@ -974,5 +1109,32 @@ class _CommandPaletteState extends State<_CommandPalette> {
         ),
       ),
     );
+  }
+}
+
+/// Turn window drags into a sample stream. `onWindowMove` can fire faster than
+/// `getPosition` resolves, so a read in flight suppresses the next one.
+class _WindowShakeListener extends WindowListener {
+  _WindowShakeListener(this.onSample);
+
+  final void Function(double x, DateTime at) onSample;
+  bool _reading = false;
+
+  @override
+  void onWindowMove() {
+    if (_reading) return;
+    _reading = true;
+    _read();
+  }
+
+  Future<void> _read() async {
+    try {
+      final position = await windowManager.getPosition();
+      onSample(position.dx, DateTime.now());
+    } catch (error) {
+      debugPrint('window shake sample failed: $error');
+    } finally {
+      _reading = false;
+    }
   }
 }

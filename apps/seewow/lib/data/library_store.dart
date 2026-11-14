@@ -113,7 +113,12 @@ class LibraryStore extends ChangeNotifier {
     }
   }
 
+  /// Bumped on every persisted change, so views can cache derived data
+  /// (home shelves, collections) without hashing the whole library.
+  int revision = 0;
+
   Future<void> save() {
+    revision++;
     final payload = jsonEncode({
       'items': items.map((e) => e.toJson()).toList(),
       'sources': sources.map((e) => e.toJson()).toList(),
@@ -175,6 +180,21 @@ class LibraryStore extends ChangeNotifier {
     sourceErrors.remove(source.id);
     await save();
     notifyListeners();
+  }
+
+  /// Adds items that are not produced by a scanned source — currently the
+  /// built-in public-domain sample. Ids are stable, so re-adding is a no-op.
+  Future<int> addItems(Iterable<MediaItem> incoming) async {
+    final known = {for (final item in items) item.id};
+    final added = <MediaItem>[
+      for (final item in incoming)
+        if (known.add(item.id)) item,
+    ];
+    if (added.isEmpty) return 0;
+    items.addAll(added);
+    await save();
+    notifyListeners();
+    return added.length;
   }
 
   Future<void> rescan(MediaSource source) {
@@ -251,6 +271,7 @@ class LibraryStore extends ChangeNotifier {
           lastScan: DateTime.now(),
           providerId: source.providerId,
           rootPath: source.rootPath,
+          folders: source.folders,
         );
     } catch (e) {
       // Preserve the previous library when a source is offline.
