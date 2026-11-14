@@ -1,0 +1,15 @@
+[package]
+name = "seewow-library"
+description = "SeeWow 片库：SQLite、扫描、查询、观看状态（T-03 起）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+seewow-core = { path = "../core" }
+
+# 依赖登记见 docs/plan/rust-rewrite-plan.md 第 4 节（D-02）。
+# bundled 自带 SQLite 源码：三端不依赖系统库版本，代价是首次编译多几十秒。
+rusqlite = { version = "0.42.0", features = ["bundled"] }

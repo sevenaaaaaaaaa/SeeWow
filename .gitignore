@@ -8,6 +8,7 @@
 !/design.md
 !/skins/
 !/apps/
+!/qa/
 !/docs/
 !/.github/
 
@@ -15,6 +16,7 @@ apps/seewow_prep/
 docs/awake/
 docs/screens/*
 !docs/screens/flutter-*.png
+qa/*/.artifacts/
 
 # ── Flutter / Dart ──────────────────────────────────────────────
 apps/seewow/.dart_tool/
@@ -43,6 +45,7 @@ apps/seewow/linux/flutter/ephemeral/
 
 # ── Local artifacts ─────────────────────────────────────────────
 dist/
+target/
 .build/
 DemoMedia/
 DemoMusic/

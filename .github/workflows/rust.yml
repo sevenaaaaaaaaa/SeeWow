@@ -1,0 +1,43 @@
+name: rust
+
+# Rust 重写线（apps/seewow-rs）的回归门槛：fmt / clippy / test 三条，等价于
+# docs/plan/rust-rewrite-plan.md §5 的硬门槛。
+#
+# 为什么跑在 macOS：crates/player 链 libmpv（build.rs 找 /opt/homebrew/lib），
+# 而 M1–M3 的窗口/HDR 代码是 objc2。Linux runner 现在装不出同样的组合。
+# 视频解码的直觉验证不在这里跑（headless_mpv 需要 SEEWOW_MPV_TEST=1 与真实文件）。
+
+on:
+  push:
+    branches: [main, "crew/**"]
+    paths:
+      - "apps/seewow-rs/**"
+      - ".github/workflows/rust.yml"
+  pull_request:
+    paths:
+      - "apps/seewow-rs/**"
+      - ".github/workflows/rust.yml"
+  workflow_dispatch:
+
+jobs:
+  workspace:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/seewow-rs
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mpv
+        run: brew install mpv
+      - name: Restore cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/seewow-rs
+      - name: Toolchain
+        run: rustup show
+      - name: fmt
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: test
+        run: cargo test --workspace

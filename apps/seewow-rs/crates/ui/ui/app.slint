@@ -1,0 +1,8 @@
+// SeeWow 的 Slint 根文件：M1 只 import / 导出自身的三个 .slint（HLD §3.3）。
+// 后续任务按任务表 §0.3 授权表各追加一行 import，不许改这里的其它内容。
+//
+// 为什么是 `export { Skeleton }` 而不是 `component App inherits Skeleton`：
+// 后者不会把基类在别处声明的属性生成访问器（实测：生成的 App 上没有 get_header_h）。
+import { Skeleton } from "skeleton.slint";
+
+export { Skeleton }
