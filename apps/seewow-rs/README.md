@@ -21,6 +21,15 @@ SEEWOW_SELFTEST=1 cargo run -p seewow-app -- /path/to/video.mp4   # 脚本化自
 
 日志写在 ~/Library/Logs/SeeWow/m1.log。
 
+不需要窗口也能验证片库链路（M2）：
+
+```sh
+seewow-app --scan /path/to/media --json --db /tmp/library.db
+seewow-app --scan /path/to/media          # 人读摘要
+```
+
+首次运行写库、第二次走增量；`--include-hidden` 收录隐藏目录。
+
 ## 测试与检查
 
 ```sh
@@ -45,7 +54,7 @@ open dist/SeeWow.app
 | 里程碑 | 状态 |
 | --- | --- |
 | M1 骨架（窗口 / 叠层 / HDR 探针） | 已交付 v2.0.0-m1；验收冻结到 M6 之后 |
-| M2 本地片库 / 解析 / SQLite / 收藏搜索 | 进行中：core 基础与文件名解析已完成 |
+| M2 本地片库 / 解析 / SQLite / 收藏搜索 | 完成（自审，2026-11-15）：扫描、解析、SQLite、查询分页、收藏进度、`--scan` 命令行 |
 
 ## 目录
 
