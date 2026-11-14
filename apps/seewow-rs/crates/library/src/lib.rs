@@ -7,7 +7,9 @@ pub mod db;
 pub mod query;
 pub mod scan;
 pub mod schema;
+pub mod state;
 
 pub use db::Library;
 pub use query::{DEFAULT_LIMIT, Query, SortBy};
 pub use scan::{ScanFailure, ScanOptions, ScanReport, collect_media, scan_into_library};
+pub use state::WatchState;
