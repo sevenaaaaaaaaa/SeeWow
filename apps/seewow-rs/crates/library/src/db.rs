@@ -11,7 +11,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use seewow_core::{Error, MediaEntry, MediaId, MediaKind, Result, SourceKind};
 
-use crate::schema::{SCHEMA_VERSION, V1};
+use crate::schema::{SCHEMA_VERSION, V1, V2};
 
 /// 一个已打开的片库。
 pub struct Library {
@@ -71,6 +71,13 @@ impl Library {
             let tx = self.conn.transaction().map_err(db_error)?;
             tx.execute_batch(V1).map_err(db_error)?;
             tx.pragma_update(None, "user_version", 1)
+                .map_err(db_error)?;
+            tx.commit().map_err(db_error)?;
+        }
+        if version < 2 {
+            let tx = self.conn.transaction().map_err(db_error)?;
+            tx.execute_batch(V2).map_err(db_error)?;
+            tx.pragma_update(None, "user_version", 2)
                 .map_err(db_error)?;
             tx.commit().map_err(db_error)?;
         }

@@ -7,7 +7,7 @@
 //! 按稳定 ID 保留下来，等文件回来再接上。这是 M2 DoD 里写明的行为。
 
 /// 当前代码支持的库版本。
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 /// v1：片源、条目、观看状态。
 pub const V1: &str = r#"
@@ -48,4 +48,18 @@ CREATE TABLE IF NOT EXISTS watch_state (
 );
 
 CREATE INDEX IF NOT EXISTS watch_state_favorite ON watch_state(favorite);
+"#;
+
+/// v2：剧集片头片尾标记（D-09 / M3 T-15）。
+///
+/// 按 `show_key`（剧名归一化后的散列或稳定 ID）存，不绑单集：用户在一集里标了
+/// 「片头到 1:20 结束」，同一部剧的其他集默认沿用，仍可逐集覆盖。
+pub const V2: &str = r#"
+CREATE TABLE IF NOT EXISTS chapter_marks (
+    show_key      TEXT NOT NULL,
+    kind          TEXT NOT NULL,
+    position_ms   INTEGER NOT NULL,
+    updated_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (show_key, kind)
+);
 "#;

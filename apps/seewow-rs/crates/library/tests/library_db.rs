@@ -31,7 +31,7 @@ fn entry(source: &str, path: &str, title: &str, added_at_ms: i64) -> MediaEntry 
 #[test]
 fn fresh_library_is_versioned_and_empty() {
     let library = Library::open_in_memory().unwrap();
-    assert_eq!(library.schema_version().unwrap(), 1);
+    assert_eq!(library.schema_version().unwrap(), 2);
     assert_eq!(library.count_media().unwrap(), 0);
     assert_eq!(library.source_count().unwrap(), 0);
     assert!(library.all_media().unwrap().is_empty());
@@ -43,11 +43,11 @@ fn reopening_the_same_file_does_not_rerun_migrations() {
     let _ = std::fs::remove_file(&path);
     {
         let library = Library::open(&path).unwrap();
-        assert_eq!(library.schema_version().unwrap(), 1);
+        assert_eq!(library.schema_version().unwrap(), 2);
     }
     {
         let library = Library::open(&path).unwrap();
-        assert_eq!(library.schema_version().unwrap(), 1);
+        assert_eq!(library.schema_version().unwrap(), 2);
         assert_eq!(library.count_media().unwrap(), 0);
     }
     let _ = std::fs::remove_file(&path);

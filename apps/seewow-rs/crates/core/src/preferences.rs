@@ -13,9 +13,10 @@ use serde::{Deserialize, Serialize};
 pub const SPEED_STEPS: &[f64] = &[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0, 4.0, 5.0];
 
 /// 定时关闭。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SleepTimer {
+    #[default]
     Off,
     Minutes15,
     Minutes30,

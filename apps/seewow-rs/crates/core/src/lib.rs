@@ -10,6 +10,7 @@ pub mod parse;
 pub mod paths;
 pub mod preferences;
 pub mod resume;
+pub mod session;
 pub mod subtitle;
 pub mod types;
 
@@ -20,5 +21,6 @@ pub use parse::{ParsedName, parse_file_name};
 pub use paths::{Paths, Platform, current_platform};
 pub use preferences::{PlayerPreferences, SleepTimer, TrackInfo};
 pub use resume::{ResumePoint, ResumePolicy};
+pub use session::{PlaybackTick, SessionRules, Signal, SleepTimerState, tick_signals};
 pub use subtitle::{Cue, SubtitleFormat, parse_subtitle};
 pub use types::{MediaEntry, MediaId, MediaKind, SourceKind};
