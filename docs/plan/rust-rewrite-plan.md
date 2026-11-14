@@ -121,7 +121,7 @@ M1 的 PRD、HLD、任务表、ADR 原本放在 `/tmp/dsh-crew/...`，那个目�
 | T-10 | 断点续播策略：起播门槛、续播回退 3 秒、看完判定、落盘节流 | `crates/core/src/resume.rs` | 内联 9 项 | **完成 2026-11-15** |
 | T-11 | 字幕解析与编码判定：SRT / VTT、UTF-8(BOM) / UTF-16、GBK 明确报错 | `crates/core/src/subtitle.rs` | 内联 10 项 | **完成 2026-11-15** |
 | T-12 | 按键映射：播放/暂停、±步长、音量、静音、全屏、倍速、字幕、逐帧、数字跳转 | `crates/core/src/keymap.rs` | 内联 9 项 | **完成 2026-11-15** |
-| T-13 | 播放偏好：默认音轨/字幕语言、默认倍速、连播、定时关闭、长按倍率 | `crates/core/src/preferences.rs` | 内联（校验 + 序列化） | 待做 |
+| T-13 | 播放偏好：默认音轨/字幕语言、默认倍速、连播、定时关闭、长按倍率 | `crates/core/src/preferences.rs` | 内联 10 项 | **完成 2026-11-15** |
 | T-14 | Slint 控制栏 + 手势（双击 ±步长、上下音量、长按加速回弹） | `crates/ui/src/*`、`crates/ui/ui/player.slint` | `hit` 路由测试 + 视觉清单 | 待做 |
 | T-15 | 播放页打通：打开即播、续播、字幕轨切换、片头片尾标记（SQLite 新表） | `crates/app`、`crates/library/src/chapters.rs` | 冒烟 + 库迁移测试 | 待做 |
 
@@ -260,15 +260,16 @@ M3 的策略层（`resume` / `subtitle` / `keymap`）**没有新增依赖**：�
 - Rust CI：新增 `.github/workflows/rust.yml`（macOS runner + `brew install mpv`，跑 fmt / clippy / test）。此前 Rust 线完全没有 CI，回归只靠本地三条命令。
 - 无窗口起播证据：新增 `crates/player/tests/headless_mpv.rs`（`SEEWOW_MPV_TEST=1` 才跑）。实跑输出：`pos=0.375s duration=1.02s idle_active=false polls=4 command_ms=428 total_ms=1348`——libmpv 在本机 `vo=null` 下真能开局，T-09 不必先有窗口。
 
-**M3 已落的三块策略（T-10/T-11/T-12）**
+**M3 已落的四块策略（T-10/T-11/T-12/T-13）**
 
 | 模块 | 测试 | 关键行为 |
 | --- | --- | --- |
 | `core/resume.rs` | 9 | 30 秒门槛、续播回退 3 秒、95% 或尾 2 分钟判看完、落盘 10 秒节流、回拖立刻落盘 |
 | `core/subtitle.rs` | 10 | SRT / VTT 时间轴、`<i>` 与 `{\an8}` 不进屏幕、UTF-16 BOM 可读、GBK 明确 `Unsupported` |
 | `core/keymap.rs` | 9 | 空格/K、方向键与 J/L 按步长、`[` `]` 倍速、数字键百分比、未知键不被吞、长按倍率 2.0 |
+| `core/preferences.rs` | 10 | 倍速吸附档位、坏值回落、语言标签归一（`zh_Hans`→`zh-Hans`）、字幕匹配顺序（全等→同 script→同主语言→标题兜底）、匹配不到返回 `None` 而不是第一条 |
 
-全仓测试：**131 通过 / 0 失败**（M2 收尾时 101，本轮 +30）。
+全仓测试：**141 通过 / 0 失败**（M2 收尾时 101，本轮 +40）。
 
 **仍未闭合**
 
