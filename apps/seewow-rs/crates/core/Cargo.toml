@@ -1,6 +1,6 @@
 [package]
 name = "seewow-core"
-description = "SeeWow 领域类型、错误、日志、配置、路径、解析（M1 只登记 crate；实现见 T-02 / T-04）"
+description = "SeeWow 领域类型、错误、路径、配置、文件名解析（T-02 / T-04）"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-
-# 依赖说明：HLD §3.4 现在只冻结 player / ui / app 三个 crate 的直接依赖。
-# core / library / sources 的空清单是**有意为之**，不是漏写：各自任务（T-02 起）
-# 在实现里补依赖时按任务表 §0.3 授权表 / CRD 走。
+# 依赖登记见 docs/plan/rust-rewrite-plan.md 第 4 节（D-01）。
+# serde_json 本来就在 Slint 的构建图里；配置与 --json 输出必须有一个成熟实现。
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.154"

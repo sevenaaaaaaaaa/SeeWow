@@ -1,10 +1,16 @@
-//! seewow-core —— 领域类型、错误、日志、配置、路径、文件名解析。
+//! seewow-core —— 领域类型、错误、路径、配置、文件名解析。
 //!
-//! M1 只登记 crate 本身（任务表 §3.3：每个 crate 的 `lib.rs` 归 T-01，M1 写一次）。
-//! 具体模块由各自所有者在自己的任务里按任务表 §0.3 授权表登记：
-//!
-//! - T-02：`error`、`types`、`log`、`paths`、`config`
-//! - T-04：`parse`
-//! - T-35：`log_file`、`diagnostics`
-//!
-//! 这里不写 `mod` 声明，也不创建空壳模块文件（任务表 T-01「不创建任何空壳模块文件」）。
+//! 模块归属：T-02（error / types / paths / config）与 T-04（parse）。
+//! 规划、任务表与验收口径见 docs/plan/rust-rewrite-plan.md——那是这条线唯一的权威文件。
+
+pub mod config;
+pub mod error;
+pub mod parse;
+pub mod paths;
+pub mod types;
+
+pub use config::Config;
+pub use error::{Error, Result};
+pub use parse::{ParsedName, parse_file_name};
+pub use paths::{Paths, Platform, current_platform};
+pub use types::{MediaEntry, MediaId, MediaKind, SourceKind};
