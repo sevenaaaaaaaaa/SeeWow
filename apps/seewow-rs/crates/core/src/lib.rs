@@ -5,12 +5,18 @@
 
 pub mod config;
 pub mod error;
+pub mod keymap;
 pub mod parse;
 pub mod paths;
+pub mod resume;
+pub mod subtitle;
 pub mod types;
 
 pub use config::Config;
 pub use error::{Error, Result};
+pub use keymap::{Keymap, PlayerAction, action_for};
 pub use parse::{ParsedName, parse_file_name};
 pub use paths::{Paths, Platform, current_platform};
+pub use resume::{ResumePoint, ResumePolicy};
+pub use subtitle::{Cue, SubtitleFormat, parse_subtitle};
 pub use types::{MediaEntry, MediaId, MediaKind, SourceKind};

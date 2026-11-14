@@ -12,7 +12,8 @@
 /// 一条文件名解析结果。
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedName {
-    /// 展示用标题。剧集包含 SxxExx 后缀；有父目录时可能带上剧名。
+    /// 展示用标题。剧集是「剧名 SxxEyy」；父目录只在文件本身没有剧名时补全，
+    /// 分类文件夹（「电影」「纪录片」）不进入标题（D-07）。
     pub title: String,
     /// 仅在识别到季集时存在。
     pub show_title: Option<String>,
@@ -45,7 +46,14 @@ pub fn parse_file_name(file_name: &str, parent_folder: Option<&str>) -> ParsedNa
         && show.as_deref().is_none_or(|show| show.is_empty())
         && let Some(folder) = parent_folder
     {
-        show = Some(clean(&folder.chars().collect::<Vec<char>>()));
+        let folder = clean(&folder.chars().collect::<Vec<char>>());
+        // D-07：「怪奇物语 S01」「怪奇物语 第2季」这类文件夹名里的季标记不进剧名。
+        let stripped = strip_season_markers(&folder);
+        show = Some(if stripped.is_empty() {
+            folder
+        } else {
+            stripped
+        });
     }
 
     let year_match = find_last_year(&chars);
@@ -54,15 +62,11 @@ pub fn parse_file_name(file_name: &str, parent_folder: Option<&str>) -> ParsedNa
 
     let mut title;
     if let Some(show_title) = show.as_deref().filter(|show| !show.is_empty()) {
+        // D-07：剧名已经确定了就不再前缀父目录——「纪录片」「电影」这类分类文件夹
+        // 不是剧名的一部分，前缀进去只会让整个片库标题变脏。
         title = (*show_title).to_string();
         if let (Some(s), Some(e)) = (season, episode) {
-            title = format!("{title}  S{s:02}E{e:02}");
-        }
-        if let Some(folder) = parent_folder {
-            let folder = clean(&folder.chars().collect::<Vec<char>>());
-            if !folder.is_empty() && !folder.to_lowercase().contains(&show_title.to_lowercase()) {
-                title = format!("{folder}  {title}");
-            }
+            title = format!("{title} S{s:02}E{e:02}");
         }
     } else {
         title = clean(&chars);
@@ -381,6 +385,64 @@ fn flush_token(token: &mut String, out: &mut String) {
     token.clear();
 }
 
+/// 去掉剧集文件夹名里的季标记：「怪奇物语 S01」「Dark Season 2」「某剧 第2季」→ 剧名。
+fn strip_season_markers(text: &str) -> String {
+    let tokens: Vec<&str> = text.split_whitespace().collect();
+    let mut kept: Vec<&str> = Vec::new();
+    let mut index = 0;
+    while index < tokens.len() {
+        let token = tokens[index];
+        let lower = token.to_lowercase();
+        // 「Season 2」「S 2」是两个词：连同后面的数字一起去掉。
+        let is_split_marker = lower == "season" || lower == "s";
+        let next_is_number = tokens
+            .get(index + 1)
+            .is_some_and(|next| !next.is_empty() && next.chars().all(|c| c.is_ascii_digit()));
+        if is_split_marker && next_is_number {
+            index += 2;
+            continue;
+        }
+        if !is_season_token(token) {
+            kept.push(token);
+        }
+        index += 1;
+    }
+    trim_trailing_chinese_season(&kept.join(" "))
+        .trim()
+        .to_string()
+}
+
+fn is_season_token(token: &str) -> bool {
+    let lower = token.to_lowercase();
+    let Some(rest) = lower.strip_prefix('s') else {
+        return false;
+    };
+    if !rest.is_empty() && rest.len() <= 2 && rest.chars().all(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    let Some(number) = rest.strip_prefix("eason") else {
+        return false;
+    };
+    let number = number.trim_start_matches([' ', '.', '-', '_']);
+    !number.is_empty() && number.chars().all(|c| c.is_ascii_digit())
+}
+
+/// 剪掉结尾的「第 N 季」，中文里季标记通常不带空格。
+fn trim_trailing_chinese_season(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() < 3 || chars[chars.len() - 1] != '季' {
+        return text.to_string();
+    }
+    let mut index = chars.len() - 2;
+    while index > 0 && chars[index].is_ascii_digit() {
+        index -= 1;
+    }
+    if chars[index] == '第' && index + 1 < chars.len() - 1 {
+        return chars[..index].iter().collect::<String>().trim().to_string();
+    }
+    text.to_string()
+}
+
 /// 清理标题：括号变空格、去掉停用词、压平空白、剪掉尾部连字符。
 ///
 /// 标点（逗号、顿号、冒号、&、' 等）原样保留：中文片名里的「，」不是分隔符，
@@ -420,7 +482,7 @@ mod tests {
     fn bare_episode_file_takes_the_show_name_from_its_folder() {
         let parsed = parse_file_name("S01E02.mkv", Some("Dark"));
         assert_eq!(parsed.show_title.as_deref(), Some("Dark"));
-        assert_eq!(parsed.title, "Dark  S01E02");
+        assert_eq!(parsed.title, "Dark S01E02");
     }
 
     #[test]
@@ -429,7 +491,7 @@ mod tests {
         assert_eq!(parsed.show_title.as_deref(), Some("Dark"));
         assert_eq!(parsed.season, Some(1));
         assert_eq!(parsed.episode, Some(2));
-        assert_eq!(parsed.title, "Dark  S01E02");
+        assert_eq!(parsed.title, "Dark S01E02");
         assert_eq!(parsed.quality, "1080p · WEB");
     }
 
@@ -442,7 +504,7 @@ mod tests {
         let chinese = parse_file_name("某剧 第2季 第5集.mp4", None);
         assert_eq!((chinese.season, chinese.episode), (Some(2), Some(5)));
         assert_eq!(chinese.show_title.as_deref(), Some("某剧"));
-        assert_eq!(chinese.title, "某剧  S02E05");
+        assert_eq!(chinese.title, "某剧 S02E05");
     }
 
     #[test]
@@ -488,12 +550,36 @@ mod tests {
     }
 
     #[test]
-    fn parent_folder_prepends_only_when_it_adds_information() {
+    fn parent_folder_only_fills_a_missing_show_name() {
+        // 文件本身没有剧名（纯 S01E02）→ 用文件夹补。
         let with_folder = parse_file_name("S01E02.mkv", Some("Dark"));
-        assert_eq!(with_folder.title, "Dark  S01E02");
+        assert_eq!(with_folder.title, "Dark S01E02");
 
+        // 文件本身有剧名 → 不再前缀文件夹，避免重复。
         let same_name = parse_file_name("Dark S01E02.mkv", Some("Dark"));
-        assert_eq!(same_name.title, "Dark  S01E02");
+        assert_eq!(same_name.title, "Dark S01E02");
+    }
+
+    #[test]
+    fn category_folder_never_enters_the_title() {
+        // D-07：真实片库里「纪录片/蓝色星球 第2季 第1集.mp4」不应变成「纪录片 蓝色星球 …」。
+        let parsed = parse_file_name("蓝色星球 第2季 第1集.mp4", Some("纪录片"));
+        assert_eq!(parsed.show_title.as_deref(), Some("蓝色星球"));
+        assert_eq!(parsed.title, "蓝色星球 S02E01");
+    }
+
+    #[test]
+    fn season_marker_in_the_folder_never_enters_the_show_name() {
+        // D-07：文件夹叫「怪奇物语 S01」时，剧名是「怪奇物语」，不是「怪奇物语 S01」。
+        let parsed = parse_file_name("S01E03.mkv", Some("怪奇物语 S01"));
+        assert_eq!(parsed.show_title.as_deref(), Some("怪奇物语"));
+        assert_eq!(parsed.title, "怪奇物语 S01E03");
+
+        let chinese = parse_file_name("S02E01.mkv", Some("某剧 第2季"));
+        assert_eq!(chinese.show_title.as_deref(), Some("某剧"));
+
+        let english = parse_file_name("S02E01.mkv", Some("Dark Season 2"));
+        assert_eq!(english.show_title.as_deref(), Some("Dark"));
     }
 
     #[test]

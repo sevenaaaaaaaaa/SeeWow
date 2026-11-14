@@ -63,7 +63,7 @@ fn walks_recursively_and_parses_names() {
         .iter()
         .find(|entry| entry.relative_path.ends_with("S01E03.mkv"))
         .unwrap();
-    assert_eq!(bare.title, "Dark  S01E03");
+    assert_eq!(bare.title, "Dark S01E03");
 
     assert!(report.skipped >= 2);
     let _ = std::fs::remove_dir_all(&root);
