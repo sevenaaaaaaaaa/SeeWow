@@ -1,4 +1,9 @@
-//! seewow-library —— SQLite 片库、扫描、查询、海报缓存、观看进度。
+//! seewow-library —— SQLite 片库、扫描、查询、观看状态。
 //!
-//! M1 只登记 crate（任务表 §3.3）。模块由 T-03 / T-05 / T-06 / T-07 / T-11
-//! 在自己的任务里按 §0.3 授权表登记。
+//! 任务归属：T-03（db / schema）、T-05（scan）、T-06（query）、T-07（state）。
+//! 规划与验收见 docs/plan/rust-rewrite-plan.md。
+
+pub mod db;
+pub mod schema;
+
+pub use db::Library;

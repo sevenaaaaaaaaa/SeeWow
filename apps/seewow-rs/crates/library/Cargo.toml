@@ -1,6 +1,6 @@
 [package]
 name = "seewow-library"
-description = "SeeWow 片库：SQLite、扫描、查询、海报、进度（M1 只登记 crate；实现见 T-03 起）"
+description = "SeeWow 片库：SQLite、扫描、查询、观看状态（T-03 起）"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+seewow-core = { path = "../core" }
 
-# 依赖说明：HLD §3.4 现在只冻结 player / ui / app 三个 crate 的直接依赖。
-# core / library / sources 的空清单是**有意为之**，不是漏写：各自任务（T-02 起）
-# 在实现里补依赖时按任务表 §0.3 授权表 / CRD 走。
+# 依赖登记见 docs/plan/rust-rewrite-plan.md 第 4 节（D-02）。
+# bundled 自带 SQLite 源码：三端不依赖系统库版本，代价是首次编译多几十秒。
+rusqlite = { version = "0.42.0", features = ["bundled"] }

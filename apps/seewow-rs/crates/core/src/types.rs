@@ -138,6 +138,11 @@ impl MediaId {
     pub fn raw(self) -> u64 {
         self.0
     }
+
+    /// 从持久层读回。只给数据库层用，业务代码请走 from_parts。
+    pub fn from_raw(raw: u64) -> Self {
+        MediaId(raw)
+    }
 }
 
 impl fmt::Display for MediaId {
