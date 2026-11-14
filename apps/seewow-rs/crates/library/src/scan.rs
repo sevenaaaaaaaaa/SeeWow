@@ -150,8 +150,10 @@ fn media_entry(
     }
     let relative_text = relative.to_string_lossy().to_string();
     let file_name = path.file_name()?.to_string_lossy().to_string();
+    // 扫描根目录是片库根，不是剧名；直接把根目录名当剧名会污染每一条标题。
     let parent_folder = path
         .parent()
+        .filter(|parent| *parent != root)
         .and_then(|parent| parent.file_name())
         .map(|name| name.to_string_lossy().to_string());
     let parsed = parse_file_name(&file_name, parent_folder.as_deref());

@@ -254,7 +254,11 @@ fn find_last_year(chars: &[char]) -> Option<(usize, i32)> {
         }
         if i - start == 4 {
             let digits: String = chars[start..i].iter().collect();
-            if let Ok(value) = digits.parse::<i32>()
+            // 紧跟在汉字/假名/谚文后面的四位数字通常是作品名的一部分，
+            // 例如「请回答1988」，不能当成年份。
+            let glued_to_cjk = start > 0 && is_cjk(chars[start - 1]);
+            if !glued_to_cjk
+                && let Ok(value) = digits.parse::<i32>()
                 && (1900..=2099).contains(&value)
             {
                 found = Some((start, value));
@@ -262,6 +266,10 @@ fn find_last_year(chars: &[char]) -> Option<(usize, i32)> {
         }
     }
     found
+}
+
+fn is_cjk(c: char) -> bool {
+    matches!(c as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0x3040..=0x30FF | 0xAC00..=0xD7AF | 0xF900..=0xFAFF)
 }
 
 fn is_token_char(c: char) -> bool {
@@ -364,14 +372,19 @@ fn flush_token(token: &mut String, out: &mut String) {
     if token.is_empty() {
         return;
     }
-    if !is_stop_word(token) {
+    if is_stop_word(token) {
+        // 只给被删掉的噪音留一个分隔，避免前后两个词粘在一起。
+        out.push(' ');
+    } else {
         out.push_str(token);
     }
-    out.push(' ');
     token.clear();
 }
 
 /// 清理标题：括号变空格、去掉停用词、压平空白、剪掉尾部连字符。
+///
+/// 标点（逗号、顿号、冒号、&、' 等）原样保留：中文片名里的「，」不是分隔符，
+/// 丢掉它等于改片名。
 fn clean(chars: &[char]) -> String {
     let mut text = String::with_capacity(chars.len());
     for &c in chars {
@@ -388,7 +401,7 @@ fn clean(chars: &[char]) -> String {
             token.push(c);
         } else {
             flush_token(&mut token, &mut out);
-            out.push(' ');
+            out.push(c);
         }
     }
     flush_token(&mut token, &mut out);
@@ -481,6 +494,21 @@ mod tests {
 
         let same_name = parse_file_name("Dark S01E02.mkv", Some("Dark"));
         assert_eq!(same_name.title, "Dark  S01E02");
+    }
+
+    #[test]
+    fn a_four_digit_year_glued_to_chinese_is_part_of_the_title() {
+        let parsed = parse_file_name("请回答1988 第1季 第7集.mkv", None);
+        assert_eq!(parsed.year, None, "请回答1988 不是 1988 年的剧");
+        assert_eq!(parsed.show_title.as_deref(), Some("请回答1988"));
+        assert_eq!((parsed.season, parsed.episode), (Some(1), Some(7)));
+    }
+
+    #[test]
+    fn chinese_punctuation_stays_in_the_title() {
+        let parsed = parse_file_name("你好，李焕英 (2021) 1080p.mkv", None);
+        assert_eq!(parsed.title, "你好，李焕英");
+        assert_eq!(parsed.year, Some(2021));
     }
 
     #[test]

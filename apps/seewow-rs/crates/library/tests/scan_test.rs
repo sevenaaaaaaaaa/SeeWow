@@ -70,6 +70,18 @@ fn walks_recursively_and_parses_names() {
 }
 
 #[test]
+fn episodes_at_the_scan_root_do_not_take_the_root_name_as_show() {
+    let root = temp_root("root-level");
+    touch(&root, "S01E09.mkv");
+    let (entries, _) = collect_media(&root, "local", &ScanOptions::default());
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].title, "S01E09");
+    assert_eq!(entries[0].show_title, None);
+    assert_eq!(entries[0].season, Some(1));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn hidden_folders_are_included_when_asked() {
     let root = temp_root("hidden");
     seed_tree(&root);
