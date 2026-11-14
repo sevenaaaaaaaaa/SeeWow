@@ -15,8 +15,10 @@
 | macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.16.0/SeeWow-macos-1.16.0-preview.zip) | 解压后将应用移到「应用程序」；临时签名、未公证 |
 | Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.16.0/SeeWow-Android-1.16.0-preview.apk) | Android 7.0+；Release 编译、开发签名预览包 |
 | iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.16.0/SeeWow-iOS-1.16.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
+| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.16.0/SeeWow-windows-1.16.0.zip) | 解压后运行 `seewow.exe` |
+| Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.16.0/SeeWow-linux-1.16.0.zip) | 解压后运行 `seewow`，需要系统 libmpv |
 
-Windows / Linux 本轮未提供 1.16.0 安装包。AI 功能默认关闭，需要用户自行配置 API；使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
+Android 1.16.0 安装包本轮 CI 已构建，受下载限速影响未随 Release 上传，可从该次 Actions 运行下载。AI 功能默认关闭，需要用户自行配置 API；使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
 
 片源能力包括服务选择器、Plex / File Station / Navidrome 适配、OpenList / Alist API 扫描与动态直链，以及本地 / SMB / WebDAV 的多语言 NFO 读取。以下区分已经实现与尚未支持的能力。
 
