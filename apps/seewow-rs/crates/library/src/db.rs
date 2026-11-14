@@ -15,7 +15,7 @@ use crate::schema::{SCHEMA_VERSION, V1};
 
 /// 一个已打开的片库。
 pub struct Library {
-    conn: Connection,
+    pub(crate) conn: Connection,
 }
 
 impl std::fmt::Debug for Library {
@@ -196,11 +196,9 @@ impl Library {
     pub fn all_media(&self) -> Result<Vec<MediaEntry>> {
         let mut statement = self
             .conn
-            .prepare(
-                "SELECT id, source_id, relative_path, kind, title, show_title,
-                        year, season, episode, quality, added_at_ms
-                 FROM media ORDER BY added_at_ms DESC, title COLLATE NOCASE",
-            )
+            .prepare(&format!(
+                "SELECT {MEDIA_COLUMNS} FROM media ORDER BY added_at_ms DESC, title COLLATE NOCASE"
+            ))
             .map_err(db_error)?;
         let rows = statement.query_map([], row_to_entry).map_err(db_error)?;
         let mut entries = Vec::new();
@@ -213,9 +211,7 @@ impl Library {
     pub fn media_by_id(&self, id: MediaId) -> Result<Option<MediaEntry>> {
         self.conn
             .query_row(
-                "SELECT id, source_id, relative_path, kind, title, show_title,
-                        year, season, episode, quality, added_at_ms
-                 FROM media WHERE id = ?1",
+                &format!("SELECT {MEDIA_COLUMNS} FROM media WHERE id = ?1"),
                 params![id.to_string()],
                 row_to_entry,
             )
@@ -224,7 +220,10 @@ impl Library {
     }
 }
 
-fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<MediaEntry> {
+/// media 表的列顺序；db 与 query 共用，避免两处手写列名漂移。
+pub(crate) const MEDIA_COLUMNS: &str = "id, source_id, relative_path, kind, title, show_title, year, season, episode, quality, added_at_ms";
+
+pub(crate) fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<MediaEntry> {
     let id: String = row.get(0)?;
     let raw = u64::from_str_radix(&id, 16).unwrap_or(0);
     let kind: String = row.get(3)?;
@@ -244,6 +243,6 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<MediaEntry> {
     })
 }
 
-fn db_error(error: rusqlite::Error) -> Error {
+pub(crate) fn db_error(error: rusqlite::Error) -> Error {
     Error::Db(error.to_string())
 }
