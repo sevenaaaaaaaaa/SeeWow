@@ -25,6 +25,8 @@ use seewow_ui::hit::{self, Flags, InputSink};
 use seewow_ui::overlay::{self, OVERLAY_WINDOW_TITLE};
 use seewow_ui::skeleton::{Shell, Skeleton, clock_label};
 
+mod cli;
+
 /// 定位宿主窗口的最多尝试次数（0.1s 一次 → 约 2s，HLD §9.2 step 3）。
 const LOCATE_TRIES: u32 = 20;
 
@@ -766,7 +768,24 @@ fn verdict_rows(verdict: &Verdict) -> String {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let autoplay = args.get(1).map(PathBuf::from).filter(|path| path.exists());
+    // 命令行分支必须在 Slint / mpv / 日志初始化之前：--scan 不需要窗口。
+    let autoplay = match cli::parse_args(&args) {
+        Ok(cli::Command::Gui { autoplay }) => autoplay.filter(|path| path.exists()),
+        Ok(cli::Command::Help) => {
+            print!("{}", cli::USAGE);
+            return;
+        }
+        Ok(cli::Command::Scan {
+            root,
+            json,
+            include_hidden,
+            db,
+        }) => std::process::exit(cli::run_scan(&root, json, include_hidden, db.as_deref())),
+        Err(message) => {
+            eprintln!("{message}\n\n{}", cli::USAGE);
+            std::process::exit(2);
+        }
+    };
     let selftest = std::env::var("SEEWOW_SELFTEST")
         .map(|value| value == "1")
         .unwrap_or(false);

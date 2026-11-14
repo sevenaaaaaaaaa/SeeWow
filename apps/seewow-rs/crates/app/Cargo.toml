@@ -23,3 +23,7 @@ objc2.workspace = true
 objc2-app-kit = { workspace = true, features = ["NSWindow", "NSApplication", "NSEvent", "NSGraphics", "NSOpenPanel", "NSSavePanel", "NSPanel", "objc2-core-foundation"] }
 objc2-foundation = { workspace = true, features = ["NSString", "NSGeometry", "NSTimer", "NSRunLoop"] }
 block2.workspace = true
+
+# 依赖登记见 docs/plan/rust-rewrite-plan.md 第 4 节（D-01）。
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.154"

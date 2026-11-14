@@ -3637,6 +3637,8 @@ dependencies = [
  "seewow-player",
  "seewow-sources",
  "seewow-ui",
+ "serde",
+ "serde_json",
  "slint",
 ]
 
