@@ -13,6 +13,7 @@ M1 的 PRD、HLD、任务表、ADR 原本放在 `/tmp/dsh-crew/...`，那个目�
 
 - **它是什么**：Flutter 主线的下一代内核。Rust + Slint 做界面，libmpv 自持窗口播视频，macOS 首发（Apple Silicon / Intel），GPL-3.0。
 - **它不是什么**：不替换 Flutter 主线的发布节奏（1.17、1.18 照常发）；不是跨平台一次做完；不在 M2 碰网络片源、HDR、设计系统。
+- **iOS / iPadOS 不在 Rust 线里（D-12，2026-11-15 项目所有者确认选 A）**：iOS 只走 Flutter 线（`apps/seewow`）。Rust 线 macOS 首发、不承接 iOS 移植，也不做 FFI 回接。iOS 上的体验改进只能靠 Flutter 版本发布获得；对外不把 M1–M6 的成果写成 iOS 的变化。
 - **两条线的关系**：Flutter 线是行为基准。Rust 线的解析、去重、进度、收藏规则要和它对齐，差异必须登记（见第 6 节 D-04）。
 
 ## 2. 里程碑总表
@@ -196,6 +197,7 @@ M3 的策略层（`resume` / `subtitle` / `keymap`）**没有新增依赖**：�
 | D-07 | 2026-11-15 | 剧集展示标题的卫生规则：剧名已确定时不用父目录前缀；文件夹里的 `S01` / `Season 2` / `第2季` 不进剧名；剧名与季集之间用单空格 | 真实视频目录扫出的三个缺陷（分类目录污染标题、季标记进剧名、双空格）；与 Flutter 的差异在此登记，配测试固定 |
 | D-08 | 2026-11-15 | M3 拆解顺序：纯策略（resume / subtitle / keymap）→ 无窗口 libmpv 验证 → Slint 控制栏 → 播放页打通 | 每一步都能独立给出证据，不会「先做界面、结果全卡在窗口」；headless 起播测试已验证这条路可行 |
 | D-09 | 2026-11-15 | 设置对标的「不做」清单改为「可以做，按触发条件排期」：多网盘矩阵、iTunes 同步、移动端 HDMI 5.1、Google Cast、拖动缩略图预览均不封禁；唯一仍不做的是 PRO 订阅墙 | 项目所有者的修正：不预设否决，只控制排期与主干复杂度；五项各写了触发条件（见对标文档 §3.4） |
+| D-12 | 2026-11-15 | 项目所有者选 A：Rust 线只认 macOS，iOS 继续走 Flutter 主线，不开 iOS 内核移植（M7），也不做 Rust core 的 FFI 回接 | 反馈起点是「M1–M6 做了很多优化但 iOS 感知不到」，实测原因是结构性：iOS 包由 `flutter.yml` 构建 `apps/seewow`，`apps/seewow/lib` 与 `ios/` 对 Rust 内核 0 处引用，且 M1–M6 里没有 iOS 里程碑（`Cargo.toml` 依赖 `objc2-app-kit` + `libmpv2` + `slint backend-winit` 全是桌面）。选 A 等于接受分工：M 线的价值只在 macOS 桌面兑现 |
 | D-11 | 2026-11-15 | README 从 1.17.0 整体升到 1.18.0 这件事推迟，等 `v1.18.0` tag + GitHub Release + 两个资产（`SeeWow-macos-1.18.0-preview.zip`、`SeeWow-iOS-1.18.0-arm64-unsigned.ipa`）就位后一次改完，不先改一半 | 项目所有者的选择。现在改会让下载表 5 条链接指向不存在的资产（`gh release view v1.18.0` → release not found），而 1.18.0 实际只出了 macOS / iOS 两包，另三平台必须如实标注；分两次改要多花一轮 doc review 和一次提交 |
 | D-10 | 2026-11-15 | 片头片尾标记按 `show_key` 存（一部剧一条），不按单集 | 同一部剧片头长度通常一致，逐集存会让用户标 24 次；需要逐集时由调用方在 key 里带季集，模块不限制格式 |
 
@@ -221,6 +223,7 @@ M3 的策略层（`resume` / `subtitle` / `keymap`）**没有新增依赖**：�
 | --- | --- | --- |
 | M1 的 HDR 探针只在 SDR 屏验过 | 真 HDR 屏上结论可能反 | M5 前必须借一台 HDR 屏跑一次 `probe_verdict` 的真实证据 |
 | Rust 线没有 CI | 回归无人拦 | M2 结束前把 `cargo test` 加进 `.github/workflows/`（单独任务，不混进 M2 功能） |
+| iOS 用户永远感知不到 Rust 线的改进 | 项目所有者误判进度，以为发版修了却摸不到 | D-12 已定分工：iOS 只从 Flutter 版本拿改进；发布说明与 README 不把 M 线成果写成 iOS 变化（1.18.0 说明第 41 行已如实写明） |
 | 与原 Flutter 行为漂移 | 两条线体验不一致 | 对照样本 + 差异登记（D-04） |
 | 长时间跨度导致上下文丢失 | 重复决策、走回头路 | 本文件 + 每里程碑「回看」 + 提交信息写数字 |
 | 依赖膨胀 | 编译时间、供应链 | 第 4 节白名单；新增必须写理由 |
