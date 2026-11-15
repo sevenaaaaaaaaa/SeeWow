@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+seewow-core = { path = "../core" }
 crossbeam-channel.workspace = true
 libmpv2.workspace = true
 objc2.workspace = true

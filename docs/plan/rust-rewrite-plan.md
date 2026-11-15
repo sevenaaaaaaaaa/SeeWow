@@ -117,7 +117,7 @@ M1 的 PRD、HLD、任务表、ADR 原本放在 `/tmp/dsh-crew/...`，那个目�
 
 | 任务 | 内容 | 归属文件 | 测试 | 状态 |
 | --- | --- | --- | --- | --- |
-| T-09 | mpv 封装收编：`Player`（load/play/pause/seek/volume/speed/track 列表、事件 → 快照），删掉 `host.rs` 的临时封装 | `crates/player/src/{mpv.rs,host.rs}` | `tests/player_api.rs`（`SEEWOW_MPV_TEST=1` 走真实文件） | 待做 |
+| T-09 | mpv 封装收编：`Player`（load/play/pause/seek/volume/speed/track 列表、事件 → 快照），删掉 `host.rs` 的临时封装 | `crates/player/src/{mpv.rs,host.rs}` | `tests/player_api.rs`（`SEEWOW_MPV_TEST=1` 走真实文件） | **完成 2026-11-15** |
 | T-10 | 断点续播策略：起播门槛、续播回退 3 秒、看完判定、落盘节流 | `crates/core/src/resume.rs` | 内联 9 项 | **完成 2026-11-15** |
 | T-11 | 字幕解析与编码判定：SRT / VTT、UTF-8(BOM) / UTF-16、GBK 明确报错 | `crates/core/src/subtitle.rs` | 内联 10 项 | **完成 2026-11-15** |
 | T-12 | 按键映射：播放/暂停、±步长、音量、静音、全屏、倍速、字幕、逐帧、数字跳转 | `crates/core/src/keymap.rs` | 内联 9 项 | **完成 2026-11-15** |
@@ -264,7 +264,7 @@ M3 的策略层（`resume` / `subtitle` / `keymap`）**没有新增依赖**：�
 - Rust CI：新增 `.github/workflows/rust.yml`（macOS runner + `brew install mpv`，跑 fmt / clippy / test）。此前 Rust 线完全没有 CI，回归只靠本地三条命令。
 - 无窗口起播证据：新增 `crates/player/tests/headless_mpv.rs`（`SEEWOW_MPV_TEST=1` 才跑）。实跑输出：`pos=0.375s duration=1.02s idle_active=false polls=4 command_ms=428 total_ms=1348`——libmpv 在本机 `vo=null` 下真能开局，T-09 不必先有窗口。
 
-**M3 已落的六块（T-10/T-11/T-12/T-13/T-16/T-17）**
+**M3 已落的七块（T-09/T-10/T-11/T-12/T-13/T-16/T-17）**
 
 | 模块 | 测试 | 关键行为 |
 | --- | --- | --- |
@@ -275,7 +275,24 @@ M3 的策略层（`resume` / `subtitle` / `keymap`）**没有新增依赖**：�
 | `core/session.rs` | 9 | 剩余 10 秒预加载、放完才切集（连播关掉就停在片尾）、定时关闭优先于切集、暂停时不预加载、未知时长不乱动 |
 | `library/chapters.rs` | 5 | v1→v2 迁移、按剧读写、覆盖幂等、负数夹到 0、重开文件仍在 |
 
-全仓测试：**155 通过 / 0 失败**（M2 收尾时 101，本轮 +54）。库版本从 v1 升到 v2（新增 `chapter_marks`），旧库打开自动迁移。
+**T-09 收编结果（2026-11-15）**
+
+- 新增 `crates/player/src/mpv.rs`（约 620 行）：`Player` + `PlayerCommand` + `PlayerSnapshot`，
+  libmpv 的**全部**调用搬到这里；`host.rs` 从 554 行降到 ~200 行，只剩日志门面、句柄与
+  `PlayerOptions` 组装。app 侧调用点一个没改（`PlayerHost` 的接口保持原样）。
+- `Player` 新增能力：`seek_absolute` / `seek_relative_ms` / `set_volume` / `set_speed` /
+  `select_subtitle` / `add_subtitle` / `stop`，以及从 mpv `track-list` 读出的音轨与字幕轨
+  （不再靠文件名猜）。
+- M1 的证据行没有丢：`playback: 请求 loadfile` / `playback: begin … format= video= … source.gamma=` /
+  `playback: end reason=quit … frame-drop-count=` 都还在，且路径仍然只留文件名。
+  这是通过日志出口 trait（`LogSink`）实现的，mpv 层不依赖日志门面。
+- 真实起播（`vo=null`，1 秒 mkv 样片）：
+  `起播: pos=0.208s duration=1.023 ms=245`、`暂停前后: 0.250s → 0.250s`、
+  `seek 后: 0.250s → 0.833s`（目标 0.8，容差 ±300ms）、`volume=35 speed=1.5 audio_tracks=1`。
+- QA 脚本 `qa/T-01/case-08-mpv-options.sh` 跟着改：选项与窗口标题查 `mpv.rs`，日志路径查
+  `host.rs`，11 项全过。
+
+全仓测试：**161 通过 / 0 失败**（M2 收尾时 101；M3 累计 +60）。库版本从 v1 升到 v2（新增 `chapter_marks`），旧库打开自动迁移。
 
 **仍未闭合**
 

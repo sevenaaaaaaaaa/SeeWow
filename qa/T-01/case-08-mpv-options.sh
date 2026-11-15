@@ -11,9 +11,13 @@ set -uo pipefail
 source "$(dirname "$0")/lib.sh"
 CASE_ID=case-08-mpv-options
 
-HOST="$RS/crates/player/src/host.rs"
+# T-09 起两处分工：mpv 选项与窗口标题在 mpv.rs；日志门面在 host.rs。
+HOST="$RS/crates/player/src/mpv.rs"
+LOGSRC="$RS/crates/player/src/host.rs"
 [ -f "$HOST" ] || { bad "缺 $HOST"; finish; }
+[ -f "$LOGSRC" ] || { bad "缺 $LOGSRC"; finish; }
 SRC=$(cat "$HOST")
+LOG=$(cat "$LOGSRC")
 
 assert_not_contains "$SRC" '("force-window"' "选项表里没有 force-window（Q-02：会让 loadfile 永不生效）"
 assert_contains "$SRC" '("cocoa-cb-10bit-context", "yes")' "开了 10-bit XR 上下文（HDR 管线的前提）"
@@ -26,7 +30,7 @@ assert_contains "$SRC" 'pub const HOST_WINDOW_TITLE: &str = "SeeWow Player";' "�
 assert_contains "$SRC" '("title", HOST_WINDOW_TITLE)' "选项里把 title 设成同一个键"
 
 # 日志路径必须就是 DoD 写的那条
-assert_contains "$SRC" '.join("Library")' "日志落在 ~/Library/Logs/SeeWow/"
-assert_contains "$SRC" '"m1.log"' "日志文件名是 m1.log"
+assert_contains "$LOG" '.join("Library")' "日志落在 ~/Library/Logs/SeeWow/"
+assert_contains "$LOG" '"m1.log"' "日志文件名是 m1.log"
 
 finish
