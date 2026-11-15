@@ -203,7 +203,7 @@ M3 的策略层（`resume` / `subtitle` / `keymap`）**没有新增依赖**：�
 
 ### 6.1 待触发任务（阻塞在外部条件，不占当前里程碑）
 
-**README 升到 1.18.0（D-11）** — 触发条件：`v1.18.0` tag 已打、Release 已建、macOS 与 iOS 两个资产已上传（`gh release view v1.18.0` 能看到资产列表）。
+**README 升到 1.18.0（D-11）— 已完成 2026-11-15，commit `3b50276`，tag `v1.18.0`**：GitHub Release 已建（prerelease，两个资产 uploaded），README 首段/标题/发布说明链接/下载表/测试基线五处一次改完，Windows / Linux / Android 三行如实标注「1.18.0 未出包，仍是 1.17.0」。原触发条件留档：`v1.18.0` tag 已打、Release 已建、macOS 与 iOS 两个资产已上传（`gh release view v1.18.0` 能看到资产列表）。
 
 一次性改完这几处（行号按 2026-11-15 的 README.md）：
 
