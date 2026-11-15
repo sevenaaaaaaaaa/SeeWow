@@ -17,6 +17,7 @@ import 'skin_studio.dart';
 import 'watch_ai_view.dart';
 import '../agent/agent_controller.dart';
 import '../downloads/download_manager.dart';
+import '../app/build_info.dart';
 
 class SettingsView extends StatelessWidget {
   const SettingsView({
@@ -180,9 +181,9 @@ class SettingsView extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SectionTitle(
+                SectionTitle(
                   '关于 SeeWow',
-                  subtitle: '1.6.0 · Cinema, made personal.',
+                  subtitle: '${BuildInfo.label} · Cinema, made personal.',
                 ),
                 const SizedBox(height: 16),
                 Text(

@@ -8,6 +8,7 @@ import '../domain/media_item.dart';
 import '../sources/json_api.dart';
 import '../sources/native_bridge.dart';
 import '../sources/subscription_reader.dart';
+import '../app/build_info.dart';
 
 class LocalSubtitle {
   const LocalSubtitle(this.path, this.name);
@@ -149,7 +150,7 @@ class OpenSubtitlesClient {
          base ?? Uri.parse('https://api.opensubtitles.com/api/v1'),
          headers: {
            'Api-Key': apiKey.trim(),
-           'User-Agent': 'SeeWow v1.6.0',
+           'User-Agent': 'SeeWow v${BuildInfo.version}',
            if (token.trim().isNotEmpty)
              'Authorization': 'Bearer ${token.trim()}',
          },
