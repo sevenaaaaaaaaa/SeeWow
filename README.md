@@ -2,21 +2,23 @@
 
 **Cinema, made personal.** 一个以私人媒体库为中心的跨平台播放器，使用 Flutter + media_kit / libmpv。
 
-当前工作区为 **1.17.0 体验预览版**。这一版给影片信息补上多源匹配（TMDB / TVmaze / Bangumi / 已连接的 Jellyfin、Emby，自动回退并逐字段标注来源），并新增自动解说（片头 30 秒或全片，系统语音朗读、可导出音轨）。默认关闭的 [AI 字幕与小映陪看](docs/ai-watch.md) 保持可用；支持三套主题、皮肤工作室和 design.md 生成，详见 [皮肤说明](skins/README.md) 与 [design.md 模板](design.md)。
+当前工作区为 **1.18.0 体验预览版**。这一版只修一件事：界面上的版本号不再说谎——「设置 → 关于」显示真实的版本、提交与构建时间（如 `1.18.0 · 66c2697 · 2026-11-15T21:58`），字幕下载的 User-Agent 也跟随版本号；功能与 1.17.0 完全相同。1.17.0 的多源资料匹配（TMDB / TVmaze / Bangumi / 已连接的 Jellyfin、Emby，自动回退并逐字段标注来源）与自动解说（片头 30 秒或全片，系统语音朗读、可导出音轨）保持不变，说明见 [1.17.0 发布说明](docs/releases/1.17.0.md)。默认关闭的 [AI 字幕与小映陪看](docs/ai-watch.md) 保持可用；支持三套主题、皮肤工作室和 design.md 生成，详见 [皮肤说明](skins/README.md) 与 [design.md 模板](design.md)。
 
-## 下载 1.17.0 体验预览版
+## 下载 1.18.0 体验预览版
 
-完整更新记录见 [1.17.0 发布说明](docs/releases/1.17.0.md)，安装包与 SHA-256 校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.17.0)。
+完整更新记录见 [1.18.0 发布说明](docs/releases/1.18.0.md)，安装包与 SHA-256 校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.18.0)。
 
-这一版不加新入口，补的是「资料准不准」和「能不能听人讲」：匹配弹窗可以在多个目录之间回退并显示每个源的结果，详情页能看到每个字段来自哪个源；播放器里的自动解说会压低原声朗读，导出成一条带静默间隔的 WAV。
+这一版不加新入口，补的是「我手上这个包到底是哪一次构建」：关于页副标题不再是写死的 `1.6.0`，而是真实的版本 · 提交 · 构建时间；`flutter run` 跑出来的开发构建会显示 `1.18.0 (dev)`，不伪装成某个正式版本。界面、播放、片库、元数据行为与 1.17.0 完全相同。
 
 | 平台 | 安装包 | 安装与签名状态 |
 | --- | --- | --- |
-| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-macos-1.17.0-preview.zip) | 解压后将应用移到「应用程序」；临时签名、未公证 |
-| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-Android-1.17.0-preview.apk) | Android 7.0+；Release 编译、开发签名预览包 |
-| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-iOS-1.17.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
-| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-windows-1.17.0.zip) | 解压后运行 `seewow.exe` |
-| Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-linux-1.17.0.zip) | 解压后运行 `seewow`，需要系统 libmpv |
+| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.18.0/SeeWow-macos-1.18.0-preview.zip) | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证 |
+| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.18.0/SeeWow-iOS-1.18.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
+| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-Android-1.17.0-preview.apk) | **1.18.0 未出包，仍是 1.17.0**；Android 7.0+，Release 编译、开发签名预览包 |
+| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-windows-1.17.0.zip) | **1.18.0 未出包，仍是 1.17.0**；解压后运行 `seewow.exe` |
+| Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-linux-1.17.0.zip) | **1.18.0 未出包，仍是 1.17.0**；解压后运行 `seewow`，需要系统 libmpv |
+
+1.18.0 只构建了 macOS 与 iOS 两个包；Android / Windows / Linux 的下载链接仍指向 1.17.0 资产，不是这一版。
 
 AI 功能默认关闭，需要用户自行配置 API；自动解说依赖系统语音（macOS / Windows / Linux 各自内置）。使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
 
@@ -246,7 +248,7 @@ flutter run -d macos
 flutter build macos --release
 ```
 
-现有代码仍有历史 info 级 lint；验证要求无 analyzer error / warning。测试覆盖文件名、M3U/XMLTV、WebDAV/SMB 解析，以及偏好/片单持久化、扫描失败恢复、并发扫描、模型规划校验、错误恢复、链接收集、搜索交互和响应式布局。兼容模型、TMDB 和媒体服务器协议通过本机模拟 HTTP 服务验证；元数据确认流程、窄屏服务选择器、服务器 / 网关表单有组件测试。1.6.0 发布基线共 94 项测试，1.15.0 基线为 234 项通过、2 项原生解码器测试按需跳过，1.17.0 基线为 307 项通过、2 项按需跳过（新增元数据注册表、TVmaze / Bangumi / Jellyfin·Emby 协议、解说脚本与音轨导出，合计 40 项）；1.6.0 新增换肤、皮肤导入、design.md 生成、草稿取消与恢复、AI 生成协议测试；其余测试覆盖目录递归、分页中断、动态直链、跨域跳转的 Token 隔离、群晖会话、Navidrome 盐值签名、NFO 与来源编辑。后续列表兼容测试覆盖多仓预览、确认后导入、格式错误、重定向/大小/超时/局域网限制、刷新与收藏迁移、节目单隔离，以及 Telegram 本地扫描、AI 数据隔离与窄屏交互。没有使用用户的真实模型、TMDB 或 NAS 凭据进行外部调用，真实服务器兼容性还需实际连接验证。
+现有代码仍有历史 info 级 lint；验证要求无 analyzer error / warning。测试覆盖文件名、M3U/XMLTV、WebDAV/SMB 解析，以及偏好/片单持久化、扫描失败恢复、并发扫描、模型规划校验、错误恢复、链接收集、搜索交互和响应式布局。兼容模型、TMDB 和媒体服务器协议通过本机模拟 HTTP 服务验证；元数据确认流程、窄屏服务选择器、服务器 / 网关表单有组件测试。1.6.0 发布基线共 94 项测试，1.15.0 基线为 234 项通过、2 项原生解码器测试按需跳过，1.17.0 基线为 307 项通过、2 项按需跳过（新增元数据注册表、TVmaze / Bangumi / Jellyfin·Emby 协议、解说脚本与音轨导出，合计 40 项）；1.18.0 与 1.17.0 同口径：307 项通过、2 项按需跳过，本次无功能变更；1.6.0 新增换肤、皮肤导入、design.md 生成、草稿取消与恢复、AI 生成协议测试；其余测试覆盖目录递归、分页中断、动态直链、跨域跳转的 Token 隔离、群晖会话、Navidrome 盐值签名、NFO 与来源编辑。后续列表兼容测试覆盖多仓预览、确认后导入、格式错误、重定向/大小/超时/局域网限制、刷新与收藏迁移、节目单隔离，以及 Telegram 本地扫描、AI 数据隔离与窄屏交互。没有使用用户的真实模型、TMDB 或 NAS 凭据进行外部调用，真实服务器兼容性还需实际连接验证。
 
 区域资料测试覆盖港／台版本独立保存、多语言与 Unicode 搜索、TMDB 部分地区失败和身份校验、本机请求字段与脚本校验、AI 来源限制、取消、并发编辑保护、重扫保留与过期提示，以及 375 / 768 / 1440px 的批量预览与确认。真实 TMDB 目录完整度和本地模型翻译质量尚未通过外部服务实测。
 
