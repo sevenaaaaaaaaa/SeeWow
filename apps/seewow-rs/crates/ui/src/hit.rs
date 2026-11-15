@@ -15,6 +15,8 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags, NSEventType, NSWindow};
 
+use crate::gesture::{self, PictureGesture};
+
 /// 指针静止多久开始收页头 / 控制条（负责人要求 3 秒）。
 pub const IDLE_HIDE: Duration = Duration::from_millis(3000);
 
@@ -157,6 +159,41 @@ pub trait InputSink {
     fn minimize(&self);
     /// 指针动过（重置 3 秒计时、刷新页头/控制条）
     fn note_activity(&self);
+    /// 按一个步长跳转：`-1` 后退、`1` 前进。步长由 app 的 `Keymap` 决定，这一层不猜。
+    fn seek_by_step(&self, direction: i8);
+    /// 临时加速开关（长按画面区时开，松手关）。
+    fn set_speed_boost(&self, on: bool);
+}
+
+/// 一次按住的状态（长按加速用）。
+#[derive(Clone, Copy, Debug)]
+pub struct Press {
+    pub at: Instant,
+    pub x: f32,
+    pub y: f32,
+    /// 按下后累计位移（像素），超过容差就不是长按。
+    pub moved: f32,
+    /// 是否已经进入加速（只允许进一次，避免每 0.1 秒重复调用）。
+    pub boosting: bool,
+}
+
+/// 松手时的结论。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PressRelease {
+    pub held: Duration,
+    pub moved: f32,
+    pub x: f32,
+    pub boosted: bool,
+}
+
+impl PressRelease {
+    /// 换算成画面区手势；已经进过加速的一律按「结束加速」处理。
+    pub fn gesture(&self, click_count: usize, width: f32) -> PictureGesture {
+        if self.boosted {
+            return PictureGesture::SpeedBoostEnd;
+        }
+        gesture::classify(click_count, self.x, width, self.held, self.moved)
+    }
 }
 
 /// 主线程共享的手势状态。
@@ -166,6 +203,8 @@ pub struct Shared {
     pub last_activity: Mutex<Instant>,
     /// 指针在叠层窗口里的位置（逻辑坐标，原点左上）
     pub pointer: Mutex<(f32, f32)>,
+    /// 当前按住的画面区操作
+    pub press: Mutex<Option<Press>>,
 }
 
 impl Shared {
@@ -175,6 +214,7 @@ impl Shared {
             flags: Mutex::new(Flags::default()),
             last_activity: Mutex::new(Instant::now()),
             pointer: Mutex::new((0.0, 0.0)),
+            press: Mutex::new(None),
         })
     }
 
@@ -199,6 +239,67 @@ impl Shared {
         if let Ok(mut slot) = self.pointer.lock() {
             *slot = (x, y);
         }
+    }
+
+    /// 画面区按下：开始记录（双击/单击的判定都推迟到松手）。
+    pub fn begin_press(&self, x: f32, y: f32) {
+        if let Ok(mut slot) = self.press.lock() {
+            *slot = Some(Press {
+                at: Instant::now(),
+                x,
+                y,
+                moved: 0.0,
+                boosting: false,
+            });
+        }
+    }
+
+    /// 按住期间指针移动：累计位移，超过容差就不再是长按。
+    pub fn update_press(&self, x: f32, y: f32) {
+        if let Ok(mut slot) = self.press.lock()
+            && let Some(press) = slot.as_mut()
+        {
+            let dx = x - press.x;
+            let dy = y - press.y;
+            press.moved = (dx * dx + dy * dy).sqrt().max(press.moved);
+        }
+    }
+
+    /// 松手：返回这次按住的结论，并清空状态。
+    pub fn end_press(&self) -> Option<PressRelease> {
+        let press = self.press.lock().ok()?.take()?;
+        Some(PressRelease {
+            held: press.at.elapsed(),
+            moved: press.moved,
+            x: press.x,
+            boosted: press.boosting,
+        })
+    }
+
+    /// 0.1 秒 tick 调一次：按住够久就该进加速了。返回 true 表示**这一拍刚进入**。
+    pub fn press_boost_due(&self) -> bool {
+        let Ok(mut slot) = self.press.lock() else {
+            return false;
+        };
+        let Some(press) = slot.as_mut() else {
+            return false;
+        };
+        if press.boosting {
+            return false;
+        }
+        if gesture::should_boost(press.at.elapsed(), press.moved) {
+            press.boosting = true;
+            return true;
+        }
+        false
+    }
+
+    /// 取消按住（例如窗口失焦），返回是否需要收尾加速。
+    pub fn cancel_press(&self) -> bool {
+        let Ok(mut slot) = self.press.lock() else {
+            return false;
+        };
+        slot.take().is_some_and(|press| press.boosting)
     }
 }
 
@@ -258,6 +359,9 @@ fn handle(
     if kind == NSEventType::MouseMoved || kind == NSEventType::LeftMouseDragged {
         let (x, y) = pointer_position(event, overlay, &layout);
         shared.set_pointer(x, y);
+        if kind == NSEventType::LeftMouseDragged {
+            shared.update_press(x, y);
+        }
         let region = region_at(x, y, &layout, &flags);
         let interactive = region.interactive_given(flags.playing);
         // 离开交互区要把 key 交还宿主窗口，否则键盘焦点一直挂在叠层上（评审 P2）
@@ -277,11 +381,8 @@ fn handle(
         sink.note_activity();
         match region {
             Region::Picture if flags.playing => {
-                if event.clickCount() >= 2 {
-                    sink.toggle_fullscreen();
-                } else {
-                    sink.toggle_pause();
-                }
+                // 单击/双击/长按都在松手时判定（长按要按住够久才算，按下时还不知道）。
+                shared.begin_press(x, y);
                 return true;
             }
             Region::Picture => {
@@ -300,7 +401,47 @@ fn handle(
         }
     }
 
-    if kind == NSEventType::LeftMouseUp || kind == NSEventType::ScrollWheel {
+    if kind == NSEventType::LeftMouseUp {
+        sink.note_activity();
+        let (x, y) = pointer_position(event, overlay, &layout);
+        let region = region_at(x, y, &layout, &flags);
+        super::overlay::set_interactive(overlay, region.interactive());
+
+        if let Some(release) = shared.end_press() {
+            if release.boosted {
+                // 长按结束：先回原倍速，再看这次是不是还带了别的动作（不带）。
+                sink.set_speed_boost(false);
+                return true;
+            }
+            let clicks = event.clickCount().max(1) as usize;
+            match release.gesture(clicks, layout.width) {
+                PictureGesture::SeekBackward => {
+                    sink.seek_by_step(-1);
+                    return true;
+                }
+                PictureGesture::SeekForward => {
+                    sink.seek_by_step(1);
+                    return true;
+                }
+                PictureGesture::ToggleFullscreen => {
+                    sink.toggle_fullscreen();
+                    return true;
+                }
+                PictureGesture::TogglePause => {
+                    sink.toggle_pause();
+                    return true;
+                }
+                PictureGesture::SpeedBoostStart | PictureGesture::SpeedBoostEnd => {
+                    sink.set_speed_boost(false);
+                    return true;
+                }
+                PictureGesture::Ignore => return false,
+            }
+        }
+        return false;
+    }
+
+    if kind == NSEventType::ScrollWheel {
         sink.note_activity();
         let (x, y) = pointer_position(event, overlay, &layout);
         let region = region_at(x, y, &layout, &flags);
@@ -341,6 +482,14 @@ fn handle(
         match key {
             49 => {
                 sink.toggle_pause();
+                return true;
+            }
+            123 => {
+                sink.seek_by_step(-1);
+                return true;
+            }
+            124 => {
+                sink.seek_by_step(1);
                 return true;
             }
             53 => {

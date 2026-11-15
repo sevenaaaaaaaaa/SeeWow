@@ -40,6 +40,8 @@ export component Skeleton inherits Window {
     in-out property <string> media-subtitle: "HOME / 首页";
     in-out property <string> status-line: "";
     in-out property <string> clock-label: "00:00 / 00:00";
+    in-out property <string> speed-label: "1.0x";
+    in-out property <bool> subtitles-on: true;
     in-out property <float> progress: 0.0;
     in-out property <string> probe-mpv: "";
     in-out property <string> probe-mac: "";
@@ -52,6 +54,10 @@ export component Skeleton inherits Window {
     callback open-file();
     callback toggle-probe();
     callback toggle-pause();
+    callback seek-backward();
+    callback seek-forward();
+    callback cycle-speed();
+    callback toggle-subtitle();
     callback toggle-fullscreen();
     callback traffic-close();
     callback traffic-minimize();
@@ -274,6 +280,26 @@ export component Skeleton inherits Window {
             spacing: 16px;
             alignment: center;
 
+            // 后退一个步长（与键盘 Left / 双击左区同一动作）
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 15px;
+                background: back-touch.has-hover ? #FFFFFF26 : transparent;
+                animate background { duration: 140ms; }
+                Text {
+                    text: "−10s";
+                    color: #E4DCCB;
+                    font-family: "Menlo";
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                back-touch := TouchArea {
+                    clicked => { root.seek-backward(); }
+                }
+            }
+
             Rectangle {
                 width: 36px;
                 height: 36px;
@@ -292,6 +318,25 @@ export component Skeleton inherits Window {
                 }
             }
 
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 15px;
+                background: fwd-touch.has-hover ? #FFFFFF26 : transparent;
+                animate background { duration: 140ms; }
+                Text {
+                    text: "+10s";
+                    color: #E4DCCB;
+                    font-family: "Menlo";
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                fwd-touch := TouchArea {
+                    clicked => { root.seek-forward(); }
+                }
+            }
+
             Text {
                 text: root.clock-label;
                 color: #CFC7B7;
@@ -299,6 +344,43 @@ export component Skeleton inherits Window {
                 font-size: 10.5px;
                 letter-spacing: 0.8px;
                 vertical-alignment: center;
+            }
+
+            Rectangle {
+                width: 44px;
+                height: 24px;
+                border-radius: 12px;
+                background: speed-touch.has-hover ? #FFFFFF26 : transparent;
+                animate background { duration: 140ms; }
+                Text {
+                    text: root.speed-label;
+                    color: #CFC7B7;
+                    font-family: "Menlo";
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                speed-touch := TouchArea {
+                    clicked => { root.cycle-speed(); }
+                }
+            }
+
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 15px;
+                background: sub-touch.has-hover ? #FFFFFF1F : transparent;
+                Text {
+                    text: "CC";
+                    color: root.subtitles-on ? #E8DCC2 : #8B8375;
+                    font-family: "Menlo";
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                sub-touch := TouchArea {
+                    clicked => { root.toggle-subtitle(); }
+                }
             }
 
             Rectangle {

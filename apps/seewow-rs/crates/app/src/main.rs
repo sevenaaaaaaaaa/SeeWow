@@ -64,6 +64,8 @@ struct Core {
     last_probe_log_at: Mutex<Instant>,
     last_screen: Mutex<String>,
     last_snapshot: Mutex<seewow_player::host::MpvSnapshot>,
+    /// 长按加速前的倍速；松手要原样恢复。
+    base_speed: Mutex<f64>,
     last_screen_state: Mutex<seewow_player::probe::ScreenState>,
     last_logged_frame: Mutex<Option<(f64, f64, f64, f64)>>,
     last_probe_key: Mutex<String>,
@@ -144,6 +146,12 @@ impl Core {
             self.log.write("info", &format!("tick: n={tick_index}"));
         }
         self.poll_playback();
+
+        // 长按加速：按住够久由 0.1s tick 触发（鼠标静止时没有移动事件可用），
+        // 松手在 hit.rs 里结束。只进一次，避免每拍重复设置。
+        if self.shared.press_boost_due() {
+            self.set_speed_boost(true);
+        }
 
         let layout = self.layout_from_slint();
         if let Ok(mut slot) = self.shared.layout.lock() {
@@ -731,6 +739,42 @@ impl InputSink for Core {
         }
     }
 
+    fn seek_by_step(&self, direction: i8) {
+        // 步长来自 core::Keymap（默认 10 秒）；这一层只认方向，不写死数字。
+        let step = seewow_core::Keymap::default().seek_step_ms * i64::from(direction.signum());
+        self.host.player().seek_relative_ms(step);
+        self.log
+            .write("info", &format!("playback: 手势/键盘跳转 {step} ms"));
+        self.shared.touch();
+    }
+
+    fn set_speed_boost(&self, on: bool) {
+        let player = self.host.player();
+        if on {
+            let current = self.snapshot().speed;
+            let base = if (current - 1.0).abs() < f64::EPSILON || current <= 0.0 {
+                1.0
+            } else {
+                current
+            };
+            if let Ok(mut slot) = self.base_speed.lock() {
+                *slot = base;
+            }
+            let boost = seewow_core::Keymap::default().hold_speed;
+            player.set_speed(boost);
+            self.log.write(
+                "info",
+                &format!("gesture: 长按加速 {boost:.1}x（原速 {base:.2}x）"),
+            );
+        } else {
+            let base = self.base_speed.lock().map(|v| *v).unwrap_or(1.0);
+            player.set_speed(base);
+            self.log
+                .write("info", &format!("gesture: 松手，恢复 {base:.2}x"));
+        }
+        self.shared.touch();
+    }
+
     fn note_activity(&self) {
         self.shared.touch();
     }
@@ -851,6 +895,7 @@ fn main() {
         overlay: Mutex::new(None),
         monitor: Mutex::new(None),
         autoplay,
+        base_speed: Mutex::new(1.0),
         locate_tries: AtomicU32::new(0),
         load_requested: AtomicBool::new(false),
         shown: AtomicBool::new(false),
@@ -911,6 +956,58 @@ fn wire_callbacks(shell: &Shell, core: &Rc<Core>) {
     {
         let core = core.clone();
         ui.on_open_file(move || core.open_file_dialog());
+    }
+    {
+        let core = core.clone();
+        ui.on_seek_backward(move || InputSink::seek_by_step(core.as_ref(), -1));
+    }
+    {
+        let core = core.clone();
+        ui.on_seek_forward(move || InputSink::seek_by_step(core.as_ref(), 1));
+    }
+    {
+        let core = core.clone();
+        ui.on_cycle_speed(move || {
+            let current = core.snapshot().speed;
+            let steps = [0.5_f64, 0.75, 1.0, 1.25, 1.5, 2.0];
+            let next = steps
+                .iter()
+                .copied()
+                .find(|value| *value > current + 0.01)
+                .unwrap_or(steps[0]);
+            core.host.player().set_speed(next);
+            if let Some(ui) = core.ui.upgrade() {
+                ui.set_speed_label(format!("{next:.1}x").into());
+            }
+            core.log
+                .write("info", &format!("ui: 循环倍速 {current:.2}x → {next:.2}x"));
+            core.shared.touch();
+        });
+    }
+    {
+        let core = core.clone();
+        ui.on_toggle_subtitle(move || {
+            let snapshot = core.snapshot();
+            let currently_on = snapshot.selected_subtitle.is_some();
+            let next = if currently_on {
+                None
+            } else {
+                snapshot.subtitle_tracks.first().map(|track| track.id)
+            };
+            core.host.player().select_subtitle(next);
+            if let Some(ui) = core.ui.upgrade() {
+                ui.set_subtitles_on(!currently_on && next.is_some());
+            }
+            core.log.write(
+                "info",
+                &format!(
+                    "ui: 字幕切换 on={} track={next:?} 可用 {} 条",
+                    !currently_on && next.is_some(),
+                    snapshot.subtitle_tracks.len()
+                ),
+            );
+            core.shared.touch();
+        });
     }
     {
         let core = core.clone();
