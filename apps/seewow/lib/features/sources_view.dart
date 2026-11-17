@@ -170,10 +170,11 @@ Future<void> connectLocalMediaFolder(
       );
     }
   } catch (e) {
+    final message = e is StateError ? e.message : e.toString();
     if (context.mounted)
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('未能打开文件夹：$e'),
+          content: Text('未能添加文件夹：$message'),
           duration: const Duration(seconds: 8),
         ),
       );
@@ -525,7 +526,7 @@ class _SourcesViewState extends State<SourcesView> {
                                 ),
                                 const SizedBox(height: 5),
                                 Text(
-                                  '${providerById(s.providerId)?.name ?? sourceModeLabel(s.kind)} · ${store.items.where((i) => i.sourceId == s.id).length} 个条目',
+                                  '${providerById(s.providerId)?.name ?? sourceModeLabel(s.kind)} · ${store.items.where((i) => i.sourceId == s.id).length} 个条目${s.enabled ? '' : ' · 已停用'}',
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: WowColors.muted,
@@ -548,20 +549,32 @@ class _SourcesViewState extends State<SourcesView> {
                             ),
                           PopupMenuButton<String>(
                             tooltip: '片源操作',
-                            onSelected: (action) => action == 'edit'
-                                ? connectSource(
-                                    context,
-                                    store,
-                                    widget.iptv,
-                                    existing: s,
-                                  )
-                                : _remove(s),
-                            itemBuilder: (_) => const [
-                              PopupMenuItem(
+                            onSelected: (action) {
+                              if (action == 'edit') {
+                                connectSource(
+                                  context,
+                                  store,
+                                  widget.iptv,
+                                  existing: s,
+                                );
+                              } else if (action == 'toggle') {
+                                store.setSourceEnabled(s, !s.enabled);
+                              } else {
+                                _remove(s);
+                              }
+                            },
+                            itemBuilder: (_) => [
+                              const PopupMenuItem(
                                 value: 'edit',
                                 child: Text('编辑连接与凭据'),
                               ),
                               PopupMenuItem(
+                                value: 'toggle',
+                                child: Text(
+                                  s.enabled ? '停用来源（不参与刷新）' : '启用来源',
+                                ),
+                              ),
+                              const PopupMenuItem(
                                 value: 'remove',
                                 child: Text('断开来源（不删除文件）'),
                               ),
@@ -756,6 +769,28 @@ class _SourcesViewState extends State<SourcesView> {
   }
 
   Future<void> _remove(MediaSource s) async {
+    final count = widget.store.items.where((i) => i.sourceId == s.id).length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('断开这个来源？'),
+        content: Text(
+          '将移除「${s.name}」的 $count 个条目，连同收藏与续播进度；'
+          '本机文件不会被删除，重新添加同一目录可以重新扫描。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('断开来源'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     await widget.store.removeSource(s);
     await NativeBridge.secretDelete(sourceSecretKey(s));
   }

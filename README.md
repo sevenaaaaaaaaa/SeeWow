@@ -4,9 +4,11 @@
 
 当前工作区为 **1.18.0 体验预览版**。这一版只修一件事：界面上的版本号不再说谎——「设置 → 关于」显示真实的版本、提交与构建时间（如 `1.18.0 · 66c2697 · 2026-11-15T21:58`），字幕下载的 User-Agent 也跟随版本号；功能与 1.17.0 完全相同。1.17.0 的多源资料匹配（TMDB / TVmaze / Bangumi / 已连接的 Jellyfin、Emby，自动回退并逐字段标注来源）与自动解说（片头 30 秒或全片，系统语音朗读、可导出音轨）保持不变，说明见 [1.17.0 发布说明](docs/releases/1.17.0.md)。默认关闭的 [AI 字幕与小映陪看](docs/ai-watch.md) 保持可用；支持三套主题、皮肤工作室和 design.md 生成，详见 [皮肤说明](skins/README.md) 与 [design.md 模板](design.md)。
 
+**质量与计划。** 当前版本的质检结论、缺陷清单与后续计划见 [路线图](docs/roadmap.md)；想确认"哪一版有什么、哪个平台现在能装什么"，见 [版本汇总](docs/release-index.md)；跨端对齐状态见 [对齐说明](docs/parity.md)。资源管理（本地目录 / Plex）的已知缺陷编号为 RM-01…RM-09，对应修复排在 1.19.0。
+
 ## 下载 1.18.0 体验预览版
 
-完整更新记录见 [1.18.0 发布说明](docs/releases/1.18.0.md)，安装包与 SHA-256 校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.18.0)。
+完整更新记录见 [1.18.0 发布说明](docs/releases/1.18.0.md)，安装包见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.18.0)（1.18.0 未单独上传 `SHA256SUMS.txt`，校验值写在发布说明正文里）。
 
 这一版不加新入口，补的是「我手上这个包到底是哪一次构建」：关于页副标题不再是写死的 `1.6.0`，而是真实的版本 · 提交 · 构建时间；`flutter run` 跑出来的开发构建会显示 `1.18.0 (dev)`，不伪装成某个正式版本。界面、播放、片库、元数据行为与 1.17.0 完全相同。
 

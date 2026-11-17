@@ -15,6 +15,11 @@ class PlexSection {
 }
 
 class PlexScanner {
+  /// How many entries the last scan skipped because Plex returned an empty or
+  /// duplicate ratingKey. A duplicate used to abort the whole scan and leave
+  /// the library stale; now it is skipped and counted.
+  int lastSkipped = 0;
+
   /// Lists the libraries the token can see, so a connection can be narrowed to
   /// the folders the user actually wants in the library.
   Future<List<PlexSection>> sections(MediaSource source, String token) async {
@@ -52,6 +57,7 @@ class PlexScanner {
     final api = JsonApi(Uri.parse(source.location), headers: headers);
     final items = <MediaItem>[];
     final ids = <String>{};
+    lastSkipped = 0;
     // An empty selection means "everything", exactly as before this option
     // existed.
     final allowed = sectionKeys ?? source.folders.toSet();
@@ -84,8 +90,11 @@ class PlexScanner {
             throw const FormatException('Plex 分页中断；原片库保留');
           for (final m in list.whereType<Map>()) {
             final id = m['ratingKey']?.toString() ?? '';
-            if (id.isEmpty || !ids.add(id))
-              throw const FormatException('Plex 返回无效或重复媒体标识');
+            // One bad id used to abort the whole library; skip and count it.
+            if (id.isEmpty || !ids.add(id)) {
+              lastSkipped++;
+              continue;
+            }
             final media = (m['Media'] as List? ?? [])
                 .whereType<Map>()
                 .firstOrNull;

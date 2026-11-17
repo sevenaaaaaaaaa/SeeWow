@@ -295,6 +295,31 @@ class MediaSource {
   /// connections working exactly as they did.
   final List<String> folders;
 
+  /// 只改指定字段的副本。重扫与开关状态用它，避免再出现「重建时漏字段」。
+  MediaSource copyWith({
+    String? id,
+    SourceKind? kind,
+    String? name,
+    String? location,
+    String? username,
+    bool? enabled,
+    DateTime? lastScan,
+    String? providerId,
+    String? rootPath,
+    List<String>? folders,
+  }) => MediaSource(
+    id: id ?? this.id,
+    kind: kind ?? this.kind,
+    name: name ?? this.name,
+    location: location ?? this.location,
+    username: username ?? this.username,
+    enabled: enabled ?? this.enabled,
+    lastScan: lastScan ?? this.lastScan,
+    providerId: providerId ?? this.providerId,
+    rootPath: rootPath ?? this.rootPath,
+    folders: folders ?? this.folders,
+  );
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'kind': kind.name,

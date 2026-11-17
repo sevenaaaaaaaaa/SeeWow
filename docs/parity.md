@@ -56,3 +56,26 @@ SeeWow 的界面与业务逻辑来自同一套 Flutter 代码，功能默认双�
 - 231 项自动化测试通过（同一套测试覆盖桌面与移动布局断点）。
 - macOS / Android / iOS 三端 Release 构建通过；桌面实机安装。
 - 移动端真机仍建议重点验证：本地文件夹权限、iOS 画中画、后台下载、局域网遥控。
+
+---
+
+## 2026-11-17 复核（以代码为准，不引用旧结论）
+
+> 上一节停在 1.15.0（文中"231 项测试"已过期，当前基线 307 通过 / 2 跳过）。本节只核对**能力是否存在**，不重复产品文案；完整刷新排在路线图 P1（1.20.0）。
+
+| 能力 | 代码位置 | 桌面 | 移动 | 结论 |
+| --- | --- | --- | --- | --- |
+| 片库 / 搜索 / 筛选 / 收藏 / 进度 | `lib/data/library_store.dart`、`lib/features/library_view.dart` | 是 | 是 | 同一套代码；资源管理缺陷两端同时存在（见质检 RM-01…RM-09） |
+| 本地文件夹添加 | `lib/features/sources_view.dart:118` `connectLocalMediaFolder` | 是 | 是 | iOS 走 `NativeBridge.pickIOSFolder`，Android 先申请媒体权限再取路径；真机仍缺量化记录 |
+| Plex / Emby / Jellyfin 接入 | `lib/sources/plex_scanner.dart`、`media_server_scanner.dart` | 是 | 是 | 同一实现；Plex 改资料库选择需重登录（质检 RM-04） |
+| SMB | `lib/sources/smb_mounter.dart` | 是 | 否 | 移动端在表单校验层直接拦下（`sources_view.dart:1211-1214`），符合设计 |
+| 遥控主机 / 迷你窗 / 缓存目录选择 | `lib/remote/`、`lib/app/app_shell.dart` | 是 | 否 | 桌面独有，机制见上一节 |
+| 系统 PiP / SAF / 媒体权限 | `lib/playback/player_screen.dart`、`MethodChannel('seewow/native')` | 否 | 是 | 移动独有 |
+| 进度写盘 | `lib/app/app_shell.dart:388` → `library_store.dart:120` | 是 | 是 | 每 5 秒整库重写，属于两端共享的性能债（RM-06） |
+| 来源停用 | `MediaSource.enabled` | 无入口 | 无入口 | 字段与刷新逻辑都在，界面没有开关（RM-03） |
+
+**复核结论**
+
+1. 现在不存在"桌面修了、移动没修"的代码级差异——A 线是同一份 Dart。
+2. 真正的分叉风险在 **Rust 线只服务 macOS**（决策 D-12）：A 线之外的改进，移动端永远拿不到。
+3. 本文档此后按路线图 P1 的做法维护：每条必须能指向代码或真机记录，不接受"应该一致"的表述。

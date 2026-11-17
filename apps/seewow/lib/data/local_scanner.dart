@@ -30,6 +30,14 @@ class LocalScanner {
     '3gp',
   };
 
+  /// `sample` 只有作为独立词元时才是样片；片名里带这几个字母的正片
+  /// （The Sampler）不能被静默跳过。
+  static bool _isReleaseSample(String name) {
+    final dot = name.lastIndexOf('.');
+    final base = (dot > 0 ? name.substring(0, dot) : name).toLowerCase();
+    return RegExp(r'(^|[^a-z])sample([^a-z]|$)').hasMatch(base);
+  }
+
   Future<List<MediaItem>> scan(MediaSource source) async {
     final root = Directory(source.location);
     if (!await root.exists())
@@ -60,7 +68,7 @@ class LocalScanner {
         if (dot <= 0) continue;
         final ext = name.substring(dot + 1).toLowerCase();
         if (!_videoExt.contains(ext)) continue;
-        if (name.toLowerCase().contains('sample')) continue;
+        if (_isReleaseSample(name)) continue;
         final parent = entity.parent;
         final segs = parent.uri.pathSegments
             .where((s) => s.isNotEmpty)

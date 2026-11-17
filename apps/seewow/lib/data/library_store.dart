@@ -149,10 +149,59 @@ class LibraryStore extends ChangeNotifier {
       await rescan(existing);
       return;
     }
+    // Overlapping local folders scan the same file twice. Items are keyed by
+    // file path, so both copies share one id and progress splits between them.
+    final covering = source.kind == SourceKind.local
+        ? sourceCovering(source.location)
+        : null;
+    if (covering != null) {
+      throw StateError('该目录已被来源「${covering.name}」覆盖，请先修改或断开它');
+    }
     sources.add(source);
     await save();
     notifyListeners();
     await rescan(source);
+  }
+
+  /// The local source that already covers [location] (or sits inside it).
+  ///
+  /// Overlapping folders are what produce duplicate cards with one shared id:
+  /// the same file scanned twice yields the same item id from two sources.
+  MediaSource? sourceCovering(String location) {
+    final target = _trimTrailingSlash(location);
+    if (target.isEmpty) return null;
+    for (final source in sources) {
+      if (source.kind != SourceKind.local) continue;
+      if (source.location == location) continue;
+      final path = _trimTrailingSlash(source.location);
+      if (path.isEmpty) continue;
+      if (target.startsWith('$path/') || target.startsWith('$path\\')) {
+        return source;
+      }
+      if (path.startsWith('$target/') || path.startsWith('$target\\')) {
+        return source;
+      }
+    }
+    return null;
+  }
+
+  static String _trimTrailingSlash(String path) {
+    var value = path;
+    while (value.length > 1 &&
+        (value.endsWith('/') || value.endsWith('\\'))) {
+      value = value.substring(0, value.length - 1);
+    }
+    return value;
+  }
+
+  Future<void> setSourceEnabled(MediaSource source, bool enabled) async {
+    final index = sources.indexWhere((s) => s.id == source.id);
+    if (index < 0) return;
+    sources[index] = sources[index].copyWith(enabled: enabled);
+    // Repaint first, persist after: the row must grey out on tap, not after a
+    // JSON round-trip.
+    notifyListeners();
+    await save();
   }
 
   Future<void> updateSource(MediaSource source) async {
@@ -260,19 +309,11 @@ class LibraryStore extends ChangeNotifier {
       items.removeWhere((i) => i.sourceId == source.id);
       items.addAll(merged);
       final index = sources.indexWhere((s) => s.id == source.id);
-      if (index >= 0)
-        sources[index] = MediaSource(
-          id: source.id,
-          kind: source.kind,
-          name: source.name,
-          location: source.location,
-          username: source.username,
-          enabled: source.enabled,
-          lastScan: DateTime.now(),
-          providerId: source.providerId,
-          rootPath: source.rootPath,
-          folders: source.folders,
-        );
+      // copyWith, not a hand-rolled rebuild: the 1.16 audit already caught a
+      // field (folders) being dropped here, and a new field would drop again.
+      if (index >= 0) {
+        sources[index] = sources[index].copyWith(lastScan: DateTime.now());
+      }
     } catch (e) {
       // Preserve the previous library when a source is offline.
       sourceErrors[source.id] = e.toString();

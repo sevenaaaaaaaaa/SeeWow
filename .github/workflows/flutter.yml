@@ -23,6 +23,29 @@ jobs:
           cache: true
       - run: brew install mpv
       - run: flutter pub get
+
+      # --- P0 质量门禁（Q-01）---
+      # 以前这里只有 build：CI 全绿只证明"能编译"。这两步让"行为坏了"也能拦住。
+      - name: Analyze (error / warning 阻塞，历史 info 不阻塞)
+        timeout-minutes: 10
+        run: |
+          set +e
+          flutter analyze lib test > analyze.log 2>&1
+          cat analyze.log
+          bad=$(grep -cE '^[[:space:]]+(error|warning) •' analyze.log || true)
+          if [ "${bad:-0}" -gt 0 ]; then
+            echo "::error::flutter analyze found ${bad} error/warning issue(s)"
+            exit 1
+          fi
+          if ! grep -qE "issues found|No issues found" analyze.log; then
+            echo "::error::analyze did not finish"
+            exit 1
+          fi
+          echo "analyze: 0 error / 0 warning（历史 info 不计入阻塞）"
+      - name: Test (1.18 基线 307 通过 / 2 跳过)
+        timeout-minutes: 25
+        run: flutter test --concurrency=1
+
       - run: flutter build macos --release
       - uses: actions/upload-artifact@v4
         with:
