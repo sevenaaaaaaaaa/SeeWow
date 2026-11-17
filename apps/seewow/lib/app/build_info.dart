@@ -5,7 +5,7 @@
 ///
 /// ```sh
 /// flutter build macos --release \
-///   --dart-define=SEEWOW_VERSION=1.18.0 \
+///   --dart-define=SEEWOW_VERSION=1.19.0 \
 ///   --dart-define=SEEWOW_BUILD_STAMP="92443f8 2026-11-14T22:55"
 /// ```
 ///
@@ -17,7 +17,7 @@ class BuildInfo {
   /// 语义版本号，不带 build number。来源是构建参数，默认值与 pubspec 同步。
   static const String version = String.fromEnvironment(
     'SEEWOW_VERSION',
-    defaultValue: '1.18.0',
+    defaultValue: '1.19.0',
   );
 
   /// 构建戳：`<git commit 短哈希> <构建时间>`。
