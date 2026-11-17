@@ -28,13 +28,17 @@ class PosterTile extends StatefulWidget {
 }
 
 class _PosterTileState extends State<PosterTile> {
-  Offset _tilt = Offset.zero;
   Offset? _pointer;
   bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
     final height = widget.width * 1.5;
+    final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    Duration ms(int value) =>
+        reduce ? Duration.zero : Duration(milliseconds: value);
+    // 有真海报时下面的标题才必要；占位海报自己会写标题，再重复一遍只是噪音。
+    final hasArtwork = (widget.item.posterUrl ?? '').isNotEmpty;
     final glow = _pointer == null
         ? Alignment.topLeft
         : Alignment(_pointer!.dx * 2 - 1, _pointer!.dy * 2 - 1);
@@ -47,10 +51,6 @@ class _PosterTileState extends State<PosterTile> {
         setState(() {
           _hover = true;
           _pointer = local;
-          _tilt = Offset(
-            (local.dx / box.size.width - 0.5) * 2,
-            (local.dy / box.size.height - 0.5) * 2,
-          );
         });
       },
       onExit: (_) {
@@ -58,145 +58,141 @@ class _PosterTileState extends State<PosterTile> {
         setState(() {
           _hover = false;
           _pointer = null;
-          _tilt = Offset.zero;
         });
       },
       child: AnimatedOpacity(
         opacity: widget.dimmed && !_hover ? 0.46 : 1,
-        duration: const Duration(milliseconds: 240),
+        duration: ms(240),
         curve: WowMotion.page,
-        child: Transform(
-          alignment: Alignment.center,
-          transform: Matrix4.identity()
-            ..setEntry(3, 2, 0.0015)
-            ..rotateX(-_tilt.dy * 0.075)
-            ..rotateY(_tilt.dx * 0.085),
-          child: Pressable(
-            onTap: widget.onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              curve: WowMotion.page,
-              width: widget.width,
-              transform: Matrix4.translationValues(0, _hover ? -8 : 0, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(9),
-                    child: SizedBox(
-                      width: widget.width,
-                      height: height,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          AnimatedScale(
-                            scale: _hover ? 1.035 : 1,
-                            duration: const Duration(milliseconds: 520),
-                            curve: WowMotion.page,
-                            child: _PosterArt(item: widget.item),
+        // 3D 倾斜已移除：网格里几十张卡片同时做透视旋转，既抢注意力也吃帧。
+        child: Pressable(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: ms(300),
+            curve: WowMotion.page,
+            width: widget.width,
+            transform: Matrix4.translationValues(0, _hover ? -6 : 0, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(
+                    WowSkin.I.spec.posterRadius,
+                  ),
+                  child: SizedBox(
+                    width: widget.width,
+                    height: height,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        AnimatedScale(
+                          scale: _hover ? 1.02 : 1,
+                          duration: ms(420),
+                          curve: WowMotion.page,
+                          child: _PosterArt(item: widget.item),
+                        ),
+                        const DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Color(0x00000000),
+                                Color(0x22000000),
+                                Color(0xCC000000),
+                              ],
+                              stops: [0.45, 0.72, 1],
+                            ),
                           ),
-                          const DecoratedBox(
+                        ),
+                        // Cursor light: the poster catches the pointer like a print under a lamp.
+                        AnimatedOpacity(
+                          opacity: _hover ? 1 : 0,
+                          duration: ms(220),
+                          child: DecoratedBox(
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
+                              gradient: RadialGradient(
+                                center: glow,
+                                radius: 0.85,
                                 colors: [
-                                  Color(0x00000000),
-                                  Color(0x22000000),
-                                  Color(0xCC000000),
+                                  Colors.white.withValues(alpha: 0.14),
+                                  Colors.transparent,
                                 ],
-                                stops: [0.45, 0.72, 1],
                               ),
                             ),
                           ),
-                          // Cursor light: the poster catches the pointer like a print under a lamp.
-                          AnimatedOpacity(
+                        ),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 260),
+                          curve: WowMotion.page,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(9),
+                            border: Border.all(
+                              color: Colors.white.withValues(
+                                alpha: _hover ? 0.34 : 0.07,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          left: 12,
+                          right: 12,
+                          bottom: 11,
+                          child: AnimatedOpacity(
                             opacity: _hover ? 1 : 0,
-                            duration: const Duration(milliseconds: 260),
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: RadialGradient(
-                                  center: glow,
-                                  radius: 0.85,
-                                  colors: [
-                                    Colors.white.withValues(alpha: 0.14),
-                                    Colors.transparent,
-                                  ],
+                            duration: const Duration(milliseconds: 220),
+                            child: Row(
+                              children: [
+                                Text(
+                                  widget.item.badgeText.toUpperCase(),
+                                  style: WowType.monoLabel(
+                                    8,
+                                    color: Colors.white.withValues(alpha: 0.72),
+                                    spacing: 1.4,
+                                  ),
                                 ),
-                              ),
+                                const Spacer(),
+                                Container(
+                                  width: 26,
+                                  height: 26,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.play_arrow_rounded,
+                                    size: 16,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 260),
-                            curve: WowMotion.page,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(9),
-                              border: Border.all(
-                                color: Colors.white.withValues(
-                                  alpha: _hover ? 0.34 : 0.07,
-                                ),
-                              ),
-                            ),
-                          ),
+                        ),
+                        if (widget.item.progress > 0.01)
                           Positioned(
-                            left: 12,
-                            right: 12,
-                            bottom: 11,
-                            child: AnimatedOpacity(
-                              opacity: _hover ? 1 : 0,
-                              duration: const Duration(milliseconds: 220),
-                              child: Row(
-                                children: [
-                                  Text(
-                                    widget.item.badgeText.toUpperCase(),
-                                    style: WowType.monoLabel(
-                                      8,
-                                      color: Colors.white.withValues(
-                                        alpha: 0.72,
-                                      ),
-                                      spacing: 1.4,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Container(
-                                    width: 26,
-                                    height: 26,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.white,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(
-                                      Icons.play_arrow_rounded,
-                                      size: 16,
-                                      color: Colors.black,
-                                    ),
-                                  ),
-                                ],
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: LinearProgressIndicator(
+                              value: widget.item.progress,
+                              minHeight: 2,
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.14,
+                              ),
+                              valueColor: AlwaysStoppedAnimation(
+                                WowColors.accent,
                               ),
                             ),
                           ),
-                          if (widget.item.progress > 0.01)
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: LinearProgressIndicator(
-                                value: widget.item.progress,
-                                minHeight: 2,
-                                backgroundColor: Colors.white.withValues(
-                                  alpha: 0.14,
-                                ),
-                                valueColor: AlwaysStoppedAnimation(
-                                  WowColors.accent,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
+                      ],
                     ),
                   ),
-                  if (widget.showMeta) ...[
-                    const SizedBox(height: 13),
+                ),
+                if (widget.showMeta) ...[
+                  const SizedBox(height: 13),
+                  // 占位海报已经把标题写在画面里，再重复一行只会让信息变吵。
+                  if (hasArtwork)
                     Text(
                       widget.item.title,
                       maxLines: 1,
@@ -210,24 +206,24 @@ class _PosterTileState extends State<PosterTile> {
                             : Colors.white.withValues(alpha: 0.9),
                       ),
                     ),
-                    const SizedBox(height: 5),
-                    Text(
-                      [
-                        if (widget.item.year != null) '${widget.item.year}',
-                        if (widget.item.badgeText.isNotEmpty)
-                          widget.item.badgeText,
-                      ].join('   /   ').toUpperCase(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: WowType.monoLabel(
-                        8,
-                        color: WowColors.faint,
-                        spacing: 1.5,
-                      ),
+                  if (hasArtwork) const SizedBox(height: 5),
+                  Text(
+                    [
+                      if (widget.item.year != null) '${widget.item.year}',
+                      if (widget.item.badgeText.isNotEmpty)
+                        widget.item.badgeText,
+                    ].join('   /   ').toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    // 8px + 最弱色在大屏上读不出来；抬到 10px 并换用 muted。
+                    style: WowType.monoLabel(
+                      10,
+                      color: WowColors.muted,
+                      spacing: 1.2,
                     ),
-                  ],
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
         ),
