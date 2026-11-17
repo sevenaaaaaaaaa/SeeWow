@@ -398,6 +398,8 @@ class _AppShellState extends State<AppShell> {
       );
       if (result != true) advanced = false;
     } finally {
+      // 进度默认 20 秒节流落盘；关掉播放器时补写一次，退出应用也不丢。
+      await _store.flushProgress();
       _playerOpen = false;
       _shakeGate.playing = false;
       _shakeGate.markInteraction();

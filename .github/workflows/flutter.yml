@@ -21,7 +21,18 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
-      - run: brew install mpv
+      # mpv 的 bottle 有几十个依赖，冷装一次 ~13 分钟。缓存下载目录后
+      # 只是"倒瓶子"，实测能把这一步压到 2 分钟上下。
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-macos-mpv-v1
+      - name: Install mpv
+        run: brew install mpv
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
       - run: flutter pub get
 
       # --- P0 质量门禁（Q-01）---
@@ -42,7 +53,7 @@ jobs:
             exit 1
           fi
           echo "analyze: 0 error / 0 warning（历史 info 不计入阻塞）"
-      - name: Test (1.18 基线 307 通过 / 2 跳过)
+      - name: Test (1.18 基线 319 通过 / 2 跳过)
         timeout-minutes: 25
         run: flutter test --concurrency=1
 

@@ -182,7 +182,7 @@ CI 侧：`gh run list` 最近 15 次全绿——但这个"绿"只覆盖编译，
 | RM-03 | 已修 | 菜单「停用/启用来源」+ 列表「已停用」标记；停用即时重绘再落盘 | 单测（持久化）+ widget 测试（重新启用路径） |
 | RM-04 | 已修 | 编辑弹窗新增「重新选择资料库」：用已存 token 取 sections，选择只走 `updateSource`，不重登录、不强制重扫；`PlexScanner` 可注入 | `test/plex_repick_test.dart`（假 scanner + 已存凭据） |
 | RM-05 | 已修 | 重复/空 ratingKey 跳过并计数（`lastSkipped`），不再整库失败 | `test/plex_duplicate_key_test.dart`（真实 HTTP 服务器） |
-| RM-06 | 待办 | 进度写盘要动持久化结构，单独一批 | — |
+| RM-06 | 已修 | 进度写 `progress.json`（20 秒节流 + 关播放器补写），完整 `save()` 会取代待写进度 | `test/progress_persistence_test.dart`：整库不被重写、flush 后恢复位置与 lastPlayed、save 不重复落盘 |
 | RM-07 | 已修 | `LibraryStore.sourceItemCounts` 按 `revision` 缓存，来源页改用 `countFor()` | `source_management_p0_test` 计数分组与变更后更新 |
 | RM-08 | 已修 | 新增 `MediaSource.copyWith`；`_rescan` 只改 `lastScan` | 两条回归测试（字段全等、重扫不丢） |
 | RM-09 | 已修 | `sample` 改为词元匹配，The Sampler 不再被跳过 | `test/local_sample_filter_test.dart` |

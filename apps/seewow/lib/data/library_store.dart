@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -107,9 +108,45 @@ class LibraryStore extends ChangeNotifier {
           (raw['sourceErrors'] as Map<String, dynamic>? ?? {})
               .cast<String, String>(),
         );
+      // progress.json is written continuously during playback and is newer
+      // than the positions embedded in library.json.
+      await _applyProgress();
       notifyListeners();
     } catch (e) {
       debugPrint('library load failed: $e');
+    }
+  }
+
+  Future<void> _applyProgress() async {
+    try {
+      final file = await _progressFile();
+      if (!await file.exists()) return;
+      final raw = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      final stored = (raw['items'] as Map<String, dynamic>? ?? {});
+      if (stored.isNotEmpty) {
+        final index = {
+          for (var i = 0; i < items.length; i++) items[i].id: i,
+        };
+        for (final entry in stored.entries) {
+          final at = index[entry.key];
+          if (at == null) continue;
+          final data = entry.value as Map<String, dynamic>;
+          final position = (data['position'] as num?)?.toDouble() ?? 0;
+          final duration = (data['duration'] as num?)?.toDouble() ?? 0;
+          final item = items[at];
+          items[at] = item.copyWith(
+            position: position,
+            duration: duration > 0 ? duration : item.duration,
+          );
+        }
+      }
+      final played = (raw['lastPlayed'] as Map<String, dynamic>? ?? {});
+      for (final entry in played.entries) {
+        final at = DateTime.tryParse(entry.value as String? ?? '');
+        if (at != null) taste.lastPlayed[entry.key] = at;
+      }
+    } catch (e) {
+      debugPrint('progress load failed: $e');
     }
   }
 
@@ -136,6 +173,11 @@ class LibraryStore extends ChangeNotifier {
   int countFor(String sourceId) => sourceItemCounts[sourceId] ?? 0;
 
   Future<void> save() {
+    // A full save already carries the latest positions, so a pending progress
+    // write is redundant (and would otherwise race it).
+    _progressTimer?.cancel();
+    _progressTimer = null;
+    _progressDirty = false;
     revision++;
     final payload = jsonEncode({
       'items': items.map((e) => e.toJson()).toList(),
@@ -357,6 +399,66 @@ class LibraryStore extends ChangeNotifier {
   }
 
   Future<List<MediaItem>> Function(MediaSource source)? scanner;
+
+  /// 播放进度的落盘节奏。播放时每 5 秒一次回调，如果每次都走 save()，
+  /// 整库 JSON 会被反复序列化；这里只写一个小的 progress.json。
+  static const progressInterval = Duration(seconds: 20);
+  Timer? _progressTimer;
+  bool _progressDirty = false;
+
+  Future<File> _progressFile() async =>
+      File('${(await _dir()).path}/progress.json');
+
+  void _scheduleProgressWrite() {
+    _progressDirty = true;
+    if (_progressTimer?.isActive ?? false) return;
+    _progressTimer = Timer(progressInterval, () {
+      _progressDirty = false;
+      unawaited(_writeProgress());
+    });
+  }
+
+  Future<void> _writeProgress() async {
+    try {
+      final payload = jsonEncode({
+        'items': {
+          for (final item in items)
+            if (item.position > 0)
+              item.id: {
+                'position': item.position,
+                'duration': item.duration,
+              },
+        },
+        'lastPlayed': {
+          for (final entry in taste.lastPlayed.entries)
+            entry.key: entry.value.toIso8601String(),
+        },
+      });
+      final file = await _progressFile();
+      final temp = File('${file.path}.tmp');
+      await temp.writeAsString(payload, flush: true);
+      await temp.rename(file.path);
+    } catch (e) {
+      debugPrint('progress write failed: $e');
+    }
+  }
+
+  /// 立即落盘未写的进度。退出播放器、切后台或测试收尾时调用。
+  Future<void> flushProgress() async {
+    _progressTimer?.cancel();
+    _progressTimer = null;
+    if (!_progressDirty) return;
+    _progressDirty = false;
+    await _writeProgress();
+  }
+
+  @override
+  void dispose() {
+    _progressTimer?.cancel();
+    if (_progressDirty) unawaited(_writeProgress());
+    super.dispose();
+  }
+
   Future<void> updatePosition(
     MediaItem item,
     double position,
@@ -366,8 +468,8 @@ class LibraryStore extends ChangeNotifier {
     if (idx < 0) return;
     items[idx] = items[idx].copyWith(position: position, duration: duration);
     taste.lastPlayed[item.id] = DateTime.now();
-    await save();
     notifyListeners();
+    _scheduleProgressWrite();
   }
 
   Future<void> hydrateCredentials(

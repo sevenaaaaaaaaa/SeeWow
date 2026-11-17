@@ -172,12 +172,12 @@
 | RM-09 sample 误杀 | 完成 | 改为词元匹配；`test/local_sample_filter_test.dart` |
 | RM-07 来源计数 | 完成 | `sourceItemCounts` 按 revision 缓存；`countFor()`，`source_management_p0_test` 一条 |
 | RM-04 Plex 改选资料库 | 完成 | 编辑弹窗「重新选择资料库」复用已存 token，不重登录；`plex_repick_test`（注入假 scanner） |
+| RM-06 进度写盘节流 | 完成 | 进度单独写 `progress.json`，20 秒节流，关播放器补写；`progress_persistence_test` 两条 |
+| CI 提速 | 完成 | 缓存 Homebrew 下载目录 + `HOMEBREW_NO_AUTO_UPDATE`；首次仍需冷装 |
 
-**未完成（下一批）**
+**P0 代码范围已清空**（RM-01…RM-09、Q-01、Q-02 全部落地）。
 
-1. RM-06 播放进度写盘节流（要动 `library_store` 的持久化结构）。
-
-做完这三条，1.19.0 才够条件发版（还要补五端资产与 SHA256SUMS）。
+**下一步是 1.19.0 发版准备**：五端资产（Android / Windows / Linux 仍停在 1.17.0）、`SHA256SUMS.txt`、README 下载表逐行对齐、发布说明引用 #2–#12。
 
 ---
 
