@@ -170,12 +170,12 @@
 | RM-05 Plex 重复 ID | 完成 | 跳过并计数（`lastSkipped`）；真实 HTTP 服务器测试 |
 | RM-08 重扫字段 | 完成 | `MediaSource.copyWith`，重扫只改 `lastScan`；两条回归测试 |
 | RM-09 sample 误杀 | 完成 | 改为词元匹配；`test/local_sample_filter_test.dart` |
+| RM-07 来源计数 | 完成 | `sourceItemCounts` 按 revision 缓存；`countFor()`，`source_management_p0_test` 一条 |
+| RM-04 Plex 改选资料库 | 完成 | 编辑弹窗「重新选择资料库」复用已存 token，不重登录；`plex_repick_test`（注入假 scanner） |
 
 **未完成（下一批）**
 
-1. RM-04 Plex 改选资料库不重登录（需要给 `PlexScanner` 注入点以便测试）；
-2. RM-06 播放进度写盘节流（要动 `library_store` 的持久化结构）；
-3. RM-07 来源计数缓存。
+1. RM-06 播放进度写盘节流（要动 `library_store` 的持久化结构）。
 
 做完这三条，1.19.0 才够条件发版（还要补五端资产与 SHA256SUMS）。
 

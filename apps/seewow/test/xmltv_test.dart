@@ -23,14 +23,18 @@ void main() {
     expect(list.first.channelId, 'cctv1');
     expect(list.first.title, '新闻 & 联播');
     expect(list.first.description, '每日 要闻');
-    expect(list.first.start.hour, 12);
-    expect(list.first.stop.hour, 13);
-    expect(list.first.stop.minute, 30);
+    // EPG times are instants. Asserting a local hour only passed in UTC+8;
+    // CI runs in UTC and caught it.
+    expect(list.first.start.toUtc(), DateTime.utc(2026, 11, 5, 4));
+    expect(list.first.stop.toUtc(), DateTime.utc(2026, 11, 5, 5, 30));
     expect(list[1].subtitle, '第 3 集');
   });
 
   test('groups by channel and drops old programmes', () {
     final now = DateTime.now();
+    // Stamp in UTC and declare +0000. Pairing a local clock with +0800 shifted
+    // the fixture by 8 hours on CI, so "正在播" looked finished.
+    final reference = now.toUtc();
     String stamp(DateTime t) =>
         t.year.toString().padLeft(4, '0') +
         t.month.toString().padLeft(2, '0') +
@@ -40,8 +44,8 @@ void main() {
         '00';
     final xml = '''
 <tv>
-  <programme start="${stamp(now.subtract(const Duration(days: 2)))} +0800" stop="${stamp(now.subtract(const Duration(days: 1)))} +0800" channel="old"><title>旧节目</title></programme>
-  <programme start="${stamp(now.subtract(const Duration(minutes: 30)))} +0800" stop="${stamp(now.add(const Duration(minutes: 30)))} +0800" channel="now"><title>正在播</title></programme>
+  <programme start="${stamp(reference.subtract(const Duration(days: 2)))} +0000" stop="${stamp(reference.subtract(const Duration(days: 1)))} +0000" channel="old"><title>旧节目</title></programme>
+  <programme start="${stamp(reference.subtract(const Duration(minutes: 30)))} +0000" stop="${stamp(reference.add(const Duration(minutes: 30)))} +0000" channel="now"><title>正在播</title></programme>
 </tv>
 ''';
     final grouped = XMLTVParser.group(XMLTVParser.parse(xml));

@@ -57,6 +57,7 @@ Future<void> connectSource(
   String type = 'webdav',
   String providerId = '',
   MediaSource? existing,
+  PlexScanner? plexScanner,
 }) async {
   if (existing?.kind == SourceKind.local) {
     await connectLocalMediaFolder(
@@ -88,6 +89,7 @@ Future<void> connectSource(
               : type),
       providerId: existing?.providerId ?? providerId,
       existing: existing,
+      plexScanner: plexScanner,
     ),
   );
 }
@@ -526,7 +528,7 @@ class _SourcesViewState extends State<SourcesView> {
                                 ),
                                 const SizedBox(height: 5),
                                 Text(
-                                  '${providerById(s.providerId)?.name ?? sourceModeLabel(s.kind)} · ${store.items.where((i) => i.sourceId == s.id).length} 个条目${s.enabled ? '' : ' · 已停用'}',
+                                  '${providerById(s.providerId)?.name ?? sourceModeLabel(s.kind)} · ${store.countFor(s.id)} 个条目${s.enabled ? '' : ' · 已停用'}',
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: WowColors.muted,
@@ -807,11 +809,16 @@ class _ConnectDialog extends StatefulWidget {
     required this.initialType,
     required this.providerId,
     this.existing,
+    this.plexScanner,
   });
   final LibraryStore library;
   final IPTVStore iptv;
   final String initial, initialType, providerId;
   final MediaSource? existing;
+
+  /// Injectable so the "re-pick Plex libraries" path can be tested against a
+  /// fake server instead of a real Plex account.
+  final PlexScanner? plexScanner;
   @override
   State<_ConnectDialog> createState() => _ConnectDialogState();
 }
@@ -969,7 +976,7 @@ class _ConnectDialogState extends State<_ConnectDialog> {
   Future<List<PlexSection>?> _plexLibraries(PlexServer server) async {
     setState(() => _plexStatus = '正在读取 ${server.name} 的资料库…');
     try {
-      final sections = await PlexScanner().sections(
+      final sections = await (widget.plexScanner ?? PlexScanner()).sections(
         MediaSource(
           id: 'probe',
           kind: SourceKind.plex,
@@ -1046,6 +1053,49 @@ class _ConnectDialogState extends State<_ConnectDialog> {
         ),
       ),
     );
+  }
+
+  /// Re-pick libraries on an existing Plex source without logging in again:
+  /// reuse the stored token and only change the selection. Saving then goes
+  /// through the normal `updateSource`, so nothing is rescanned here.
+  Future<void> _plexRepickSections() async {
+    final existing = widget.existing;
+    if (existing == null) return;
+    setState(() => _plexBusy = true);
+    try {
+      var token = _password.text.trim();
+      if (token.isEmpty) {
+        try {
+          token = await NativeBridge.secretRead(sourceSecretKey(existing)) ?? '';
+        } catch (_) {
+          token = '';
+        }
+      }
+      if (token.isEmpty) {
+        if (mounted) setState(() => _plexStatus = '需要先填写 Plex Token 或使用账号登录');
+        return;
+      }
+      final scanner = widget.plexScanner ?? PlexScanner();
+      final sections = await scanner.sections(existing, token);
+      if (!mounted) return;
+      // Stop the spinner before the picker opens: the button keeps animating
+      // behind the dialog otherwise, and nothing is loading any more.
+      setState(() => _plexBusy = false);
+      if (sections.isEmpty) {
+        setState(() => _plexStatus = '服务器没有可导入的电影 / 剧集资料库');
+        return;
+      }
+      final picked = await _choosePlexSections(sections);
+      if (!mounted || picked == null) return;
+      setState(() {
+        _folders = picked;
+        _plexStatus = '已选择 ${picked.length} 个资料库，保存后生效';
+      });
+    } catch (e) {
+      if (mounted) setState(() => _plexStatus = '资料库列表读取失败：$e');
+    } finally {
+      if (mounted) setState(() => _plexBusy = false);
+    }
   }
 
   Future<PlexServer?> _choosePlexServer(List<PlexServer> servers) =>
@@ -1284,6 +1334,17 @@ class _ConnectDialogState extends State<_ConnectDialog> {
                             _plexPin == null ? '使用 Plex 账号登录' : '重新获取验证码',
                           ),
                         ),
+                        if (widget.existing != null)
+                          OutlinedButton.icon(
+                            onPressed: _busy || _plexBusy
+                                ? null
+                                : _plexRepickSections,
+                            icon: const Icon(
+                              Icons.library_books_outlined,
+                              size: 16,
+                            ),
+                            label: const Text('重新选择资料库'),
+                          ),
                         if (_plexPin != null && !_plexBusy) ...[
                           Text(
                             'plex.tv/link · ${_plexPin!.code}',

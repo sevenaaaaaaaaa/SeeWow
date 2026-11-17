@@ -49,6 +49,32 @@ void main() {
     expect(reloaded.sources.single.enabled, isTrue);
   });
 
+
+  test('RM-07 来源计数按来源分组，随变更更新', () async {
+    await store.addSource(local('a', '/a'));
+    await store.addSource(local('b', '/b'));
+    MediaItem film(String id, String source) => MediaItem(
+      id: id,
+      sourceId: source,
+      kind: MediaKind.movie,
+      title: id,
+      locator: '/$source/$id.mkv',
+    );
+    await store.addItems([
+      film('1', 'a'),
+      film('2', 'a'),
+      film('3', 'a'),
+      film('4', 'b'),
+      film('5', 'b'),
+    ]);
+    expect(store.countFor('a'), 3);
+    expect(store.countFor('b'), 2);
+    expect(store.countFor('missing'), 0);
+    await store.removeSource(store.sources.firstWhere((s) => s.id == 'a'));
+    expect(store.countFor('a'), 0);
+    expect(store.countFor('b'), 2);
+  });
+
   test('RM-08 copyWith 只改指定字段', () {
     final source = MediaSource(
       id: 's1',

@@ -117,6 +117,24 @@ class LibraryStore extends ChangeNotifier {
   /// (home shelves, collections) without hashing the whole library.
   int revision = 0;
 
+  /// 每个来源的条目数，按 revision 缓存一次。
+  /// 来源页此前对每一行都遍历全部条目，扫描 tick 时是 O(来源×条目)。
+  Map<String, int>? _sourceCounts;
+  int _sourceCountsRevision = -1;
+  Map<String, int> get sourceItemCounts {
+    final cached = _sourceCounts;
+    if (cached != null && _sourceCountsRevision == revision) return cached;
+    final counts = <String, int>{};
+    for (final item in items) {
+      counts[item.sourceId] = (counts[item.sourceId] ?? 0) + 1;
+    }
+    _sourceCounts = counts;
+    _sourceCountsRevision = revision;
+    return counts;
+  }
+
+  int countFor(String sourceId) => sourceItemCounts[sourceId] ?? 0;
+
   Future<void> save() {
     revision++;
     final payload = jsonEncode({

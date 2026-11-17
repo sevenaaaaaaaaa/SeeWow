@@ -180,10 +180,10 @@ CI 侧：`gh run list` 最近 15 次全绿——但这个"绿"只覆盖编译，
 | RM-01 | 已修 | `_remove` 增加确认框，写明将移除 N 个条目与观看记录 | `test/source_actions_test.dart`（取消/确认两条路径） |
 | RM-02 | 已修 | `LibraryStore.sourceCovering` + `addSource` 拒绝父子目录重叠 | `test/source_management_p0_test.dart`（3 条：子目录、父目录、前缀不误判） |
 | RM-03 | 已修 | 菜单「停用/启用来源」+ 列表「已停用」标记；停用即时重绘再落盘 | 单测（持久化）+ widget 测试（重新启用路径） |
-| RM-04 | 待办 | 需要给 `PlexScanner` 注入点才能写自动化测试 | — |
+| RM-04 | 已修 | 编辑弹窗新增「重新选择资料库」：用已存 token 取 sections，选择只走 `updateSource`，不重登录、不强制重扫；`PlexScanner` 可注入 | `test/plex_repick_test.dart`（假 scanner + 已存凭据） |
 | RM-05 | 已修 | 重复/空 ratingKey 跳过并计数（`lastSkipped`），不再整库失败 | `test/plex_duplicate_key_test.dart`（真实 HTTP 服务器） |
 | RM-06 | 待办 | 进度写盘要动持久化结构，单独一批 | — |
-| RM-07 | 待办 | 来源计数缓存，跟随 RM-06 一起做 | — |
+| RM-07 | 已修 | `LibraryStore.sourceItemCounts` 按 `revision` 缓存，来源页改用 `countFor()` | `source_management_p0_test` 计数分组与变更后更新 |
 | RM-08 | 已修 | 新增 `MediaSource.copyWith`；`_rescan` 只改 `lastScan` | 两条回归测试（字段全等、重扫不丢） |
 | RM-09 | 已修 | `sample` 改为词元匹配，The Sampler 不再被跳过 | `test/local_sample_filter_test.dart` |
 
@@ -192,3 +192,4 @@ CI 侧：`gh run list` 最近 15 次全绿——但这个"绿"只覆盖编译，
 - Q-01：`.github/workflows/flutter.yml` 的 macOS job 增加 Analyze（error/warning 阻塞、历史 info 不阻塞）与 Test 两步。红/绿两侧都验过：故意写坏断言 → `exit 1`；真实日志 → 通过。
 - Q-02：`gh release edit v1.18.0 --prerelease=false --latest`。GitHub 明确拒绝让 prerelease 当 Latest（HTTP 422），所以 v1.18.0 的 prerelease 标记被取消——这是为了让默认下载不再指向 1.1.0 的必要动作，已记录在路线图 §7。
 - Issue：#2–#12 已建，标签 `bug` + `P0`。
+- **CI 第一次真实运行（cdbdc4e）抓到了两条时区依赖的测试**：`xmltv_test` 用本地小时断言、并用本地时钟配 `+0800` 造数据，UTC runner 上必红（315 通过 / 2 失败）。已改成按 instants 断言，UTC 与 UTC+8 下都验过。这正是这条门禁存在的意义。
