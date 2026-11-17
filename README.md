@@ -2,27 +2,27 @@
 
 **Cinema, made personal.** 一个以私人媒体库为中心的跨平台播放器，使用 Flutter + media_kit / libmpv。
 
-当前工作区为 **1.19.0 体验预览版（构建中）**。这一版不加新入口，只修资源管理：断开来源先确认、父子目录不再重复入库、来源可以停用、Plex 改选资料库不用重新登录、播放进度不再反复重写整库。九条修复都有 issue 编号（#2–#12）与测试，逐条见 [1.19.0 发布说明](docs/releases/1.19.0.md)。1.18.0 的构建身份修复与 1.17.0 的多源资料匹配保持不变。1.17.0 的多源资料匹配（TMDB / TVmaze / Bangumi / 已连接的 Jellyfin、Emby，自动回退并逐字段标注来源）与自动解说（片头 30 秒或全片，系统语音朗读、可导出音轨）保持不变，说明见 [1.17.0 发布说明](docs/releases/1.17.0.md)。默认关闭的 [AI 字幕与小映陪看](docs/ai-watch.md) 保持可用；支持三套主题、皮肤工作室和 design.md 生成，详见 [皮肤说明](skins/README.md) 与 [design.md 模板](design.md)。
+当前工作区为 **1.19.0 体验预览版**。这一版不加新入口，只修资源管理：断开来源先确认、父子目录不再重复入库、来源可以停用、Plex 改选资料库不用重新登录、播放进度不再反复重写整库。九条修复都有 issue 编号（#2–#12）与测试，逐条见 [1.19.0 发布说明](docs/releases/1.19.0.md)。1.18.0 的构建身份修复与 1.17.0 的多源资料匹配保持不变。1.17.0 的多源资料匹配（TMDB / TVmaze / Bangumi / 已连接的 Jellyfin、Emby，自动回退并逐字段标注来源）与自动解说（片头 30 秒或全片，系统语音朗读、可导出音轨）保持不变，说明见 [1.17.0 发布说明](docs/releases/1.17.0.md)。默认关闭的 [AI 字幕与小映陪看](docs/ai-watch.md) 保持可用；支持三套主题、皮肤工作室和 design.md 生成，详见 [皮肤说明](skins/README.md) 与 [design.md 模板](design.md)。
 
 **质量与计划。** 当前版本的质检结论、缺陷清单与后续计划见 [路线图](docs/roadmap.md)；想确认"哪一版有什么、哪个平台现在能装什么"，见 [版本汇总](docs/release-index.md)；跨端对齐状态见 [对齐说明](docs/parity.md)。资源管理（本地目录 / Plex）的缺陷编号为 RM-01…RM-09，本版已全部修复，对应 issue #2–#12。
 
-## 下载 1.18.0 体验预览版
+## 下载 1.19.0 体验预览版
 
-> **1.19.0 正在构建五端资产。** 下表仍是当前可下载的 1.18.0（Android / Windows / Linux 为 1.17.0）。1.19.0 的安装包与 `SHA256SUMS.txt` 上传后，这张表会整体替换为 1.19.0，届时五端同版、逐行标注签名状态。
+> 本版出 **macOS / iOS / Android** 三包，`SHA256SUMS.txt` 随资产上传。**Windows / Linux 本版未出包**，下载仍指向 1.17.0（下一版补齐五端）。
 
-完整更新记录见 [1.18.0 发布说明](docs/releases/1.18.0.md)，安装包见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.18.0)（1.18.0 未单独上传 `SHA256SUMS.txt`，校验值写在发布说明正文里）。
+完整更新记录见 [1.19.0 发布说明](docs/releases/1.19.0.md)，安装包与校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.19.0)。
 
 这一版不加新入口，补的是「我手上这个包到底是哪一次构建」：关于页副标题不再是写死的 `1.6.0`，而是真实的版本 · 提交 · 构建时间；`flutter run` 跑出来的开发构建会显示 `1.18.0 (dev)`，不伪装成某个正式版本。界面、播放、片库、元数据行为与 1.17.0 完全相同。
 
 | 平台 | 安装包 | 安装与签名状态 |
 | --- | --- | --- |
-| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.18.0/SeeWow-macos-1.18.0-preview.zip) | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证 |
-| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.18.0/SeeWow-iOS-1.18.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
-| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-Android-1.17.0-preview.apk) | **1.18.0 未出包，仍是 1.17.0**；Android 7.0+，Release 编译、开发签名预览包 |
-| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-windows-1.17.0.zip) | **1.18.0 未出包，仍是 1.17.0**；解压后运行 `seewow.exe` |
-| Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-linux-1.17.0.zip) | **1.18.0 未出包，仍是 1.17.0**；解压后运行 `seewow`，需要系统 libmpv |
+| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.19.0/SeeWow-macos-1.19.0-preview.zip) | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证 |
+| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.19.0/SeeWow-iOS-1.19.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
+| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.19.0/SeeWow-Android-1.19.0-preview.apk) | Android 7.0+；Release 编译、开发签名预览包（versionCode 22） |
+| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-windows-1.17.0.zip) | **1.19.0 未出包，仍是 1.17.0**；解压后运行 `seewow.exe` |
+| Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-linux-1.17.0.zip) | **1.19.0 未出包，仍是 1.17.0**；解压后运行 `seewow`，需要系统 libmpv |
 
-1.18.0 只构建了 macOS 与 iOS 两个包；Android / Windows / Linux 的下载链接仍指向 1.17.0 资产，不是这一版。
+1.19.0 构建了 macOS、iOS、Android 三个包；Windows / Linux 的下载链接仍指向 1.17.0 资产，不是这一版。
 
 AI 功能默认关闭，需要用户自行配置 API；自动解说依赖系统语音（macOS / Windows / Linux 各自内置）。使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
 
