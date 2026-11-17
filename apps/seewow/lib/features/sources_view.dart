@@ -572,9 +572,7 @@ class _SourcesViewState extends State<SourcesView> {
                               ),
                               PopupMenuItem(
                                 value: 'toggle',
-                                child: Text(
-                                  s.enabled ? '停用来源（不参与刷新）' : '启用来源',
-                                ),
+                                child: Text(s.enabled ? '停用来源（不参与刷新）' : '启用来源'),
                               ),
                               const PopupMenuItem(
                                 value: 'remove',
@@ -590,36 +588,54 @@ class _SourcesViewState extends State<SourcesView> {
                         style: TextStyle(fontSize: 11, color: WowColors.muted),
                       ),
                       const SizedBox(height: 10),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            store.sourceErrors.containsKey(s.id)
-                                ? Icons.error_outline
-                                : s.lastScan == null
-                                ? Icons.circle_outlined
-                                : Icons.check_circle_outline,
-                            size: 14,
-                            color: store.sourceErrors.containsKey(s.id)
-                                ? WowColors.error
-                                : WowColors.success,
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              store.sourceErrors[s.id] ??
-                                  (s.lastScan == null
-                                      ? '尚未完成首次扫描'
-                                      : '上次扫描成功 · ${_date(s.lastScan!)}'),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: store.sourceErrors.containsKey(s.id)
+                      Builder(
+                        builder: (context) {
+                          final error = store.sourceErrors[s.id];
+                          final scanning = store.scanningIds.contains(s.id);
+                          final slow = store.slowScans.contains(s.id);
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                error != null
+                                    ? Icons.error_outline
+                                    : slow
+                                    ? Icons.hourglass_bottom
+                                    : s.lastScan == null
+                                    ? Icons.circle_outlined
+                                    : Icons.check_circle_outline,
+                                size: 14,
+                                color: error != null
                                     ? WowColors.error
-                                    : WowColors.muted,
+                                    : WowColors.success,
                               ),
-                            ),
-                          ),
-                        ],
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  error ??
+                                      (scanning
+                                          ? (slow
+                                                ? '扫描比预期久（已超过 15 秒），可以先浏览已有内容'
+                                                : '正在扫描…')
+                                          : s.lastScan == null
+                                          ? '尚未完成首次扫描'
+                                          : '上次扫描成功 · ${_date(s.lastScan!)}'),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: error != null
+                                        ? WowColors.error
+                                        : WowColors.muted,
+                                  ),
+                                ),
+                              ),
+                              if (error != null)
+                                TextButton(
+                                  onPressed: () => store.rescan(s),
+                                  child: const Text('重试'),
+                                ),
+                            ],
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -1066,7 +1082,8 @@ class _ConnectDialogState extends State<_ConnectDialog> {
       var token = _password.text.trim();
       if (token.isEmpty) {
         try {
-          token = await NativeBridge.secretRead(sourceSecretKey(existing)) ?? '';
+          token =
+              await NativeBridge.secretRead(sourceSecretKey(existing)) ?? '';
         } catch (_) {
           token = '';
         }

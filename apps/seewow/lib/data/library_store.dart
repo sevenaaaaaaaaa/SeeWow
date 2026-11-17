@@ -15,8 +15,15 @@ import '../domain/library_intelligence.dart';
 import '../metadata/cover_generator.dart';
 
 class LibraryStore extends ChangeNotifier {
-  LibraryStore({this.directory, this.space = 1});
+  LibraryStore({
+    this.directory,
+    this.space = 1,
+    this.slowScanAfter = const Duration(seconds: 15),
+  });
   final Directory? directory;
+
+  /// 扫描超过这个时长就算「比预期久」。可注入，方便测试不真等 15 秒。
+  final Duration slowScanAfter;
 
   /// 1 = main cinema, 2+ = decoupled spaces with their own folders and library.
   final int space;
@@ -27,6 +34,11 @@ class LibraryStore extends ChangeNotifier {
   final Map<String, String> sourceErrors = {};
   final Set<String> scanningIds = {};
   bool get scanning => scanningIds.isNotEmpty;
+
+  /// 已经扫了超过 [slowScanAfter] 的来源。界面上用它给出「可以先做别的」，
+  /// 而不是让一个转圈一直转下去、用户却不知道还要等多久。
+  final Set<String> slowScans = {};
+  Timer? _slowTimer;
   String? toast;
   Future<void> _writes = Future.value();
   final Map<String, Future<void>> _scans = {};
@@ -124,9 +136,7 @@ class LibraryStore extends ChangeNotifier {
       final raw = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       final stored = (raw['items'] as Map<String, dynamic>? ?? {});
       if (stored.isNotEmpty) {
-        final index = {
-          for (var i = 0; i < items.length; i++) items[i].id: i,
-        };
+        final index = {for (var i = 0; i < items.length; i++) items[i].id: i};
         for (final entry in stored.entries) {
           final at = index[entry.key];
           if (at == null) continue;
@@ -247,8 +257,7 @@ class LibraryStore extends ChangeNotifier {
 
   static String _trimTrailingSlash(String path) {
     var value = path;
-    while (value.length > 1 &&
-        (value.endsWith('/') || value.endsWith('\\'))) {
+    while (value.length > 1 && (value.endsWith('/') || value.endsWith('\\'))) {
       value = value.substring(0, value.length - 1);
     }
     return value;
@@ -317,6 +326,7 @@ class LibraryStore extends ChangeNotifier {
     scanningIds.add(source.id);
     sourceErrors.remove(source.id);
     notifyListeners();
+    _scheduleSlowScanCheck();
     try {
       if (scanner == null) throw StateError('扫描器尚未就绪');
       final scanned = await scanner!(source);
@@ -380,9 +390,24 @@ class LibraryStore extends ChangeNotifier {
       toast = '${source.name}：扫描失败，已保留原有条目';
     } finally {
       scanningIds.remove(source.id);
+      slowScans.remove(source.id);
+      if (scanningIds.isEmpty) {
+        _slowTimer?.cancel();
+        _slowTimer = null;
+      }
       await save();
       notifyListeners();
     }
+  }
+
+  void _scheduleSlowScanCheck() {
+    _slowTimer?.cancel();
+    if (scanningIds.isEmpty) return;
+    _slowTimer = Timer(slowScanAfter, () {
+      if (scanningIds.isEmpty) return;
+      slowScans.addAll(scanningIds);
+      notifyListeners();
+    });
   }
 
   /// Pull-to-refresh: rescan every enabled source once, keeping partial
@@ -424,10 +449,7 @@ class LibraryStore extends ChangeNotifier {
         'items': {
           for (final item in items)
             if (item.position > 0)
-              item.id: {
-                'position': item.position,
-                'duration': item.duration,
-              },
+              item.id: {'position': item.position, 'duration': item.duration},
         },
         'lastPlayed': {
           for (final entry in taste.lastPlayed.entries)
@@ -455,6 +477,7 @@ class LibraryStore extends ChangeNotifier {
   @override
   void dispose() {
     _progressTimer?.cancel();
+    _slowTimer?.cancel();
     if (_progressDirty) unawaited(_writeProgress());
     super.dispose();
   }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/library_store.dart';
 import '../downloads/download_manager.dart';
 import '../design/cinema_widgets.dart';
+import '../design/skeleton.dart';
 import '../design/tokens.dart';
 import '../design/skin.dart';
 import '../domain/library_intelligence.dart';
@@ -392,7 +393,12 @@ class _LibraryViewState extends State<LibraryView> {
                   ),
                 ),
               ),
-              if (items.isEmpty)
+              if (items.isEmpty && store.scanning)
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(pad, 0, pad, 24),
+                  sliver: LibrarySkeleton(columns: columns),
+                )
+              else if (items.isEmpty)
                 SliverToBoxAdapter(
                   child: EmptyCinema(
                     icon: Icons.video_library_outlined,
@@ -497,6 +503,7 @@ class _LibraryViewState extends State<LibraryView> {
       },
     ),
   );
+
   /// Caches a whole selection (a season, a shelf) in one action, skipping
   /// anything already on disk.
   Future<void> _cacheSelected(List<MediaItem> items) async {
@@ -518,9 +525,7 @@ class _LibraryViewState extends State<LibraryView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          queued == 0 ? '选中的影片都已缓存' : '已加入缓存队列 $queued 项',
-        ),
+        content: Text(queued == 0 ? '选中的影片都已缓存' : '已加入缓存队列 $queued 项'),
         duration: const Duration(seconds: 2),
       ),
     );

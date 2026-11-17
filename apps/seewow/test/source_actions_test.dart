@@ -99,4 +99,22 @@ void main() {
     expect(store.sources.single.enabled, isFalse);
     expect(find.textContaining('已停用'), findsOneWidget);
   });
+
+  testWidgets('扫描失败的行可以直接重试', (tester) async {
+    var scans = 0;
+    store.sourceErrors['src1'] = '连接超时';
+    store.scanner = (_) async {
+      scans++;
+      return const [];
+    };
+    await mount(tester);
+    expect(find.text('重试'), findsOneWidget);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('重试'));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pump();
+    expect(scans, 1);
+    expect(store.sourceErrors.containsKey('src1'), isFalse);
+  });
 }
