@@ -82,10 +82,16 @@ void main() {
     expect(find.text('重新选择资料库'), findsOneWidget);
 
     await tester.ensureVisible(find.text('重新选择资料库'));
-    await tester.runAsync(() async {
-      await tester.tap(find.text('重新选择资料库'));
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-    });
+    await tester.tap(find.text('重新选择资料库'));
+    // 读已存 token 是真实文件 IO：在真实时区里等它，再 pump 让选择框上线。
+    // 单靠一次固定延时在 CI 上会不够（那边更慢），所以按状态轮询。
+    for (var i = 0; i < 50; i++) {
+      if (find.text('选择要导入的资料库').evaluate().isNotEmpty) break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pump();
+    }
     await tester.pumpAndSettle();
     expect(find.text('选择要导入的资料库'), findsOneWidget);
 
