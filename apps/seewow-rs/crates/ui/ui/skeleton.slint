@@ -42,6 +42,13 @@ export component Skeleton inherits Window {
     in-out property <string> clock-label: "00:00 / 00:00";
     in-out property <string> speed-label: "1.0x";
     in-out property <bool> subtitles-on: true;
+    // 字幕菜单：条目来自 mpv track-list（app 侧 playback::subtitle_menu），这里只负责画
+    in-out property <string> subtitle-label: "CC";
+    in-out property <[string]> subtitle-items: [];
+    in-out property <bool> subtitle-menu-open: false;
+    // 片尾提示：到片尾只提示一次，用户点了才跳
+    in-out property <bool> outro-visible: false;
+    in-out property <string> outro-text: "片尾 · 跳过";
     in-out property <float> progress: 0.0;
     in-out property <string> probe-mpv: "";
     in-out property <string> probe-mac: "";
@@ -58,6 +65,9 @@ export component Skeleton inherits Window {
     callback seek-forward();
     callback cycle-speed();
     callback toggle-subtitle();
+    callback pick-subtitle(int);
+    callback outro-skip();
+    callback outro-dismiss();
     callback toggle-fullscreen();
     callback traffic-close();
     callback traffic-minimize();
@@ -280,6 +290,51 @@ export component Skeleton inherits Window {
             spacing: 16px;
             alignment: center;
 
+            // 片尾提示：放在控制条里而不是画面区 —— 画面区的点击归 hit.rs（单击暂停），
+            // 放那里等于把按钮做成死控件。
+            if root.outro-visible : HorizontalLayout {
+                spacing: 6px;
+                alignment: center;
+                Rectangle {
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 11px;
+                    background: outro-close.has-hover ? #FFFFFF26 : transparent;
+                    Text {
+                        text: "✕";
+                        color: #A79D8C;
+                        font-size: 10px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    outro-close := TouchArea {
+                        clicked => { root.outro-dismiss(); }
+                    }
+                }
+                Rectangle {
+                    width: 96px;
+                    height: 22px;
+                    border-radius: 11px;
+                    border-width: 1px;
+                    border-color: outro-skip-touch.has-hover ? #D8CDB6AA : #FFFFFF24;
+                    background: outro-skip-touch.has-hover ? #FFFFFF1F : #FFFFFF0A;
+                    Text {
+                        text: root.outro-text;
+                        color: #F0EADC;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    outro-skip-touch := TouchArea {
+                        clicked => { root.outro-skip(); }
+                    }
+                }
+            }
+            if !root.outro-visible : Rectangle {
+                width: 0px;
+                background: transparent;
+            }
+
             // 后退一个步长（与键盘 Left / 双击左区同一动作）
             Rectangle {
                 width: 30px;
@@ -366,12 +421,12 @@ export component Skeleton inherits Window {
             }
 
             Rectangle {
-                width: 30px;
+                width: 54px;
                 height: 30px;
                 border-radius: 15px;
-                background: sub-touch.has-hover ? #FFFFFF1F : transparent;
+                background: root.subtitle-menu-open ? #FFFFFF26 : (sub-touch.has-hover ? #FFFFFF1F : transparent);
                 Text {
-                    text: "CC";
+                    text: root.subtitle-label;
                     color: root.subtitles-on ? #E8DCC2 : #8B8375;
                     font-family: "Menlo";
                     font-size: 10px;
@@ -383,7 +438,49 @@ export component Skeleton inherits Window {
                 }
             }
 
-            Rectangle {
+            if root.subtitle-menu-open : HorizontalLayout {
+                horizontal-stretch: 1;
+                spacing: 6px;
+                alignment: start;
+                // 0 号是「关」，之后依次是 track-list 里的每条字幕轨
+                Rectangle {
+                    width: 30px;
+                    height: 22px;
+                    border-radius: 11px;
+                    border-width: 1px;
+                    border-color: off-chip.has-hover ? #D8CDB6AA : #FFFFFF24;
+                    background: off-chip.has-hover ? #FFFFFF1F : #FFFFFF0A;
+                    Text {
+                        text: "关";
+                        color: #E4DCCB;
+                        font-size: 10px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    off-chip := TouchArea {
+                        clicked => { root.pick-subtitle(0); }
+                    }
+                }
+                for track-name[idx] in root.subtitle-items : Rectangle {
+                    width: max(40px, track-text.preferred-width + 18px);
+                    height: 22px;
+                    border-radius: 11px;
+                    border-width: 1px;
+                    border-color: track-touch.has-hover ? #D8CDB6AA : #FFFFFF24;
+                    background: track-touch.has-hover ? #FFFFFF1F : #FFFFFF0A;
+                    track-text := Text {
+                        text: track-name;
+                        color: #E4DCCB;
+                        font-size: 10px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    track-touch := TouchArea {
+                        clicked => { root.pick-subtitle(idx + 1); }
+                    }
+                }
+            }
+            if !root.subtitle-menu-open : Rectangle {
                 height: 2px;
                 horizontal-stretch: 1;
                 border-radius: 1px;

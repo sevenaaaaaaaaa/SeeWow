@@ -14,11 +14,15 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use slint::ComponentHandle as _;
 
+use seewow_app::playback::{self, PlaybackPage};
+use seewow_core::{Paths, PlayerPreferences, ResumePolicy};
+use seewow_library::Library;
 use seewow_player::host::{HOST_WINDOW_TITLE, M1Log, PlayerHost};
+use seewow_player::mpv::PlayerSnapshot;
 use seewow_player::probe::{ProbeSeed, Verdict, judge};
 use seewow_player::window as host_window;
 use seewow_ui::hit::{self, Flags, InputSink};
@@ -52,6 +56,18 @@ struct Core {
     overlay: Mutex<Option<OverlayHandle>>,
     monitor: Mutex<Option<hit::InputMonitor>>,
     autoplay: Option<PathBuf>,
+    /// 片库：续播进度与片头片尾都靠它；打不开就降级成「能播，但没有续播」。
+    library: Mutex<Option<Library>>,
+    /// 起播/落盘的判定口径（T-10 的 ResumePolicy，这里不另立阈值）。
+    policy: ResumePolicy,
+    /// 默认音轨/字幕语言、连播、步长（T-13）。
+    prefs: PlayerPreferences,
+    /// 当前这一页的播放会话：认条目、片头片尾、落盘水位。
+    page: Mutex<Option<PlaybackPage>>,
+    /// 起播决定要 seek 的位置：等 mpv 报出 time-pos 再跳，否则 seek 会丢。
+    pending_seek_ms: Mutex<Option<i64>>,
+    /// 字幕菜单只在 track-list 或选中轨变化时重建（每 0.1s 重建会白拉 Slint 模型）。
+    last_subtitle_state: Mutex<Option<(usize, Option<i64>)>>,
     locate_tries: AtomicU32,
     load_requested: AtomicBool,
     shown: AtomicBool,
@@ -140,12 +156,213 @@ impl Core {
         }
     }
 
+    /// 片库读锁：毒化也照读（一次 panic 不该让续播永久失效）。
+    fn with_library<T>(&self, action: impl FnOnce(Option<&Library>) -> T) -> T {
+        match self.library.lock() {
+            Ok(guard) => action(guard.as_ref()),
+            Err(poisoned) => {
+                self.log.write("warn", "library: 锁被毒化，按未中毒继续读");
+                action(poisoned.into_inner().as_ref())
+            }
+        }
+    }
+
+    /// 打开一个文件（自动播放与「打开文件」都走这里）：
+    /// 认条目 → 读片头片尾与上次进度 → 得到起播点 → 交给 mpv。
+    fn open_media(self: &Rc<Self>, path: PathBuf) {
+        // 换片前先给上一部落盘，否则「关掉再打开」会丢最后一次位置。
+        self.flush_current_progress();
+        let page = self.with_library(|library| PlaybackPage::open(library, &path));
+        let plan = page.plan(&self.policy, None);
+        self.log.write(
+            "info",
+            &format!(
+                "playback: 打开 {} → 起播 {}ms reason={} show={:?} intro={:?} outro={:?}",
+                path.display(),
+                plan.start_ms,
+                plan.reason.as_str(),
+                page.session.key.show_key,
+                page.session.chapters.intro_end_ms,
+                page.session.chapters.outro_start_ms,
+            ),
+        );
+        // 换片：把「上一部已加载」的判定清掉，否则这一部不会走「首帧后 seek」那条路。
+        self.saw_loaded.store(false, Ordering::SeqCst);
+        self.hdr_csp_sent.store(false, Ordering::SeqCst);
+        self.playing.store(false, Ordering::SeqCst);
+        if let Ok(mut slot) = self.pending_seek_ms.lock() {
+            *slot = (plan.start_ms > 0).then_some(plan.start_ms);
+        }
+        if let Ok(mut slot) = self.last_subtitle_state.lock() {
+            *slot = None;
+        }
+        if let Ok(mut slot) = self.page.lock() {
+            *slot = Some(page);
+        }
+        if let Some(ui) = self.ui.upgrade() {
+            ui.set_outro_visible(false);
+            ui.set_subtitle_menu_open(false);
+            ui.set_subtitle_label("CC".into());
+            ui.set_media_title(file_stem(&path).into());
+        }
+        self.host.load(&path);
+    }
+
+    /// 起播决定落到实处：mpv 报出 time_pos 之后再 seek 才不会丢。
+    fn apply_start_plan(&self) {
+        let pending = match self.pending_seek_ms.lock() {
+            Ok(mut slot) => slot.take(),
+            Err(poisoned) => poisoned.into_inner().take(),
+        };
+        let Some(start_ms) = pending else { return };
+        let seconds = start_ms as f64 / 1000.0;
+        if self.host.player().seek_absolute(seconds) {
+            self.log.write(
+                "info",
+                &format!("playback: 起播 seek → {seconds:.3}s（{start_ms}ms）"),
+            );
+        } else {
+            self.log.write(
+                "warn",
+                &format!("playback: 起播 seek 失败（{start_ms}ms），从头播"),
+            );
+        }
+    }
+
+    /// 默认字幕：按 T-13 的偏好从 track-list 里挑；挑不到就说「没有」，不偷偷选第一条。
+    fn apply_default_subtitle(&self, snapshot: &PlayerSnapshot) {
+        if snapshot.subtitle_tracks.is_empty() {
+            self.log
+                .write("info", "playback: 这条片源没有字幕轨（track-list 为空）");
+            return;
+        }
+        match self.prefs.pick_subtitle(&snapshot.subtitle_tracks) {
+            Some(track) => {
+                let id = track.id;
+                let label = track
+                    .title
+                    .clone()
+                    .or_else(|| track.language.clone())
+                    .unwrap_or_default();
+                if self.host.player().select_subtitle(Some(id)) {
+                    self.log
+                        .write("info", &format!("playback: 默认字幕 track={id}（{label}）"));
+                }
+            }
+            None => self.log.write(
+                "warn",
+                &format!(
+                    "playback: 没有匹配 {:?} 的字幕轨（共 {} 条），保持片源默认",
+                    self.prefs.default_subtitle_language,
+                    snapshot.subtitle_tracks.len()
+                ),
+            ),
+        }
+    }
+
+    /// 字幕菜单：条目、选中、控制条上的短标签，全部来自 mpv track-list。
+    fn refresh_subtitle_menu(&self, snapshot: &PlayerSnapshot) {
+        let key = (snapshot.subtitle_tracks.len(), snapshot.selected_subtitle);
+        let changed = self
+            .last_subtitle_state
+            .lock()
+            .map(|last| *last != Some(key))
+            .unwrap_or(true);
+        if !changed {
+            return;
+        }
+        if let Ok(mut last) = self.last_subtitle_state.lock() {
+            *last = Some(key);
+        }
+        let menu = playback::subtitle_menu(&snapshot.subtitle_tracks, snapshot.selected_subtitle);
+        if let Some(ui) = self.ui.upgrade() {
+            ui.set_subtitles_on(menu.selected.is_some());
+            ui.set_subtitle_label(menu.summary.clone().into());
+            let labels: Vec<slint::SharedString> = menu
+                .items
+                .iter()
+                .map(|item| slint::SharedString::from(item.label.as_str()))
+                .collect();
+            ui.set_subtitle_items(slint::ModelRc::new(slint::VecModel::from(labels)));
+        }
+        self.log.write(
+            "info",
+            &format!(
+                "playback: 字幕轨 {} 条 [{}] selected={:?}",
+                menu.items.len(),
+                menu.items
+                    .iter()
+                    .map(|item| item.label.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" | "),
+                menu.selected
+            ),
+        );
+    }
+
+    /// 每拍：节流落盘 + 片尾提示 + 字幕菜单刷新。
+    fn sync_playback(&self) {
+        let snapshot = self.snapshot();
+        self.refresh_subtitle_menu(&snapshot);
+        if !snapshot.loaded {
+            return;
+        }
+        let (position, duration) = (snapshot.position_ms(), snapshot.duration_ms());
+        let now = now_ms();
+        let prompt = {
+            let mut guard = match self.page.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            match guard.as_mut() {
+                Some(page) => self.with_library(|library| {
+                    page.tick(library, position, duration, &self.policy, now)
+                }),
+                None => false,
+            }
+        };
+        if prompt {
+            if let Some(ui) = self.ui.upgrade() {
+                ui.set_outro_visible(true);
+                ui.set_outro_text("片尾 · 跳过".into());
+            }
+            self.log.write(
+                "info",
+                &format!("playback: 到片尾（{position}ms），提示一次"),
+            );
+            self.shared.touch();
+        }
+    }
+
+    /// 关窗 / 换片 / 退出前落盘（看完写 0，下次从头）。
+    fn flush_current_progress(&self) {
+        let snapshot = self.snapshot();
+        let (position, duration) = (snapshot.position_ms(), snapshot.duration_ms());
+        let now = now_ms();
+        let guard = match self.page.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let Some(page) = guard.as_ref() else { return };
+        match self
+            .with_library(|library| page.flush(library, position, duration, &self.policy, now))
+        {
+            Ok(()) => self.log.write(
+                "info",
+                &format!("playback: 进度落盘 position={position}ms duration={duration:?}"),
+            ),
+            Err(err) => self
+                .log
+                .write("warn", &format!("playback: 进度落盘失败 {err}")),
+        }
+    }
     fn tick(self: &Rc<Self>) {
         let tick_index = self.ticks.fetch_add(1, Ordering::SeqCst) + 1;
         if tick_index.is_multiple_of(100) {
             self.log.write("info", &format!("tick: n={tick_index}"));
         }
         self.poll_playback();
+        self.sync_playback();
 
         // 长按加速：按住够久由 0.1s tick 触发（鼠标静止时没有移动事件可用），
         // 松手在 hit.rs 里结束。只进一次，避免每拍重复设置。
@@ -177,6 +394,8 @@ impl Core {
             {
                 ui.set_media_title(file_stem(path).into());
             }
+            self.apply_start_plan();
+            self.apply_default_subtitle(&snapshot);
             self.try_hdr_csp();
             self.sample();
             return;
@@ -197,7 +416,7 @@ impl Core {
             && let Some(path) = self.autoplay.clone()
         {
             self.load_requested.store(true, Ordering::SeqCst);
-            self.host.load(&path);
+            self.open_media(path);
         }
 
         // 已经挂好了就只跟 frame（子窗口不随父窗口 resize/全屏自动改尺寸）
@@ -673,12 +892,7 @@ impl Core {
                     .unwrap_or_default()
             ),
         );
-        self.hdr_csp_sent.store(false, Ordering::SeqCst);
-        self.playing.store(false, Ordering::SeqCst);
-        if let Some(ui) = self.ui.upgrade() {
-            ui.set_media_title(file_stem(&path).into());
-        }
-        self.host.load(&path);
+        self.open_media(path);
     }
 
     fn toggle_fullscreen(&self) {
@@ -700,6 +914,8 @@ impl Core {
             "info",
             "app: shutdown begin（叠层先 orderOut，再对 mpv 发 quit）",
         );
+        // 先把进度写进库：关窗不该丢最后一次位置。
+        self.flush_current_progress();
         if let Some(handle) = self.overlay_handle() {
             overlay::order_out(&handle.overlay);
             overlay::detach_child(&handle.host, &handle.overlay);
@@ -810,6 +1026,45 @@ fn verdict_rows(verdict: &Verdict) -> String {
     out
 }
 
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// 打开片库。打不开就返回 None：能播，只是没有续播与片头片尾。
+fn open_library(log: &M1Log) -> Option<Library> {
+    let paths = match Paths::discover() {
+        Ok(paths) => paths,
+        Err(err) => {
+            log.write(
+                "warn",
+                &format!("library: 找不到应用数据目录（{err}），本次没有续播"),
+            );
+            return None;
+        }
+    };
+    if let Err(err) = paths.ensure() {
+        log.write("warn", &format!("library: 建目录失败（{err}）"));
+    }
+    let database = paths.library_db();
+    match Library::open(&database) {
+        Ok(library) => {
+            let count = library.count_media().unwrap_or(0);
+            log.write(
+                "info",
+                &format!("library: 已打开 {}（{count} 条）", database.display()),
+            );
+            Some(library)
+        }
+        Err(err) => {
+            log.write("warn", &format!("library: 打开失败（{err}），本次没有续播"));
+            None
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     // 命令行分支必须在 Slint / mpv / 日志初始化之前：--scan 不需要窗口。
@@ -887,6 +1142,8 @@ fn main() {
         ),
     );
 
+    let library = open_library(&log);
+
     let core = Rc::new(Core {
         log: log.clone(),
         host: host.clone(),
@@ -895,6 +1152,12 @@ fn main() {
         overlay: Mutex::new(None),
         monitor: Mutex::new(None),
         autoplay,
+        library: Mutex::new(library),
+        policy: ResumePolicy::default(),
+        prefs: PlayerPreferences::default(),
+        page: Mutex::new(None),
+        pending_seek_ms: Mutex::new(None),
+        last_subtitle_state: Mutex::new(None),
         base_speed: Mutex::new(1.0),
         locate_tries: AtomicU32::new(0),
         load_requested: AtomicBool::new(false),
@@ -986,26 +1249,68 @@ fn wire_callbacks(shell: &Shell, core: &Rc<Core>) {
     }
     {
         let core = core.clone();
+        // CC 改成开菜单（条目来自 mpv track-list），不再盲轮换。
         ui.on_toggle_subtitle(move || {
+            if let Some(ui) = core.ui.upgrade() {
+                let open = !ui.get_subtitle_menu_open();
+                ui.set_subtitle_menu_open(open);
+                core.log.write("info", &format!("ui: 字幕菜单 open={open}"));
+            }
+            core.shared.touch();
+        });
+    }
+    {
+        let core = core.clone();
+        // 0 = 关；1..n = track-list 的第 n 条。
+        ui.on_pick_subtitle(move |index| {
             let snapshot = core.snapshot();
-            let currently_on = snapshot.selected_subtitle.is_some();
-            let next = if currently_on {
+            let menu =
+                playback::subtitle_menu(&snapshot.subtitle_tracks, snapshot.selected_subtitle);
+            let target = if index <= 0 {
                 None
             } else {
-                snapshot.subtitle_tracks.first().map(|track| track.id)
+                menu.items.get((index - 1) as usize).map(|item| item.id)
             };
-            core.host.player().select_subtitle(next);
+            core.host.player().select_subtitle(target);
             if let Some(ui) = core.ui.upgrade() {
-                ui.set_subtitles_on(!currently_on && next.is_some());
+                ui.set_subtitle_menu_open(false);
             }
             core.log.write(
                 "info",
                 &format!(
-                    "ui: 字幕切换 on={} track={next:?} 可用 {} 条",
-                    !currently_on && next.is_some(),
-                    snapshot.subtitle_tracks.len()
+                    "ui: 选字幕 track={target:?}（菜单 {} 条）",
+                    menu.items.len()
                 ),
             );
+            core.shared.touch();
+        });
+    }
+    {
+        let core = core.clone();
+        // 片尾「跳过」：拖到末尾。连播下一集属于 T-16（会话节拍），这里不抢。
+        ui.on_outro_skip(move || {
+            let snapshot = core.snapshot();
+            match snapshot.duration {
+                Some(duration) if duration > 0.0 => {
+                    core.host.player().seek_absolute(duration);
+                    core.log
+                        .write("info", &format!("ui: 片尾 → 跳过，拖到 {duration:.3}s"));
+                }
+                _ => core.log.write("warn", "ui: 片尾跳过失败（mpv 还没报时长）"),
+            }
+            if let Some(ui) = core.ui.upgrade() {
+                ui.set_outro_visible(false);
+            }
+            core.shared.touch();
+        });
+    }
+    {
+        let core = core.clone();
+        ui.on_outro_dismiss(move || {
+            if let Some(ui) = core.ui.upgrade() {
+                ui.set_outro_visible(false);
+            }
+            core.log.write("info", "ui: 片尾提示已关闭（本集不再弹）");
             core.shared.touch();
         });
     }
