@@ -977,44 +977,17 @@ class _AppShellState extends State<AppShell> {
     ),
     Section.agent => AgentView(agent: _agent, iptv: widget.iptv, onOpen: _open),
     Section.live => LiveView(store: widget.iptv, onPlay: _playLive),
-    Section.settings => Column(
-      children: [
-        if (MediaQuery.sizeOf(context).width < 760)
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Wrap(
-              spacing: 10,
-              children: [
-                OutlinedButton(
-                  onPressed: () => _select(Section.collections),
-                  child: const Text('我的片单'),
-                ),
-                OutlinedButton(
-                  onPressed: () => _select(Section.live),
-                  child: const Text('直播'),
-                ),
-                OutlinedButton(
-                  onPressed: () => _select(Section.music),
-                  child: const Text('音乐库'),
-                ),
-              ],
-            ),
-          ),
-        Expanded(
-          child: SettingsView(
-            agent: _agent,
-            store: _store,
-            downloads: _downloads,
-            onOpenDownloads: () => showDownloads(
-              context,
-              manager: _downloads,
-              onPlay: _playDownload,
-            ),
-            onConfigureAgent: () => configureAgent(context, _agent),
-            onSources: () => _select(Section.sources),
-          ),
-        ),
-      ],
+    Section.settings => SettingsView(
+      agent: _agent,
+      store: _store,
+      downloads: _downloads,
+      onOpenDownloads: () => showDownloads(
+        context,
+        manager: _downloads,
+        onPlay: _playDownload,
+      ),
+      onConfigureAgent: () => configureAgent(context, _agent),
+      onSources: () => _select(Section.sources),
     ),
   };
 }

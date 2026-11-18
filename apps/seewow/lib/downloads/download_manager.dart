@@ -50,6 +50,18 @@ class DownloadManager extends ChangeNotifier {
     return path != null && File(path).existsSync();
   }
 
+  /// Every library item that really plays from disk right now.
+  ///
+  /// One pass over the task list, so a shelf can filter by cache state without
+  /// doing a file-system check per item on every rebuild.
+  Set<String> get offlineItemIds => {
+    for (final task in tasks)
+      if (task.isDone &&
+          task.filePath != null &&
+          File(task.filePath!).existsSync())
+        task.itemId,
+  };
+
   String? pathFor(String itemId) {
     final task = taskFor(itemId);
     final path = task?.filePath;

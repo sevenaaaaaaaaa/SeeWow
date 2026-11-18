@@ -48,7 +48,7 @@ class _LibraryViewState extends State<LibraryView> {
   CatalogCategory _category = CatalogCategory.all;
   late WatchFilter _watch;
   LibrarySort _sort = LibrarySort.recent;
-  bool _list = false, _selecting = false, _audit = false;
+  bool _list = false, _selecting = false, _audit = false, _offline = false;
   final Set<String> _selected = {};
   @override
   void initState() {
@@ -94,6 +94,16 @@ class _LibraryViewState extends State<LibraryView> {
             ...audit.missingMetadata.map((i) => i.id),
           };
           items = items.where((i) => ids.contains(i.id)).toList();
+        }
+        final downloads = widget.downloads;
+        final offlineIds = downloads == null
+            ? const <String>{}
+            : downloads.offlineItemIds;
+        final offlineCount = store.items
+            .where((i) => offlineIds.contains(i.id))
+            .length;
+        if (_offline && downloads != null) {
+          items = items.where((i) => offlineIds.contains(i.id)).toList();
         }
         final genres = store.items.expand((i) => i.genres).toSet().toList()
           ..sort();
@@ -309,6 +319,23 @@ class _LibraryViewState extends State<LibraryView> {
                             ),
                             onSelected: (v) => setState(() => _audit = v),
                           ),
+                          if (downloads != null)
+                            FilterChip(
+                              selected: _offline,
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              avatar: const Icon(
+                                Icons.download_done_outlined,
+                                size: 14,
+                              ),
+                              label: Text(
+                                '已缓存 · $offlineCount',
+                                style: const TextStyle(fontSize: 10.5),
+                              ),
+                              tooltip: '只看已离线缓存到本机的作品',
+                              onSelected: (v) => setState(() => _offline = v),
+                            ),
                           if (items.isNotEmpty)
                             TextButton.icon(
                               onPressed: () => _save(items),
@@ -405,6 +432,8 @@ class _LibraryViewState extends State<LibraryView> {
                     title: store.items.isEmpty ? '片库还空着' : '没有匹配的影片',
                     description: store.items.isEmpty
                         ? '连接片源后，电影、剧集与观看进度会出现在这里。'
+                        : _offline
+                        ? '还没有可离线播放的缓存：选中影片或整个片单后点「缓存选中」，就能在这里直接找到。'
                         : '试试更短的关键词，或调整来源、类型和观看状态。',
                     action: store.items.isEmpty
                         ? FilledButton(
@@ -451,24 +480,45 @@ class _LibraryViewState extends State<LibraryView> {
                               style: const TextStyle(fontSize: 13),
                             ),
                             subtitle: Text(
-                              '${i.year ?? '年份未知'} · ${store.sources.where((s) => s.id == i.sourceId).firstOrNull?.name ?? '未知来源'} · ${i.watched ? '已看' : '未看完'}',
+                              i.kind == MediaKind.audio
+                                  ? [
+                                      if (i.artist.isNotEmpty) i.artist,
+                                      if (i.album.isNotEmpty) i.album,
+                                      store.sources
+                                              .where((s) => s.id == i.sourceId)
+                                              .firstOrNull
+                                              ?.name ??
+                                          '',
+                                    ].where((s) => s.isNotEmpty).join(' · ')
+                                  : '${i.year ?? '年份未知'} · ${store.sources.where((s) => s.id == i.sourceId).firstOrNull?.name ?? '未知来源'} · ${i.watched ? '已看' : '未看完'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 11,
                                 color: WowColors.muted,
                               ),
                             ),
-                            trailing: IconButton(
-                              tooltip: store.taste.watchlist.contains(i.id)
-                                  ? '移出待看'
-                                  : '加入待看',
-                              onPressed: () => store.toggleWatchlist(i),
-                              icon: Icon(
-                                store.taste.watchlist.contains(i.id)
-                                    ? Icons.bookmark_rounded
-                                    : Icons.bookmark_border_rounded,
-                                size: 20,
-                              ),
-                            ),
+                            trailing: i.kind == MediaKind.audio
+                                ? (i.duration > 0
+                                      ? Text(
+                                          _clockText(i.duration),
+                                          style: WowType.monoLabel(11),
+                                        )
+                                      : null)
+                                : IconButton(
+                                    tooltip:
+                                        store.taste.watchlist.contains(i.id)
+                                        ? '移出待看'
+                                        : '加入待看',
+                                    onPressed: () =>
+                                        store.toggleWatchlist(i),
+                                    icon: Icon(
+                                      store.taste.watchlist.contains(i.id)
+                                          ? Icons.bookmark_rounded
+                                          : Icons.bookmark_border_rounded,
+                                      size: 20,
+                                    ),
+                                  ),
                           ),
                         ),
                       );
@@ -575,6 +625,13 @@ class _LibraryViewState extends State<LibraryView> {
     WatchFilter.watchlist => '我的待看',
     WatchFilter.favorites => '我喜欢的',
   };
+}
+
+/// `3:45` for a track row; the music shelf shows length where films show a
+/// watch-list bookmark.
+String _clockText(double seconds) {
+  final total = seconds.round();
+  return '${total ~/ 60}:${(total % 60).toString().padLeft(2, '0')}';
 }
 
 class CollectionsView extends StatelessWidget {
