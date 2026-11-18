@@ -34,7 +34,7 @@ class PlexScanner {
       if (raw is! List) throw const FormatException('Plex 资料库响应无效');
       return [
         for (final section in raw.whereType<Map>())
-          if (['movie', 'show'].contains(section['type']))
+          if (['movie', 'show', 'artist'].contains(section['type']))
             PlexSection(
               key: section['key']?.toString() ?? '',
               title: section['title']?.toString() ?? '未命名资料库',
@@ -66,17 +66,22 @@ class PlexScanner {
       final sections = (root['MediaContainer'] as Map?)?['Directory'];
       if (sections is! List) throw const FormatException('Plex 资料库响应无效');
       for (final section in sections.whereType<Map>()) {
-        if (!['movie', 'show'].contains(section['type'])) continue;
+        if (!['movie', 'show', 'artist'].contains(section['type'])) continue;
         final key = section['key']?.toString() ?? '';
         if (allowed.isNotEmpty && !allowed.contains(key)) {
           continue;
         }
         if (!RegExp(r'^\d+$').hasMatch(key))
           throw const FormatException('Plex 资料库标识无效');
+        final music = section['type'] == 'artist';
         var offset = 0;
         for (var page = 0; page < 100; page++) {
           final response = await api.get('library/sections/$key/all', {
-            'type': section['type'] == 'show' ? '4' : '1',
+            'type': music
+                ? '10'
+                : section['type'] == 'show'
+                ? '4'
+                : '1',
             'X-Plex-Container-Start': '$offset',
             'X-Plex-Container-Size': '200',
           });
@@ -113,8 +118,58 @@ class PlexScanner {
               return api.uri(path);
             }
 
-            final episode = m['type'] == 'episode';
             final duration = (m['duration'] as num? ?? 0).toDouble() / 1000;
+            if (music) {
+              final artwork =
+                  m['thumb'] ?? m['parentThumb'] ?? m['grandparentThumb'];
+              final fanart =
+                  m['art'] ?? m['parentArt'] ?? m['grandparentArt'];
+              final bitrate = (media?['bitrate'] as num?)?.toInt() ?? 0;
+              final played = (m['viewCount'] as num? ?? 0) > 0;
+              items.add(
+                MediaItem(
+                  id: '${source.id}:$id',
+                  sourceId: source.id,
+                  kind: MediaKind.audio,
+                  title: m['title'] as String? ?? '未命名曲目',
+                  artist: m['grandparentTitle'] as String? ?? '',
+                  album: m['parentTitle'] as String? ?? '',
+                  locator: safePath(partKey).toString(),
+                  sourceRef: id,
+                  posterUrl: artwork is String
+                      ? safePath(artwork).toString()
+                      : null,
+                  backdropUrl: fanart is String
+                      ? safePath(fanart).toString()
+                      : null,
+                  overview: [m['grandparentTitle'], m['parentTitle']]
+                      .whereType<String>()
+                      .where((s) => s.isNotEmpty)
+                      .join(' · '),
+                  genres: (m['Genre'] as List? ?? [])
+                      .whereType<Map>()
+                      .map((g) => g['tag'].toString())
+                      .toList(),
+                  year: (m['year'] as num?)?.toInt(),
+                  duration: duration,
+                  position: played
+                      ? duration
+                      : (m['viewOffset'] as num? ?? 0).toDouble() / 1000,
+                  quality: bitrate > 0 ? '$bitrate kbps' : '',
+                  container:
+                      media?['container']?.toString().toUpperCase() ?? '',
+                  fileSize: (part?['size'] as num? ?? 0).toInt(),
+                  addedAt: m['addedAt'] is num
+                      ? DateTime.fromMillisecondsSinceEpoch(
+                          (m['addedAt'] as num).toInt() * 1000,
+                        )
+                      : null,
+                  httpHeaders: headers,
+                ),
+              );
+              continue;
+            }
+            final episode = m['type'] == 'episode';
             final width = (media?['width'] as num? ?? 0).toInt();
             items.add(
               MediaItem(

@@ -1045,7 +1045,11 @@ class _ConnectDialogState extends State<_ConnectDialog> {
                     controlAffinity: ListTileControlAffinity.leading,
                     title: Text(section.title),
                     subtitle: Text(
-                      '${section.type == 'show' ? '剧集' : '电影'} · ${section.count} 项',
+                      switch (section.type) {
+                        'show' => '剧集 · ${section.count} 部',
+                        'artist' => '音乐 · ${section.count} 位艺术家',
+                        _ => '电影 · ${section.count} 部',
+                      },
                       style: TextStyle(fontSize: 11, color: WowColors.muted),
                     ),
                   ),
@@ -1099,7 +1103,7 @@ class _ConnectDialogState extends State<_ConnectDialog> {
       // behind the dialog otherwise, and nothing is loading any more.
       setState(() => _plexBusy = false);
       if (sections.isEmpty) {
-        setState(() => _plexStatus = '服务器没有可导入的电影 / 剧集资料库');
+        setState(() => _plexStatus = '服务器没有可导入的电影 / 剧集 / 音乐资料库');
         return;
       }
       final picked = await _choosePlexSections(sections);
