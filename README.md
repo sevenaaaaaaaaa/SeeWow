@@ -8,21 +8,21 @@
 
 ## 下载 1.20.0 体验预览版
 
-> 本版**先发源码与 tag，三端安装包待构建**；下面的下载链接仍指向 1.19.0 的资产，不是 1.20.0。构建完成后会补上 `SeeWow-macos-1.20.0-preview.zip`、iOS 未签名 IPA 与 Android APK，并附 `SHA256SUMS.txt`。
+> 本版出 **macOS / iOS / Android** 三包，`SHA256SUMS.txt` 随资产上传。**Windows / Linux 本版未出包**，下载仍指向 1.17.0。
 
 完整更新记录见 [1.20.0 发布说明](docs/releases/1.20.0.md)，安装包与校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.20.0)。
 
-这一版改的是接入和入口：模型平台预设与地址补全、语音译配通用 JSON 适配、Plex 音乐曲目导入、媒体库「已缓存」筛选、设置页分组。安装包尚未重新构建，上面的表格仍是 1.19.0 资产；构建完成后本段会换成 1.20.0 的实际大小与 SHA-256。
+这一版改的是接入和入口：模型平台预设与地址补全、语音译配通用 JSON 适配、Plex 音乐曲目导入、媒体库「已缓存」筛选、设置页分组。三端由同一个提交 `7330c77` 构建，版本号 1.20.0 / versionCode 23；各包大小与 SHA-256 见发布说明。
 
 | 平台 | 安装包 | 安装与签名状态 |
 | --- | --- | --- |
-| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.19.0/SeeWow-macos-1.19.0-preview.zip) | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证 |
-| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.19.0/SeeWow-iOS-1.19.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
-| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.19.0/SeeWow-Android-1.19.0-preview.apk) | Android 7.0+；Release 编译、开发签名预览包（versionCode 22） |
-| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-windows-1.17.0.zip) | **1.19.0 未出包，仍是 1.17.0**；解压后运行 `seewow.exe` |
-| Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-linux-1.17.0.zip) | **1.19.0 未出包，仍是 1.17.0**；解压后运行 `seewow`，需要系统 libmpv |
+| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.0/SeeWow-macos-1.20.0-preview.zip) | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证 |
+| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.0/SeeWow-iOS-1.20.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
+| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.0/SeeWow-Android-1.20.0-preview.apk) | Android 7.0+；Release 编译、开发签名预览包（versionCode 23） |
+| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-windows-1.17.0.zip) | **1.20.0 未出包，仍是 1.17.0**；解压后运行 `seewow.exe` |
+| Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-linux-1.17.0.zip) | **1.20.0 未出包，仍是 1.17.0**；解压后运行 `seewow`，需要系统 libmpv |
 
-表中链接均为 1.19.0 资产；1.20.0 的安装包尚未构建，Windows / Linux 仍停在 1.17.0。
+三端均为 1.20.0；Windows / Linux 仍停在 1.17.0。
 
 AI 功能默认关闭，需要用户自行配置 API；自动解说依赖系统语音（macOS / Windows / Linux 各自内置）。使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
 
