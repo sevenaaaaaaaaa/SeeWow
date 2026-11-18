@@ -15,8 +15,8 @@ use std::time::{Duration, Instant};
 
 use seewow_app::playback::{ChapterPlan, media_key_for, plan_start};
 use seewow_core::ResumePolicy;
-use seewow_library::WatchState;
 use seewow_library::Library;
+use seewow_library::WatchState;
 use seewow_player::mpv::{Player, PlayerOptions};
 
 fn sample() -> Option<PathBuf> {
