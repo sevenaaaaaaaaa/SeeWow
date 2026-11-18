@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../agent/model_presets.dart';
 import '../design/cinema_widgets.dart';
 import '../design/tokens.dart';
 import '../watch_ai/watch_ai_controller.dart';
@@ -56,6 +57,10 @@ class _WatchAiConfigDialogState extends State<_WatchAiConfigDialog> {
   late bool _companion = widget.settings.config.companion;
   late bool _frames = widget.settings.config.allowFrames;
   late String _language = widget.settings.config.language;
+  late String? _presetId = kModelProviders
+      .where((p) => p.endpoint == widget.settings.config.endpoint)
+      .firstOrNull
+      ?.id;
   bool _saving = false;
   String? _error;
   @override
@@ -64,6 +69,20 @@ class _WatchAiConfigDialogState extends State<_WatchAiConfigDialog> {
     _model.dispose();
     _key.dispose();
     super.dispose();
+  }
+
+  void _applyPreset(String? id) {
+    final preset = id == null ? null : modelProviderById(id);
+    setState(() {
+      _presetId = id;
+      _error = null;
+      if (preset != null) {
+        _url.text = preset.endpoint;
+        if (!preset.models.contains(_model.text.trim())) {
+          _model.text = preset.models.first;
+        }
+      }
+    });
   }
 
   Future<void> _save() async {
@@ -78,7 +97,9 @@ class _WatchAiConfigDialogState extends State<_WatchAiConfigDialog> {
           subtitles: _subtitles,
           companion: _companion,
           allowFrames: _frames,
-          endpoint: _url.text.trim(),
+          endpoint: _url.text.trim().isEmpty
+              ? ''
+              : normalizeChatEndpoint(_url.text),
           model: _model.text.trim(),
           language: _language,
         ),
@@ -125,14 +146,42 @@ class _WatchAiConfigDialogState extends State<_WatchAiConfigDialog> {
                 onChanged: _saving ? null : (v) => setState(() => _enabled = v),
               ),
               const SizedBox(height: 14),
+              DropdownButtonFormField<String?>(
+                initialValue: _presetId,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: '常用平台（可选）'),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('自定义 / 其他兼容服务'),
+                  ),
+                  for (final p in kModelProviders)
+                    DropdownMenuItem<String?>(
+                      value: p.id,
+                      child: Text(
+                        p.needsKey ? p.label : '${p.label} · 免 Key',
+                      ),
+                    ),
+                ],
+                onChanged: _saving ? null : _applyPreset,
+              ),
+              if (_presetId != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    modelProviderById(_presetId!)?.note ?? '',
+                    style: WowType.body(11, color: WowColors.muted),
+                  ),
+                ),
+              const SizedBox(height: 14),
               TextField(
                 controller: _url,
                 enabled: !_saving,
                 keyboardType: TextInputType.url,
                 autocorrect: false,
                 decoration: const InputDecoration(
-                  labelText: '完整 Chat Completions 接口',
-                  hintText: 'https://你的服务/v1/chat/completions',
+                  labelText: 'Chat Completions 接口（可只填域名）',
+                  hintText: 'api.deepseek.com 或 http://localhost:11434',
                 ),
               ),
               const SizedBox(height: 12),

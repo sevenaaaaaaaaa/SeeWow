@@ -77,7 +77,7 @@ class WatchAiClient {
         final response = await req.close();
         if (response.statusCode != 200)
           throw HttpException(
-            'API 返回 HTTP ${response.statusCode}，请检查模型、密钥或视觉能力',
+            'API 返回 HTTP ${response.statusCode}，请检查接口地址（通常以 /chat/completions 结尾）、模型、密钥或视觉能力',
           );
         final bytes = <int>[];
         await for (final chunk in response) {
@@ -86,7 +86,13 @@ class WatchAiClient {
             throw const FormatException('AI 响应超过 128 KB');
         }
         if (ticket != _revision) throw WatchAiCancelled();
-        final raw = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+        final text = utf8.decode(bytes);
+        if (text.trimLeft().startsWith('<')) {
+          throw const FormatException(
+            '该地址返回了网页而不是 JSON：请填写完整的 Chat Completions 接口地址',
+          );
+        }
+        final raw = jsonDecode(text) as Map<String, dynamic>;
         final answer = raw['choices']?[0]?['message']?['content'];
         if (answer is! String || answer.trim().isEmpty)
           throw const FormatException('模型没有返回有效文本');

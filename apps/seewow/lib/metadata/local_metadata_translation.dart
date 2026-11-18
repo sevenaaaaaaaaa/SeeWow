@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 
+import '../agent/model_presets.dart';
 import '../domain/media_item.dart';
 import '../domain/media_metadata.dart';
 import '../domain/metadata_languages.dart';
@@ -17,8 +18,11 @@ class LocalTranslationConfig {
     this.model = '',
   });
   final String endpoint, model;
+
+  /// Accepts `http://localhost:11434` as shorthand for the Ollama endpoint.
+  String get resolvedEndpoint => normalizeChatEndpoint(endpoint);
   void validate() {
-    final uri = Uri.tryParse(endpoint);
+    final uri = Uri.tryParse(resolvedEndpoint);
     if (uri == null ||
         !['http', 'https'].contains(uri.scheme) ||
         !['127.0.0.1', '::1', 'localhost'].contains(uri.host) ||
@@ -155,7 +159,9 @@ class LocalMetadataTranslator {
     };
     try {
       final result = await (() async {
-        final request = await client.postUrl(Uri.parse(config.endpoint));
+        final request = await client.postUrl(
+          Uri.parse(config.resolvedEndpoint),
+        );
         request.followRedirects = false;
         request.headers.contentType = ContentType.json;
         request.write(
@@ -181,7 +187,13 @@ class LocalMetadataTranslator {
           bytes.addAll(chunk);
           if (bytes.length > 128 * 1024) throw const FormatException('翻译响应过大');
         }
-        final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+        final text = utf8.decode(bytes);
+        if (looksLikeHtml(text)) {
+          throw const FormatException(
+            '本机地址返回了网页而不是 JSON：请填写以 /chat/completions 结尾的接口地址',
+          );
+        }
+        final json = jsonDecode(text) as Map<String, dynamic>;
         final answer = json['choices']?[0]?['message']?['content'];
         if (answer is! String || answer.length > 16000)
           throw const FormatException('模型没有返回有效译文');

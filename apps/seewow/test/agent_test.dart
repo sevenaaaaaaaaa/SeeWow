@@ -14,6 +14,7 @@ void main() {
   final requests = <Map<String, dynamic>>[];
   var steps = <Map<String, dynamic>>[];
   var httpStatus = 200;
+  var htmlResponse = false;
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('seewow-agent-test-');
     library = LibraryStore(directory: dir)
@@ -46,6 +47,7 @@ void main() {
     );
     requests.clear();
     httpStatus = 200;
+    htmlResponse = false;
     steps = [
       {
         'tool': 'recommend',
@@ -62,18 +64,25 @@ void main() {
               as Map<String, dynamic>,
         );
         request.response.statusCode = httpStatus;
-        request.response.headers.contentType = ContentType.json;
-        request.response.write(
-          jsonEncode({
-            'choices': [
-              {
-                'message': {
-                  'content': jsonEncode({'steps': steps}),
+        if (htmlResponse) {
+          request.response.headers.contentType = ContentType.html;
+          request.response.write(
+            '<!doctype html><html><body>Not an API endpoint</body></html>',
+          );
+        } else {
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(
+            jsonEncode({
+              'choices': [
+                {
+                  'message': {
+                    'content': jsonEncode({'steps': steps}),
+                  },
                 },
-              },
-            ],
-          }),
-        );
+              ],
+            }),
+          );
+        }
       } else {
         request.response.write(
           '<a href="/feeds/tv.m3u">TV</a> https://example.test/dav/',
@@ -225,4 +234,56 @@ void main() {
       expect(library.items.length, 1);
     },
   );
+  test('a bare base URL is completed to the Chat Completions path', () async {
+    await agent.configure('http://127.0.0.1:${server.port}', 'mock', '');
+    expect(
+      agent.endpoint,
+      'http://127.0.0.1:${server.port}/v1/chat/completions',
+    );
+    final run = (await agent.run('推荐电影'))!;
+    expect(run.failed, isFalse);
+    expect(requests.single['model'], 'mock');
+  });
+  test('an HTML response becomes a readable error, not a raw decode crash', () async {
+    await model();
+    htmlResponse = true;
+    final run = (await agent.run('推荐电影'))!;
+    expect(run.failed, isTrue);
+    expect(run.summary, contains('网页'));
+    expect(run.summary, isNot(contains('<!doctype')));
+  });
+  test('testModel proves the service and surfaces a failed status', () async {
+    final ok = await agent.testModel(
+      'http://127.0.0.1:${server.port}/v1',
+      'mock',
+      '',
+    );
+    expect(ok, contains('连接成功'));
+    httpStatus = 401;
+    await expectLater(
+      agent.testModel(
+        'http://127.0.0.1:${server.port}/v1/chat/completions',
+        'mock',
+        '',
+      ),
+      throwsA(isA<HttpException>()),
+    );
+  });
+  test('testModel names a page-returning address instead of guessing', () async {
+    htmlResponse = true;
+    await expectLater(
+      agent.testModel(
+        'http://127.0.0.1:${server.port}',
+        'mock',
+        '',
+      ),
+      throwsA(
+        isA<FormatException>().having(
+          (e) => e.message,
+          'message',
+          contains('网页'),
+        ),
+      ),
+    );
+  });
 }

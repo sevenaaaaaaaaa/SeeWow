@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../agent/agent_controller.dart';
+import '../agent/model_presets.dart';
 import '../data/iptv_store.dart';
 import '../design/cinema_widgets.dart';
 import '../design/tokens.dart';
@@ -458,13 +461,23 @@ class _AgentConfig extends StatefulWidget {
 class _AgentConfigState extends State<_AgentConfig> {
   late final TextEditingController _url, _model;
   final _key = TextEditingController();
+  String? _presetId;
   String? _error;
+  String _probe = '';
+  bool _probeOk = false;
   bool _saving = false;
+  bool _testing = false;
+  ModelProvider? get _preset =>
+      _presetId == null ? null : modelProviderById(_presetId!);
   @override
   void initState() {
     super.initState();
     _url = TextEditingController(text: widget.agent.endpoint);
     _model = TextEditingController(text: widget.agent.model);
+    _presetId = kModelProviders
+        .where((p) => p.endpoint == widget.agent.endpoint)
+        .firstOrNull
+        ?.id;
   }
 
   @override
@@ -473,6 +486,57 @@ class _AgentConfigState extends State<_AgentConfig> {
     _model.dispose();
     _key.dispose();
     super.dispose();
+  }
+
+  void _applyPreset(String? id) {
+    final preset = id == null ? null : modelProviderById(id);
+    setState(() {
+      _presetId = id;
+      _error = null;
+      _probe = '';
+      if (preset != null) {
+        _url.text = preset.endpoint;
+        if (!preset.models.contains(_model.text.trim())) {
+          _model.text = preset.models.first;
+        }
+      }
+    });
+  }
+
+  String _readable(Object error) => switch (error) {
+    FormatException e => e.message,
+    HttpException e => e.message,
+    _ => error.toString(),
+  };
+
+  Future<void> _test() async {
+    setState(() {
+      _testing = true;
+      _probe = '';
+      _error = null;
+    });
+    try {
+      final message = await widget.agent.testModel(
+        _url.text,
+        _model.text,
+        _key.text,
+      );
+      if (mounted) {
+        setState(() {
+          _probe = message;
+          _probeOk = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _probe = _readable(e);
+          _probeOk = false;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
   }
 
   Future<void> _save({bool local = false}) async {
@@ -488,7 +552,7 @@ class _AgentConfigState extends State<_AgentConfig> {
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = _readable(e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -505,24 +569,71 @@ class _AgentConfigState extends State<_AgentConfig> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '支持 Chat Completions 兼容服务，包括本机模型。请填写完整接口路径。发送任务时，需求、偏好和影片摘要会发送到此服务。',
+              '支持 Chat Completions 兼容服务，包括开源模型与本机模型。可先选常用平台，也可只填域名——会自动补全 /v1/chat/completions。发送任务时，需求、偏好和影片摘要会发送到此服务。',
               style: WowType.body(12, color: WowColors.muted),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String?>(
+              initialValue: _presetId,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: '常用平台（可选）'),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('自定义 / 其他兼容服务'),
+                ),
+                for (final p in kModelProviders)
+                  DropdownMenuItem<String?>(
+                    value: p.id,
+                    child: Text(p.label),
+                  ),
+              ],
+              onChanged: _saving ? null : _applyPreset,
+            ),
+            if (_preset != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  _preset!.note,
+                  style: WowType.body(11, color: WowColors.muted),
+                ),
+              ),
+            const SizedBox(height: 14),
             TextField(
               controller: _url,
               enabled: !_saving,
+              autocorrect: false,
               decoration: const InputDecoration(
-                labelText: '完整接口地址',
-                hintText: 'http://localhost:11434/v1/chat/completions',
+                labelText: '接口地址（可只填域名）',
+                hintText: 'api.deepseek.com 或 http://localhost:11434',
               ),
             ),
             const SizedBox(height: 14),
             TextField(
               controller: _model,
               enabled: !_saving,
+              autocorrect: false,
               decoration: const InputDecoration(labelText: '模型名称'),
             ),
+            if (_preset != null) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final m in _preset!.models)
+                    ChoiceChip(
+                      label: Text(m, style: const TextStyle(fontSize: 11)),
+                      selected: _model.text.trim() == m,
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      onSelected: _saving
+                          ? null
+                          : (_) => setState(() => _model.text = m),
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 14),
             TextField(
               controller: _key,
@@ -530,7 +641,7 @@ class _AgentConfigState extends State<_AgentConfig> {
               obscureText: true,
               decoration: const InputDecoration(
                 labelText: 'API Key',
-                hintText: '留空保留同一服务的密钥；本地服务可不填',
+                hintText: '留空保留同一服务的密钥；本机服务可不填',
               ),
             ),
             const SizedBox(height: 14),
@@ -538,6 +649,30 @@ class _AgentConfigState extends State<_AgentConfig> {
               '密钥单独保存在系统凭据存储中，不写入任务记录。iOS 与 macOS 使用系统钥匙串；其他平台使用受限权限文件。',
               style: WowType.body(11, color: WowColors.muted),
             ),
+            if (_probe.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      _probeOk ? Icons.check_circle_outline : Icons.error_outline,
+                      size: 15,
+                      color: _probeOk ? WowColors.success : WowColors.error,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _probe,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _probeOk ? WowColors.success : WowColors.error,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
@@ -557,6 +692,16 @@ class _AgentConfigState extends State<_AgentConfig> {
       TextButton(
         onPressed: _saving ? null : () => _save(local: true),
         child: const Text('使用本地规则'),
+      ),
+      TextButton(
+        onPressed: _saving || _testing ? null : _test,
+        child: _testing
+            ? const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Text('测试连接'),
       ),
       TextButton(
         onPressed: _saving ? null : () => Navigator.pop(context),

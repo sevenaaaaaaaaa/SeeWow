@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../data/library_store.dart';
 import '../domain/library_intelligence.dart';
 import '../sources/native_bridge.dart';
+import 'model_presets.dart';
 
 class AgentStep {
   AgentStep(this.label, {this.state = 'pending', this.detail = ''});
@@ -191,30 +192,108 @@ class AgentController extends ChangeNotifier {
 
   String _secretKey(String url) => 'agent.apiKey.${Uri.parse(url).origin}';
 
+  /// Accepts a full Chat Completions URL or a bare platform address and
+  /// returns the complete endpoint, or throws a readable FormatException.
+  /// Remote services stay HTTPS-only; loopback may use plain HTTP.
+  String _validatedEndpoint(String url) {
+    final normalized = normalizeChatEndpoint(url);
+    if (normalized.isEmpty) return '';
+    final uri = Uri.tryParse(normalized);
+    if (uri == null ||
+        !['http', 'https'].contains(uri.scheme) ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment) {
+      throw const FormatException('请填写不含密钥、查询参数的接口地址或域名');
+    }
+    if (uri.scheme != 'https' &&
+        !['localhost', '127.0.0.1', '::1'].contains(uri.host)) {
+      throw const FormatException('远程模型请使用 HTTPS，本地模型可使用 HTTP');
+    }
+    return normalized;
+  }
+
   Future<void> configure(String url, String modelName, String key) async {
-    if (url.trim().isNotEmpty) {
-      final uri = Uri.tryParse(url.trim());
-      if (uri == null ||
-          !['http', 'https'].contains(uri.scheme) ||
-          uri.host.isEmpty ||
-          uri.userInfo.isNotEmpty ||
-          uri.hasQuery ||
-          uri.hasFragment) {
-        throw const FormatException('请填写不含密钥、查询参数的完整 Chat Completions 接口地址');
-      }
-      if (uri.scheme != 'https' &&
-          !['localhost', '127.0.0.1', '::1'].contains(uri.host)) {
-        throw const FormatException('远程模型请使用 HTTPS，本地模型可使用 HTTP');
-      }
-      if (modelName.trim().isEmpty) throw const FormatException('请填写模型名');
+    final normalized = _validatedEndpoint(url);
+    if (normalized.isNotEmpty && modelName.trim().isEmpty) {
+      throw const FormatException('请填写模型名');
     }
-    if (key.isNotEmpty && url.trim().isNotEmpty) {
-      await writeSecret(_secretKey(url.trim()), key);
+    if (key.isNotEmpty && normalized.isNotEmpty) {
+      await writeSecret(_secretKey(normalized), key);
     }
-    endpoint = url.trim();
+    endpoint = normalized;
     model = modelName.trim();
     await save();
     notifyListeners();
+  }
+
+  /// Sends one minimal request to prove the address, model and key really
+  /// work, without saving anything or touching task history.
+  Future<String> testModel(String url, String modelName, String key) async {
+    final normalized = _validatedEndpoint(url);
+    final name = modelName.trim();
+    if (normalized.isEmpty) throw const FormatException('请先填写接口地址');
+    if (name.isEmpty) throw const FormatException('请填写模型名');
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
+    try {
+      final req = await client.postUrl(Uri.parse(normalized));
+      req.followRedirects = false;
+      req.headers.contentType = ContentType.json;
+      final secret = key.isNotEmpty
+          ? key
+          : await readSecret(_secretKey(normalized)) ?? '';
+      if (secret.isNotEmpty) req.headers.set('Authorization', 'Bearer $secret');
+      req.write(
+        jsonEncode({
+          'model': name,
+          'stream': false,
+          'max_tokens': 8,
+          'messages': [
+            {'role': 'user', 'content': 'ping'},
+          ],
+        }),
+      );
+      final response = await req.close().timeout(const Duration(seconds: 20));
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) {
+        throw HttpException(
+          '模型服务返回 HTTP ${response.statusCode}，请检查地址、模型名和密钥',
+        );
+      }
+      _rejectNonJson(body);
+      final raw = jsonDecode(body) as Map<String, dynamic>;
+      final choices = raw['choices'];
+      if (choices is! List || choices.isEmpty) {
+        throw const FormatException('接口有响应，但没有 choices 字段，可能不是 Chat Completions 服务');
+      }
+      return '连接成功 · $name 可用';
+    } on FormatException {
+      rethrow;
+    } on HttpException {
+      rethrow;
+    } catch (_) {
+      throw StateError('无法连接模型服务，请检查网络和地址');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// A 200 response that is actually a web page (wrong address, login portal,
+  /// CDN error page) must say so instead of surfacing a raw jsonDecode crash.
+  void _rejectNonJson(String body) {
+    if (body.trim().isEmpty) {
+      throw const FormatException('模型服务返回了空响应，请检查地址和模型');
+    }
+    if (looksLikeHtml(body)) {
+      throw const FormatException(
+        '该地址返回了网页而不是 JSON：请改用完整的 Chat Completions 地址（通常以 /chat/completions 结尾），或在常用平台中选择',
+      );
+    }
   }
 
   Future<AgentRun?> run(String prompt) async {
@@ -380,21 +459,36 @@ class AgentController extends ChangeNotifier {
         }),
       );
       final response = await req.close().timeout(const Duration(seconds: 60));
-      if (response.statusCode != 200) {
-        throw HttpException('模型服务返回 HTTP ${response.statusCode}，请检查接口、模型和密钥');
-      }
       final body = await response
           .transform(utf8.decoder)
           .join()
           .timeout(const Duration(seconds: 60));
-      final raw = jsonDecode(body) as Map<String, dynamic>;
+      if (response.statusCode != 200) {
+        throw HttpException(
+          looksLikeHtml(body)
+              ? '模型服务返回 HTTP ${response.statusCode}（网页而不是 JSON）：请确认接口地址以 /chat/completions 结尾'
+              : '模型服务返回 HTTP ${response.statusCode}，请检查接口、模型和密钥',
+        );
+      }
+      _rejectNonJson(body);
+      Map<String, dynamic> raw;
+      try {
+        raw = jsonDecode(body) as Map<String, dynamic>;
+      } on FormatException {
+        throw const FormatException('模型服务返回的内容不是 Chat Completions JSON，请检查接口地址');
+      }
       var content =
           ((raw['choices'] as List).first as Map)['message']['content']
               as String;
       content = content
           .replaceAll(RegExp(r'^```(?:json)?\s*|\s*```$'), '')
           .trim();
-      final decoded = jsonDecode(content) as Map<String, dynamic>;
+      Map<String, dynamic> decoded;
+      try {
+        decoded = jsonDecode(content) as Map<String, dynamic>;
+      } on FormatException {
+        throw const FormatException('模型没有按要求返回 JSON 规划，请更换指令遵循更好的模型');
+      }
       final steps = (decoded['steps'] as List)
           .map((s) => Map<String, dynamic>.from(s as Map))
           .toList();
