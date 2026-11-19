@@ -2,27 +2,27 @@
 
 **Cinema, made personal.** 一个以私人媒体库为中心的跨平台播放器，使用 Flutter + media_kit / libmpv。
 
-当前工作区为 **1.20.0 接入与入口版**。这一版把模型接入从「手填完整地址」改成「选平台或只填域名」：10 个常用平台预设、地址自动补全、保存前可测试连接，返回网页或非 JSON 时给出可读原因。语音译配新增通用 JSON 适配层，可把任意 HTTP JSON 语音服务用模板接进来；Plex 音乐资料库按曲目导入；媒体库新增「已缓存」筛选；设置页重排为 6 组。逐条见 [1.20.0 发布说明](docs/releases/1.20.0.md)。1.19.0 的资源管理修复（RM-01…09）、1.17.0 的多源资料匹配与自动解说保持不变。默认关闭的 [AI 字幕与小映陪看](docs/ai-watch.md) 保持可用；支持三套主题、皮肤工作室和 design.md 生成，详见 [皮肤说明](skins/README.md) 与 [design.md 模板](design.md)。
+当前工作区为 **1.20.1 离线缓存修复版**。这一版只修一件真机点出来的事：**已经下载到本机的文件，必须能在离线时被找到并播放**——缓存匹配改成按「文件真的在磁盘上 + 同来源同标题」认定，不再只信会随来源重连而变化的条目 id；下载页的「离线播放」直接把 `file://` 交给播放器，不再绕回片源联网；文件被移走时显示「文件已丢失」，不假装能播。逐条见 [1.20.1 发布说明](docs/releases/1.20.1.md)。上一版 1.20.0 的模型平台预设与地址补全、语音译配通用 JSON 适配、Plex 音乐曲目导入、媒体库「已缓存」筛选、设置页分组保持不变（见 [1.20.0 发布说明](docs/releases/1.20.0.md)）；1.19.0 的资源管理修复（RM-01…09）、1.17.0 的多源资料匹配与自动解说同样不变。默认关闭的 [AI 字幕与小映陪看](docs/ai-watch.md) 保持可用；支持三套主题、皮肤工作室和 design.md 生成，详见 [皮肤说明](skins/README.md) 与 [design.md 模板](design.md)。
 
 **质量与计划。** 当前版本的质检结论、缺陷清单与后续计划见 [路线图](docs/roadmap.md)；想确认"哪一版有什么、哪个平台现在能装什么"，见 [版本汇总](docs/release-index.md)；跨端对齐状态见 [对齐说明](docs/parity.md)。资源管理（本地目录 / Plex）的缺陷编号为 RM-01…RM-09，1.19.0 起已全部修复，对应 issue #2–#12。
 
-## 下载 1.20.0 体验预览版
+## 下载 1.20.1 体验预览版
 
 > 本版出 **macOS / iOS / Android** 三包，`SHA256SUMS.txt` 随资产上传。**Windows / Linux 本版未出包**，下载仍指向 1.17.0。
 
-完整更新记录见 [1.20.0 发布说明](docs/releases/1.20.0.md)，安装包与校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.20.0)。
+完整更新记录见 [1.20.1 发布说明](docs/releases/1.20.1.md)，安装包与校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.20.1)。
 
-这一版改的是接入和入口：模型平台预设与地址补全、语音译配通用 JSON 适配、Plex 音乐曲目导入、媒体库「已缓存」筛选、设置页分组。三端由同一个提交 `7330c77` 构建，版本号 1.20.0 / versionCode 23；各包大小与 SHA-256 见发布说明。
+这一版修的是离线缓存：已经下载的文件按文件与标题找回，下载页「离线播放」不再联网。三端按版本号 1.20.1 / versionCode 24 构建，不新增功能；各包大小与 SHA-256 见发布说明。
 
 | 平台 | 安装包 | 安装与签名状态 |
 | --- | --- | --- |
-| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.0/SeeWow-macos-1.20.0-preview.zip) | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证 |
-| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.0/SeeWow-iOS-1.20.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
-| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.0/SeeWow-Android-1.20.0-preview.apk) | Android 7.0+；Release 编译、开发签名预览包（versionCode 23） |
-| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-windows-1.17.0.zip) | **1.20.0 未出包，仍是 1.17.0**；解压后运行 `seewow.exe` |
-| Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-linux-1.17.0.zip) | **1.20.0 未出包，仍是 1.17.0**；解压后运行 `seewow`，需要系统 libmpv |
+| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.1/SeeWow-macos-1.20.1-preview.zip) | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证 |
+| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.1/SeeWow-iOS-1.20.1-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
+| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.1/SeeWow-Android-1.20.1-preview.apk) | Android 7.0+；Release 编译、开发签名预览包（versionCode 24） |
+| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-windows-1.17.0.zip) | **1.20.1 未出包，仍是 1.17.0**；解压后运行 `seewow.exe` |
+| Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-linux-1.17.0.zip) | **1.20.1 未出包，仍是 1.17.0**；解压后运行 `seewow`，需要系统 libmpv |
 
-三端均为 1.20.0；Windows / Linux 仍停在 1.17.0。
+三端均为 1.20.1；Windows / Linux 仍停在 1.17.0。
 
 AI 功能默认关闭，需要用户自行配置 API；自动解说依赖系统语音（macOS / Windows / Linux 各自内置）。使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
 
@@ -77,7 +77,7 @@ iOS / iPadOS 已提供真机 ARM64 可重签 IPA，最低 iOS 15。包含钥匙�
 | 精彩帧与学习 | 收藏当前原始画面、播放时间点与备注，仅保存本机；图库查看、缩放、移除及从本片回到该时间点；AB 两点循环，B 点需晚于 A 点至少 0.5 秒，直播不启用 |
 | 音频电平 | 根据实际 PCM 样本计算 RMS，原片按需独立采样，译音复用返回的 PCM；不读取麦克风或显示随机波形，不支持采样时显示不可用 |
 | 电脑媒体库（局域网） | 手机通过电脑读取 SMB / 本地 / 带令牌片源：电脑负责挂载与鉴权，手机只走带密钥的 HTTP 流与海报 |
-| 离线缓存 | 详情页选择画质（Plex / Emby 支持 1080p / 720p / 480p 转码）与存放位置；下载队列支持限速、暂停 / 续传 / 重试 / 删除，显示实时速度与剩余时间；完成后优先本地播放；媒体库「已缓存」筛选直接列出可离线播放的作品 |
+| 离线缓存 | 详情页选择画质（Plex / Emby 支持 1080p / 720p / 480p 转码）与存放位置；下载队列支持限速、暂停 / 续传 / 重试 / 删除，显示实时速度与剩余时间；完成后优先本地播放；媒体库「已缓存」筛选直接列出可离线播放的作品；下载页「离线播放」直接交给播放器本地文件，断网也能播；文件被移走时标注「文件已丢失」并隐藏播放按钮，不会自动回落到联网播放 |
 | 解耦空间 | 首页超长下拉进入第二个独立片库；桌面点顶栏「主空间 / 解耦空间」切换；空间有自己的文件夹、片库、观看记录与 Agent，主空间不受影响 |
 | 刷新与发现 | 首页 / 媒体库下拉刷新全部片源（桌面顶栏也有刷新按钮）；首页新增最近加入、纪录片、短剧三条推荐维度 |
 | 纪录片与短剧 | 本地按类型与单集时长归类；媒体库新增纪录片 / 短剧筛选，短剧模式显示单集 20 分钟内优先 |
@@ -252,7 +252,7 @@ flutter run -d macos
 flutter build macos --release
 ```
 
-现有代码仍有历史 info 级 lint；验证要求无 analyzer error / warning。测试覆盖文件名、M3U/XMLTV、WebDAV/SMB 解析，以及偏好/片单持久化、扫描失败恢复、并发扫描、模型规划校验、错误恢复、链接收集、搜索交互和响应式布局。兼容模型、TMDB 和媒体服务器协议通过本机模拟 HTTP 服务验证；元数据确认流程、窄屏服务选择器、服务器 / 网关表单有组件测试。1.6.0 发布基线共 94 项测试，1.15.0 基线为 234 项通过、2 项原生解码器测试按需跳过，1.17.0 基线为 307 项通过、2 项按需跳过（新增元数据注册表、TVmaze / Bangumi / Jellyfin·Emby 协议、解说脚本与音轨导出，合计 40 项）；1.18.0 与 1.17.0 同口径：307 项通过、2 项按需跳过，本次无功能变更；1.20.0 基线为 364 项通过、2 项按需跳过（新增模型接入、Plex 音乐、缓存筛选、设置分组与语音通用适配 34 项）；1.6.0 新增换肤、皮肤导入、design.md 生成、草稿取消与恢复、AI 生成协议测试；其余测试覆盖目录递归、分页中断、动态直链、跨域跳转的 Token 隔离、群晖会话、Navidrome 盐值签名、NFO 与来源编辑。后续列表兼容测试覆盖多仓预览、确认后导入、格式错误、重定向/大小/超时/局域网限制、刷新与收藏迁移、节目单隔离，以及 Telegram 本地扫描、AI 数据隔离与窄屏交互。没有使用用户的真实模型、TMDB 或 NAS 凭据进行外部调用，真实服务器兼容性还需实际连接验证。
+现有代码仍有历史 info 级 lint；验证要求无 analyzer error / warning。测试覆盖文件名、M3U/XMLTV、WebDAV/SMB 解析，以及偏好/片单持久化、扫描失败恢复、并发扫描、模型规划校验、错误恢复、链接收集、搜索交互和响应式布局。兼容模型、TMDB 和媒体服务器协议通过本机模拟 HTTP 服务验证；元数据确认流程、窄屏服务选择器、服务器 / 网关表单有组件测试。1.6.0 发布基线共 94 项测试，1.15.0 基线为 234 项通过、2 项原生解码器测试按需跳过，1.17.0 基线为 307 项通过、2 项按需跳过（新增元数据注册表、TVmaze / Bangumi / Jellyfin·Emby 协议、解说脚本与音轨导出，合计 40 项）；1.18.0 与 1.17.0 同口径：307 项通过、2 项按需跳过，本次无功能变更；1.20.0 基线为 364 项通过、2 项按需跳过（新增模型接入、Plex 音乐、缓存筛选、设置分组与语音通用适配 34 项）；1.20.1 基线为 373 项通过、2 项按需跳过（新增离线缓存匹配与状态容错、下载页缺失 / 可播、重连后筛选与顶栏入口 9 项）；1.6.0 新增换肤、皮肤导入、design.md 生成、草稿取消与恢复、AI 生成协议测试；其余测试覆盖目录递归、分页中断、动态直链、跨域跳转的 Token 隔离、群晖会话、Navidrome 盐值签名、NFO 与来源编辑。后续列表兼容测试覆盖多仓预览、确认后导入、格式错误、重定向/大小/超时/局域网限制、刷新与收藏迁移、节目单隔离，以及 Telegram 本地扫描、AI 数据隔离与窄屏交互。没有使用用户的真实模型、TMDB 或 NAS 凭据进行外部调用，真实服务器兼容性还需实际连接验证。
 
 区域资料测试覆盖港／台版本独立保存、多语言与 Unicode 搜索、TMDB 部分地区失败和身份校验、本机请求字段与脚本校验、AI 来源限制、取消、并发编辑保护、重扫保留与过期提示，以及 375 / 768 / 1440px 的批量预览与确认。真实 TMDB 目录完整度和本地模型翻译质量尚未通过外部服务实测。
 
