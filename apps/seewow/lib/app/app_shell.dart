@@ -11,6 +11,8 @@ import 'shake_refresh.dart';
 import '../data/iptv_store.dart';
 import '../data/library_store.dart';
 import '../design/cinema_widgets.dart';
+import '../design/liquid_glass.dart';
+import '../design/liquid_nav.dart';
 import '../design/tokens.dart';
 import '../design/skin_surface.dart';
 import '../domain/library_intelligence.dart';
@@ -333,7 +335,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _open(MediaItem item) => Navigator.of(context).push(
-    MaterialPageRoute<void>(
+    GlassPageRoute<void>(
       builder: (_) => DetailView(
         item: _store.current(item),
         store: _store,
@@ -362,7 +364,7 @@ class _AppShellState extends State<AppShell> {
     var advanced = false;
     try {
       final result = await Navigator.of(context).push<bool>(
-        MaterialPageRoute<bool>(
+        GlassPageRoute<bool>(
           builder: (_) => PlayerScreen(
             item: item,
             isLive: live,
@@ -721,7 +723,37 @@ class _AppShellState extends State<AppShell> {
                           ),
                         if (_store.scanning)
                           const LinearProgressIndicator(minHeight: 2),
-                        Expanded(child: _content()),
+                        Expanded(
+                          child: AnimatedSwitcher(
+                            duration: MediaQuery.disableAnimationsOf(context)
+                                ? Duration.zero
+                                : const Duration(milliseconds: 300),
+                            switchInCurve: WowMotion.page,
+                            switchOutCurve: Curves.easeOutCubic,
+                            layoutBuilder: (current, previous) => Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                ...previous,
+                                if (current != null) current,
+                              ],
+                            ),
+                            transitionBuilder: (child, animation) =>
+                                FadeTransition(
+                                  opacity: animation,
+                                  child: SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: const Offset(0, .014),
+                                      end: Offset.zero,
+                                    ).animate(animation),
+                                    child: child,
+                                  ),
+                                ),
+                            child: KeyedSubtree(
+                              key: ValueKey(_section),
+                              child: _content(),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -729,65 +761,63 @@ class _AppShellState extends State<AppShell> {
               ),
             ),
           ),
-          bottomNavigationBar: width >= 760
-              ? null
-              : NavigationBar(
-                  height: 68,
-                  selectedIndex:
-                      _section == Section.collections ||
-                          _section == Section.live ||
-                          _section == Section.music ||
-                          _section == Section.shortDramas
-                      ? 4
-                      : [
-                          Section.home,
-                          Section.library,
-                          Section.agent,
-                          Section.sources,
-                          Section.settings,
-                        ].indexOf(_section).clamp(0, 4),
-                  onDestinationSelected: (n) {
-                    if (n == 4) {
-                      _showMore();
-                      return;
-                    }
-                    _select(
-                      [
-                        Section.home,
-                        Section.library,
-                        Section.agent,
-                        Section.sources,
-                        Section.settings,
-                      ][n],
-                    );
-                  },
-                  destinations: const [
-                    NavigationDestination(
-                      icon: Icon(Icons.home_outlined),
-                      label: '放映',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.video_library_outlined),
-                      label: '片库',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.auto_awesome_outlined),
-                      label: 'Agent',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.hub_outlined),
-                      label: '片源',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.more_horiz),
-                      label: '更多',
-                    ),
-                  ],
-                ),
+          bottomNavigationBar: width >= 760 ? null : _liquidNav(),
         ),
       );
     },
   );
+  /// The bar tracks the current section; the four overflow entries all live
+  /// under 更多, which is why they share a seat.
+  int get _navIndex => switch (_section) {
+    Section.home => 0,
+    Section.library => 1,
+    Section.agent => 2,
+    Section.sources => 3,
+    _ => 4,
+  };
+
+  void _navSelect(int n) {
+    if (n == 4) {
+      _showMore();
+      return;
+    }
+    _select(
+      const [Section.home, Section.library, Section.agent, Section.sources][n],
+    );
+  }
+
+  Widget _liquidNav() => SafeArea(
+    top: false,
+    minimum: const EdgeInsets.only(bottom: 6),
+    child: LiquidTabBar(
+      tabs: const [
+        LiquidTab(
+          label: '放映',
+          icon: Icons.home_outlined,
+          activeIcon: Icons.home_rounded,
+        ),
+        LiquidTab(
+          label: '片库',
+          icon: Icons.video_library_outlined,
+          activeIcon: Icons.video_library_rounded,
+        ),
+        LiquidTab(
+          label: 'Agent',
+          icon: Icons.auto_awesome_outlined,
+          activeIcon: Icons.auto_awesome,
+        ),
+        LiquidTab(
+          label: '片源',
+          icon: Icons.hub_outlined,
+          activeIcon: Icons.hub_rounded,
+        ),
+        LiquidTab(label: '更多', icon: Icons.more_horiz),
+      ],
+      index: _navIndex,
+      onSelect: _navSelect,
+    ),
+  );
+
   Widget _navigation(bool rail) => SizedBox(
     width: rail ? 76 : 210,
     child: SkinSurface(

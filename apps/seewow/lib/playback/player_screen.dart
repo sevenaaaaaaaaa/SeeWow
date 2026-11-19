@@ -25,6 +25,8 @@ import 'speech_synthesizer.dart';
 import 'sensitive_content.dart';
 import 'voice_translation.dart';
 import 'dubbing_controller.dart';
+import 'player_console.dart';
+import 'video_look.dart';
 import '../features/commentary_view.dart';
 import '../features/voice_translation_view.dart';
 import '../sources/native_bridge.dart';
@@ -35,6 +37,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../design/liquid_glass.dart';
 import '../design/pressable.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
@@ -76,6 +79,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   final PlaybackWindow _window = PlaybackWindow();
   final AbLoop _ab = AbLoop();
   final _prefs = PlaybackPreferences.I;
+  bool _lookTray = false;
+  VideoLook get _look => VideoLook.byId(_prefs.look);
   final _privacy = AudioPrivacy(DailyVolumeMemory());
   Timer? _routePoll, _sensitiveTimer;
   String? _routeToken;
@@ -1250,19 +1255,25 @@ class _PlayerScreenState extends State<PlayerScreen>
                       _reveal();
                     }
                   },
-                  child: Video(
-                    key: _videoKey,
-                    controller: _controller,
-                    controls: NoVideoControls,
-                    pauseUponEnteringBackgroundMode: false,
-                    resumeUponEnteringForegroundMode: false,
-                    subtitleViewConfiguration: SubtitleViewConfiguration(
-                      visible:
-                          !(_watchAi.active &&
-                              _watchAi.config.subtitles &&
-                              _watchAi.currentText.isNotEmpty),
+                  // The look wraps the picture, not the chrome: the console
+                  // must stay legible whatever grade is on the screen.
+                  child: VideoLookView(
+                    look: _look,
+                    enabled: !widget.isLive || _prefs.look != VideoLook.native.id,
+                    child: Video(
+                      key: _videoKey,
+                      controller: _controller,
+                      controls: NoVideoControls,
+                      pauseUponEnteringBackgroundMode: false,
+                      resumeUponEnteringForegroundMode: false,
+                      subtitleViewConfiguration: SubtitleViewConfiguration(
+                        visible:
+                            !(_watchAi.active &&
+                                _watchAi.config.subtitles &&
+                                _watchAi.currentText.isNotEmpty),
+                      ),
+                      fill: Colors.black,
                     ),
-                    fill: Colors.black,
                   ),
                 ),
                 if (widget.item.kind == MediaKind.audio)
@@ -1832,6 +1843,7 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   Widget _controlBar() {
     final compact = MediaQuery.sizeOf(context).width < 600;
+    final look = _look;
     return MouseRegion(
       onEnter: (_) {
         _hoverBar = true;
@@ -1841,56 +1853,37 @@ class _PlayerScreenState extends State<PlayerScreen>
         _hoverBar = false;
         _scheduleHide();
       },
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          color: const Color(0xE60C0E14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.45),
-              blurRadius: 26,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
+      child: LiquidGlass(
+        radius: 20,
+        tint: const Color(0xFF0B0D12),
+        opacity: .82,
+        edge: .26,
+        padding: const EdgeInsets.fromLTRB(14, 11, 14, 9),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Row(
               children: [
-                if (_prefs.meter)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 10),
-                    child: Tooltip(
-                      message: _voice?.active == true
-                          ? '译音 PCM 音频电平'
-                          : '原片 PCM 采样的 RMS 音频电平',
-                      child: SizedBox(
-                        width: compact ? 46 : 80,
-                        height: 14,
-                        child: _audioLevelValue == null
-                            ? const Text(
-                                '电平 —',
-                                style: TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 10,
-                                ),
-                              )
-                            : Semantics(
-                                label:
-                                    '音频电平 ${((_audioLevelValue ?? 0) * 100).round()}%',
-                                child: LinearProgressIndicator(
-                                  value: _audioLevelValue,
-                                  backgroundColor: Colors.white12,
-                                  color: Colors.white70,
-                                  minHeight: 4,
-                                ),
-                              ),
+                if (_prefs.meter) ...[
+                  Tooltip(
+                    message: _voice?.active == true
+                        ? '译音 PCM 音频电平驱动的频谱'
+                        : '原片 PCM 采样的 RMS 电平驱动的频谱',
+                    child: SizedBox(
+                      width: compact ? 56 : 86,
+                      child: SpectrumMeter(
+                        level: _audioLevelValue,
+                        height: 16,
+                        bars: compact ? 10 : 16,
+                        active: _playbackRunning,
+                        semanticLabel: _audioLevelValue == null
+                            ? '音量频谱，暂无电平'
+                            : '音量频谱 ${((_audioLevelValue ?? 0) * 100).round()}%',
                       ),
                     ),
                   ),
+                  const SizedBox(width: 10),
+                ],
                 if (widget.isLive) ...[
                   Container(
                     width: 6,
@@ -1918,44 +1911,36 @@ class _PlayerScreenState extends State<PlayerScreen>
                       spacing: 0.8,
                     ),
                   ),
-                ] else ...[
+                ] else
                   Text(
                     _fmt(_position),
                     style: WowType.monoLabel(
-                      9.5,
-                      color: Colors.white.withValues(alpha: 0.72),
+                      10,
+                      color: Colors.white.withValues(alpha: 0.78),
                       spacing: 0.8,
                     ),
                   ),
-                ],
                 const Spacer(),
-                if (_ab.a != null)
-                  Flexible(
-                    child: Text(
-                      _ab.enabled
-                          ? 'AB ${playbackTime(_ab.a!)}–${playbackTime(_ab.b!)}'
-                          : 'A ${playbackTime(_ab.a!)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xffffe3ad),
-                        fontSize: 10,
-                      ),
-                    ),
-                  ),
+                AbLoopControl(
+                  loop: _ab,
+                  onMark: _markLoop,
+                  onClear: () => setState(_ab.clear),
+                  enabled: !widget.isLive,
+                ),
+                const SizedBox(width: 10),
                 if (!widget.isLive)
                   Text(
                     '-${_fmt((_duration - _position).clamp(0, _duration))}',
                     style: WowType.monoLabel(
-                      9.5,
+                      10,
                       color: Colors.white.withValues(alpha: 0.45),
                       spacing: 0.8,
                     ),
                   ),
               ],
             ),
-            if (!widget.isLive) ...[const SizedBox(height: 8), _scrubber()],
-            const SizedBox(height: 10),
+            if (!widget.isLive) ...[const SizedBox(height: 6), _scrubber()],
+            const SizedBox(height: 8),
             Row(
               children: [
                 _tool(
@@ -1968,51 +1953,33 @@ class _PlayerScreenState extends State<PlayerScreen>
                 if (!widget.isLive) ...[
                   const SizedBox(width: 6),
                   _tool(Icons.replay_10_rounded, () => _seekBy(-10)),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 2),
                   _tool(Icons.forward_30_rounded, () => _seekBy(30)),
                 ],
-                if (compact)
-                  _tool(Icons.repeat_rounded, _markLoop, active: _ab.enabled),
                 if (!compact) ...[
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 14),
                   _tool(
                     _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                    () {
-                      _toggleMute();
-                    },
+                    _toggleMute,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: SizedBox(
-                        width: 120,
-                        child: _VolumeBar(
-                          value: _volume,
-                          onChanged: (v) {
-                            _changeVolume(v);
-                          },
-                        ),
-                      ),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    width: 104,
+                    child: _VolumeBar(
+                      value: _volume,
+                      onChanged: (v) {
+                        _changeVolume(v);
+                      },
                     ),
                   ),
-                ],
-                if (!compact) ...[
-                  const SizedBox(width: 6),
-                  _tool(Icons.repeat_rounded, _markLoop, active: _ab.enabled),
-                  _tool(Icons.picture_in_picture_alt_rounded, _miniPlayer),
                 ],
                 const Spacer(),
-                if (compact)
-                  _tool(Icons.picture_in_picture_alt_rounded, _miniPlayer),
-                if (!compact)
+                _lookChip(look, compact: compact),
+                if (!compact) ...[
+                  const SizedBox(width: 2),
                   PopupMenuButton<double>(
                     tooltip: '播放速度',
-                    icon: const Icon(
-                      Icons.speed,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+                    icon: const Icon(Icons.speed, color: Colors.white, size: 20),
                     onSelected: (v) async {
                       if (_voice?.active == true) await _stopDubbing();
                       await _player.setRate(v);
@@ -2022,6 +1989,8 @@ class _PlayerScreenState extends State<PlayerScreen>
                         PopupMenuItem(value: rate, child: Text('${rate}x')),
                     ],
                   ),
+                ],
+                _tool(Icons.picture_in_picture_alt_rounded, _miniPlayer),
                 _tool(
                   (_mobileFullscreen || _window.fullscreen)
                       ? Icons.fullscreen_exit_rounded
@@ -2030,10 +1999,90 @@ class _PlayerScreenState extends State<PlayerScreen>
                 ),
               ],
             ),
+            _lookTrayView(look),
           ],
         ),
       ),
     );
+  }
+
+  /// The look chip sitting in the transport row: it names the current grade and
+  /// opens the shelf, so a look is one tap away and never a settings trip.
+  Widget _lookChip(VideoLook look, {required bool compact}) {
+    final on = _lookTray || look.id != VideoLook.native.id;
+    return Semantics(
+      button: true,
+      label: '画风，当前 ${look.label}',
+      child: PressableLens(
+        radius: 15,
+        onTap: () => setState(() => _lookTray = !_lookTray),
+        selected: _lookTray,
+        child: Container(
+          height: 34,
+          padding: EdgeInsets.symmetric(horizontal: compact ? 9 : 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(15),
+            color: on
+                ? WowColors.accent.withValues(alpha: .16)
+                : Colors.white.withValues(alpha: .06),
+            border: Border.all(
+              color: on
+                  ? WowColors.accent.withValues(alpha: .52)
+                  : Colors.white.withValues(alpha: .10),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                look.icon,
+                size: 15,
+                color: on
+                    ? WowColors.accent
+                    : Colors.white.withValues(alpha: .82),
+              ),
+              if (!compact) ...[
+                const SizedBox(width: 6),
+                Text(
+                  look.label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: on
+                        ? WowColors.accent
+                        : Colors.white.withValues(alpha: .82),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _lookTrayView(VideoLook look) => AnimatedSize(
+    duration: MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 240),
+    curve: WowMotion.page,
+    alignment: Alignment.topCenter,
+    child: _lookTray
+        ? Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: LookChipBar(current: look, onSelect: _applyLook),
+          )
+        : const SizedBox(width: double.infinity, height: 0),
+  );
+
+  void _applyLook(VideoLook look) {
+    if (look.id == _prefs.look) {
+      setState(() => _lookTray = false);
+      return;
+    }
+    unawaited(_prefs.setLook(look.id));
+    setState(() {});
+    _message('画风 · ${look.label} —— ${look.blurb}');
+    _reveal();
   }
 
   Widget _scrubber() {
@@ -2075,6 +2124,26 @@ class _PlayerScreenState extends State<PlayerScreen>
                     ),
                   ),
                 ),
+                if (_ab.a != null && _duration > 0)
+                  Positioned(
+                    left: ((w * (_ab.a! / _duration)).clamp(0.0, 1.0) * w - 1)
+                        .clamp(0.0, w - 2),
+                    child: Container(
+                      width: 2,
+                      height: 16,
+                      color: WowColors.accent.withValues(alpha: .85),
+                    ),
+                  ),
+                if (_ab.b != null && _duration > 0)
+                  Positioned(
+                    left: ((w * (_ab.b! / _duration)).clamp(0.0, 1.0) * w - 1)
+                        .clamp(0.0, w - 2),
+                    child: Container(
+                      width: 2,
+                      height: 16,
+                      color: WowColors.accent.withValues(alpha: .85),
+                    ),
+                  ),
                 Positioned(
                   left: (w * ratio - 6).clamp(0, w - 12),
                   child: Container(

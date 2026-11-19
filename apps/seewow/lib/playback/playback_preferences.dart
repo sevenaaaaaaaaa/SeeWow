@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../sources/native_bridge.dart';
 import 'sensitive_content.dart';
+import 'video_look.dart';
 
 enum EntranceStyle { disc, spotlight, none }
 
@@ -13,6 +14,9 @@ class PlaybackPreferences extends ChangeNotifier {
   bool fullscreen = true, background = false, meter = true;
   bool sensitiveScan = false;
   String sensitiveEndpoint = '';
+
+  /// The picture look last chosen on the console, as a [VideoLook] id.
+  String look = VideoLook.native.id;
   static const key = 'playback.preferences';
   Future<void> load() async {
     try {
@@ -29,6 +33,7 @@ class PlaybackPreferences extends ChangeNotifier {
       meter = j['meter'] != false;
       sensitiveEndpoint = j['sensitiveEndpoint'] as String? ?? '';
       sensitiveScan = j['sensitiveScan'] == true;
+      look = VideoLook.byId(j['look'] as String?).id;
       if (sensitiveScan) {
         try {
           SensitiveContentClient.validateEndpoint(sensitiveEndpoint);
@@ -38,6 +43,52 @@ class PlaybackPreferences extends ChangeNotifier {
       }
       notifyListeners();
     } catch (_) {}
+  }
+
+  Map<String, Object?> _encode({
+    required EntranceStyle entrance,
+    required bool fullscreen,
+    required bool background,
+    required bool meter,
+    required bool sensitiveScan,
+    required String sensitiveEndpoint,
+  }) => {
+    'entrance': entrance.name,
+    'fullscreen': fullscreen,
+    'background': background,
+    'meter': meter,
+    'sensitiveScan': sensitiveScan,
+    'sensitiveEndpoint': sensitiveEndpoint.trim(),
+    'look': look,
+  };
+
+  /// Remembers a look without touching the other playback switches. The console
+  /// calls this the moment a chip is tapped, so the choice survives a restart
+  /// even if the settings sheet is never opened.
+  Future<void> setLook(String id) async {
+    final next = VideoLook.byId(id).id;
+    if (next == look) return;
+    look = next;
+    notifyListeners();
+    try {
+      await NativeBridge.secretWrite(
+        key,
+        jsonEncode(
+          _encode(
+            entrance: entrance,
+            fullscreen: fullscreen,
+            background: background,
+            meter: meter,
+            sensitiveScan: sensitiveScan,
+            sensitiveEndpoint: sensitiveEndpoint,
+          ),
+        ),
+      );
+    } catch (_) {
+      // A look still applies for this session when the platform store is not
+      // there (desktop without the native bridge, tests). It just will not be
+      // remembered, and the console must never fail because of that.
+    }
   }
 
   Future<void> save({
@@ -52,14 +103,16 @@ class PlaybackPreferences extends ChangeNotifier {
       SensitiveContentClient.validateEndpoint(sensitiveEndpoint);
     await NativeBridge.secretWrite(
       key,
-      jsonEncode({
-        'entrance': entrance.name,
-        'fullscreen': fullscreen,
-        'background': background,
-        'meter': meter,
-        'sensitiveScan': sensitiveScan,
-        'sensitiveEndpoint': sensitiveEndpoint.trim(),
-      }),
+      jsonEncode(
+        _encode(
+          entrance: entrance,
+          fullscreen: fullscreen,
+          background: background,
+          meter: meter,
+          sensitiveScan: sensitiveScan,
+          sensitiveEndpoint: sensitiveEndpoint,
+        ),
+      ),
     );
     this.entrance = entrance;
     this.fullscreen = fullscreen;
