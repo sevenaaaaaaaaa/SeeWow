@@ -94,6 +94,28 @@ void main() {
       expect(find.text('Streaming Movie'), findsNothing);
     });
 
+    testWidgets('a re-linked Plex item still counts as cached', (tester) async {
+      downloads.tasks.add(
+        DownloadTask(
+          id: 't9',
+          itemId: 'old-source:101',
+          title: 'Cached Movie',
+          sourceName: 'Plex',
+          sourceId: 'old-source',
+          filePath: cachedPath,
+          totalBytes: 3,
+          downloadedBytes: 3,
+          status: DownloadStatus.completed,
+        ),
+      );
+      await mount(tester);
+      expect(find.text('已缓存 · 1'), findsOneWidget);
+      await tester.tap(find.text('已缓存 · 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Cached Movie'), findsWidgets);
+      expect(find.text('Streaming Movie'), findsNothing);
+    });
+
     testWidgets('empty cache filter explains how to cache', (tester) async {
       await mount(tester);
       expect(find.text('已缓存 · 0'), findsOneWidget);

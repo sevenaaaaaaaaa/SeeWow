@@ -43,30 +43,98 @@ class DownloadManager extends ChangeNotifier {
   DownloadTask? taskFor(String itemId) =>
       tasks.where((t) => t.itemId == itemId).firstOrNull;
 
-  bool hasOffline(String itemId) {
-    final task = taskFor(itemId);
-    if (task == null || !task.isDone) return false;
+  bool _fileExists(DownloadTask task) {
     final path = task.filePath;
     return path != null && File(path).existsSync();
   }
 
-  /// Every library item that really plays from disk right now.
+  /// Tasks whose file really sits on disk.
   ///
-  /// One pass over the task list, so a shelf can filter by cache state without
-  /// doing a file-system check per item on every rebuild.
-  Set<String> get offlineItemIds => {
+  /// The stored status is not trusted: a file at the final path means the bytes
+  /// arrived, even when the status write was lost (app killed right after the
+  /// rename). Conversely, a "completed" task whose file was moved away is not
+  /// playable.
+  List<DownloadTask> get playableTasks => [
     for (final task in tasks)
-      if (task.isDone &&
-          task.filePath != null &&
-          File(task.filePath!).existsSync())
-        task.itemId,
-  };
+      if (_fileExists(task)) task,
+  ];
+
+  /// Whitespace and punctuation removed, Latin lower-cased; CJK kept as-is.
+  static String _titleKey(String title) => title
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\s\p{P}\p{S}]+', unicode: true), '');
+
+  /// Cached task for an item: exact id first, then the same title under the
+  /// same source, because a re-linked Plex/WebDAV source hands out new item
+  /// ids while the downloaded file keeps its old title.
+  DownloadTask? cachedTaskFor(MediaItem item) {
+    final playable = playableTasks;
+    for (final task in playable.reversed) {
+      if (task.itemId == item.id) return task;
+    }
+    final key = _titleKey(item.displayTitle);
+    if (key.isEmpty) return null;
+    final candidates = playable
+        .where((t) => _titleKey(t.title) == key)
+        .toList();
+    final sameSource = candidates
+        .where(
+          (t) =>
+              t.sourceId.isEmpty ||
+              item.sourceId.isEmpty ||
+              t.sourceId == item.sourceId,
+        )
+        .toList();
+    if (sameSource.length == 1) return sameSource.single;
+    // Re-linking a Plex/WebDAV source changes its id; a single title match in
+    // the whole queue is still the same film.
+    return candidates.length == 1 ? candidates.single : null;
+  }
+
+  bool isCached(MediaItem item) => cachedTaskFor(item) != null;
+
+  bool hasOffline(String itemId) =>
+      playableTasks.any((task) => task.itemId == itemId);
+
+  /// Item ids that have a playable file. Matches by id first and then by title,
+  /// and checks the file system once per task instead of once per item.
+  Set<String> cachedItemIds(Iterable<MediaItem> items) {
+    final playable = playableTasks;
+    if (playable.isEmpty) return const {};
+    final byId = {
+      for (final task in playable)
+        if (task.itemId.isNotEmpty) task.itemId,
+    };
+    final byTitle = <String, List<DownloadTask>>{};
+    for (final task in playable) {
+      byTitle.putIfAbsent(_titleKey(task.title), () => []).add(task);
+    }
+    final mine = <String>{};
+    for (final item in items) {
+      if (byId.contains(item.id)) {
+        mine.add(item.id);
+        continue;
+      }
+      final key = _titleKey(item.displayTitle);
+      if (key.isEmpty) continue;
+      final candidates = byTitle[key];
+      if (candidates == null) continue;
+      final sameSource = candidates.where(
+        (t) =>
+            t.sourceId.isEmpty ||
+            item.sourceId.isEmpty ||
+            t.sourceId == item.sourceId,
+      );
+      if (sameSource.isNotEmpty || candidates.length == 1) mine.add(item.id);
+    }
+    return mine;
+  }
 
   String? pathFor(String itemId) {
-    final task = taskFor(itemId);
-    final path = task?.filePath;
-    if (task == null || !task.isDone || path == null) return null;
-    return File(path).existsSync() ? path : null;
+    for (final task in playableTasks.reversed) {
+      if (task.itemId == itemId) return task.filePath;
+    }
+    return null;
   }
 
   Future<Directory> _configDir() async {

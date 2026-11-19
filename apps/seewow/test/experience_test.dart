@@ -193,6 +193,17 @@ void main() {
     expect(find.text('故事从这里开始'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('offline cache lives in the global top bar', (tester) async {
+    addTearDown(tester.view.reset);
+    for (final width in [375.0, 1440.0]) {
+      await mount(tester, AppShell(store: store, iptv: iptv), width);
+      expect(
+        find.byTooltip('离线缓存'),
+        findsOneWidget,
+        reason: 'top bar at $width',
+      );
+    }
+  });
   testWidgets('phone layout exposes Plex account sign-in', (tester) async {
     addTearDown(tester.view.reset);
     await mount(

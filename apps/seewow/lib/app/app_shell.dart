@@ -369,6 +369,7 @@ class _AppShellState extends State<AppShell> {
             resolve: live
                 ? null
                 : (i) async {
+                    if (Uri.tryParse(i.locator)?.scheme == 'file') return i;
                     final offline = _downloads.pathFor(i.id);
                     if (offline != null) {
                       return i.copyWith(
@@ -417,15 +418,28 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _playDownload(DownloadTask task) async {
-    final item = _store.items.where((i) => i.id == task.itemId).firstOrNull;
-    if (item == null) {
+    final file = task.filePath;
+    if (file == null || !File(file).existsSync()) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('片库中已没有该条目，无法播放缓存')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('缓存文件已不在，请重新缓存；不会回落到联网播放')),
+        );
       }
       return;
     }
-    _play(item);
+    final item = _store.items.where((i) => i.id == task.itemId).firstOrNull;
+    final local = (item ??
+            MediaItem(
+              id: task.itemId,
+              sourceId: task.sourceId,
+              kind: MediaKind.movie,
+              title: task.title,
+              locator: Uri.file(file).toString(),
+            ))
+        .copyWith(locator: Uri.file(file).toString(), httpHeaders: const {});
+    // Straight to the player: going through _play() would re-read the library
+    // copy and hand the remote locator to the decoder.
+    unawaited(_playLive(local, live: false));
   }
 
   void _launch() {
@@ -624,6 +638,33 @@ class _AppShellState extends State<AppShell> {
                                         ),
                                       )
                                     : const Icon(Icons.refresh, size: 19),
+                              ),
+                              const SizedBox(width: 4),
+                              ListenableBuilder(
+                                listenable: _downloads,
+                                builder: (context, _) {
+                                  final active = _downloads.activeCount;
+                                  return IconButton(
+                                    tooltip: '离线缓存',
+                                    onPressed: () => showDownloads(
+                                      context,
+                                      manager: _downloads,
+                                      onPlay: _playDownload,
+                                    ),
+                                    icon: active > 0
+                                        ? Badge.count(
+                                            count: active,
+                                            child: Icon(
+                                              Icons.downloading,
+                                              size: 19,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.download_for_offline_outlined,
+                                            size: 19,
+                                          ),
+                                  );
+                                },
                               ),
                               const SizedBox(width: 4),
                               IconButton(

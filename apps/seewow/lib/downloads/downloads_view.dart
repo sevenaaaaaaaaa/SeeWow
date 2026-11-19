@@ -34,7 +34,7 @@ class DownloadsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
         children: [
-          _storagePanel(context),
+          _StoragePanel(manager: manager),
           const SizedBox(height: 18),
           if (manager.tasks.isEmpty)
             CinemaPanel(
@@ -55,81 +55,15 @@ class DownloadsPage extends StatelessWidget {
     ),
   );
 
-  Widget _storagePanel(BuildContext context) => CinemaPanel(
-    child: FutureBuilder<String>(
-      future: manager.storageDir().then((dir) => dir.path),
-      builder: (context, snapshot) {
-        final path = snapshot.data ?? '存放位置加载中…';
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('存放位置', style: WowType.monoLabel(10, color: WowColors.muted)),
-            const SizedBox(height: 6),
-            SelectableText(
-              path,
-              style: WowType.body(12, color: WowColors.text),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 8,
-              children: [
-                Text(
-                  '${manager.completedCount} 部已离线 · ${_size(manager.offlineBytes)}',
-                  style: TextStyle(fontSize: 11, color: WowColors.muted),
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '限速',
-                      style: TextStyle(fontSize: 11, color: WowColors.muted),
-                    ),
-                    const SizedBox(width: 4),
-                    DropdownButton<int>(
-                      value: manager.speedLimitKbps,
-                      underline: const SizedBox.shrink(),
-                      style: TextStyle(fontSize: 12, color: WowColors.text),
-                      items: const [
-                        DropdownMenuItem(value: 0, child: Text('不限速')),
-                        DropdownMenuItem(value: 1024, child: Text('1 MB/s')),
-                        DropdownMenuItem(value: 2048, child: Text('2 MB/s')),
-                        DropdownMenuItem(value: 5120, child: Text('5 MB/s')),
-                        DropdownMenuItem(value: 10240, child: Text('10 MB/s')),
-                        DropdownMenuItem(value: 20480, child: Text('20 MB/s')),
-                      ],
-                      onChanged: (value) => manager.setSpeedLimit(value ?? 0),
-                    ),
-                  ],
-                ),
-                if (Platform.isMacOS ||
-                    Platform.isWindows ||
-                    Platform.isLinux) ...[
-                  OutlinedButton.icon(
-                    onPressed: () => _chooseFolder(context),
-                    icon: const Icon(Icons.folder_open, size: 16),
-                    label: const Text('选择存放位置'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => _openFolder(path),
-                    icon: const Icon(Icons.open_in_new, size: 16),
-                    label: const Text('打开文件夹'),
-                  ),
-                ] else
-                  Text(
-                    '手机缓存保存在应用文档目录，可在系统「文件」中查看',
-                    style: TextStyle(fontSize: 10, color: WowColors.muted),
-                  ),
-              ],
-            ),
-          ],
-        );
-      },
-    ),
-  );
+  Widget _storagePanel(BuildContext context) => _StoragePanel(manager: manager);
 
   Widget _taskCard(BuildContext context, DownloadTask task) {
     final failed = task.isFailed;
+    // A "completed" row whose file was moved or deleted must not pretend the
+    // film is still playable offline.
+    final missing =
+        task.isDone &&
+        (task.filePath == null || !File(task.filePath!).existsSync());
     final progressText = [
       '${(task.progress * 100).round()}% · ${_size(task.downloadedBytes)} / ${task.sizeLabel}',
       if (task.speedLabel.isNotEmpty) task.speedLabel,
@@ -142,15 +76,17 @@ class DownloadsPage extends StatelessWidget {
           Row(
             children: [
               Icon(
-                task.isDone
+                missing
+                    ? Icons.link_off
+                    : task.isDone
                     ? Icons.offline_pin
                     : failed
                     ? Icons.error_outline
                     : Icons.downloading,
-                color: task.isDone
-                    ? WowColors.accent
-                    : failed
+                color: missing || failed
                     ? WowColors.error
+                    : task.isDone
+                    ? WowColors.accent
                     : WowColors.muted,
                 size: 20,
               ),
@@ -164,13 +100,13 @@ class DownloadsPage extends StatelessWidget {
                 ),
               ),
               Text(
-                task.statusLabel,
+                missing ? '文件已丢失' : task.statusLabel,
                 style: TextStyle(
                   fontSize: 11,
-                  color: task.isDone
-                      ? WowColors.accent
-                      : failed
+                  color: missing || failed
                       ? WowColors.error
+                      : task.isDone
+                      ? WowColors.accent
                       : WowColors.muted,
                 ),
               ),
@@ -201,12 +137,19 @@ class DownloadsPage extends StatelessWidget {
               style: TextStyle(fontSize: 11, color: WowColors.error),
             ),
           ],
+          if (missing) ...[
+            const SizedBox(height: 8),
+            Text(
+              '缓存文件已被移动或删除；删除这行记录后重新缓存即可，不会自动回落到联网播放。',
+              style: TextStyle(fontSize: 11, color: WowColors.error),
+            ),
+          ],
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 6,
             children: [
-              if (task.isDone)
+              if (task.isDone && !missing)
                 FilledButton.icon(
                   onPressed: () => onPlay(task),
                   icon: const Icon(Icons.play_arrow, size: 17),
@@ -236,6 +179,109 @@ class DownloadsPage extends StatelessWidget {
     );
   }
 
+  static String _size(int bytes) {
+    if (bytes <= 0) return '0 MB';
+    final mb = bytes / (1024 * 1024);
+    if (mb >= 1024) return '${(mb / 1024).toStringAsFixed(1)} GB';
+    return '${mb.toStringAsFixed(mb < 10 ? 1 : 0)} MB';
+  }
+}
+
+/// The storage location is resolved once. Re-creating the future in build
+/// re-triggers FutureBuilder on every completion and spins forever.
+class _StoragePanel extends StatefulWidget {
+  const _StoragePanel({required this.manager});
+  final DownloadManager manager;
+  @override
+  State<_StoragePanel> createState() => _StoragePanelState();
+}
+
+class _StoragePanelState extends State<_StoragePanel> {
+  late final Future<String> _storage = widget.manager
+      .storageDir()
+      .then((dir) => dir.path);
+
+  @override
+  Widget build(BuildContext context) {
+    final manager = widget.manager;
+    return CinemaPanel(
+      child: FutureBuilder<String>(
+        future: _storage,
+        builder: (context, snapshot) {
+          final path = snapshot.data ?? '存放位置加载中…';
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '存放位置',
+                style: WowType.monoLabel(10, color: WowColors.muted),
+              ),
+              const SizedBox(height: 6),
+              SelectableText(
+                path,
+                style: WowType.body(12, color: WowColors.text),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  Text(
+                    '${manager.completedCount} 部已离线 · ${_size(manager.offlineBytes)}',
+                    style: TextStyle(fontSize: 11, color: WowColors.muted),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '限速',
+                        style: TextStyle(fontSize: 11, color: WowColors.muted),
+                      ),
+                      const SizedBox(width: 4),
+                      DropdownButton<int>(
+                        value: manager.speedLimitKbps,
+                        underline: const SizedBox.shrink(),
+                        style: TextStyle(fontSize: 12, color: WowColors.text),
+                        items: const [
+                          DropdownMenuItem(value: 0, child: Text('不限速')),
+                          DropdownMenuItem(value: 1024, child: Text('1 MB/s')),
+                          DropdownMenuItem(value: 2048, child: Text('2 MB/s')),
+                          DropdownMenuItem(value: 5120, child: Text('5 MB/s')),
+                          DropdownMenuItem(value: 10240, child: Text('10 MB/s')),
+                          DropdownMenuItem(value: 20480, child: Text('20 MB/s')),
+                        ],
+                        onChanged: (value) =>
+                            manager.setSpeedLimit(value ?? 0),
+                      ),
+                    ],
+                  ),
+                  if (Platform.isMacOS ||
+                      Platform.isWindows ||
+                      Platform.isLinux) ...[
+                    OutlinedButton.icon(
+                      onPressed: () => _chooseFolder(context),
+                      icon: const Icon(Icons.folder_open, size: 16),
+                      label: const Text('选择存放位置'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => _openFolder(path),
+                      icon: const Icon(Icons.open_in_new, size: 16),
+                      label: const Text('打开文件夹'),
+                    ),
+                  ] else
+                    Text(
+                      '手机缓存保存在应用文档目录，可在系统「文件」中查看',
+                      style: TextStyle(fontSize: 10, color: WowColors.muted),
+                    ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _chooseFolder(BuildContext context) async {
     try {
       final path = await FilePicker.getDirectoryPath(dialogTitle: '选择离线缓存文件夹');
@@ -260,6 +306,8 @@ class DownloadsPage extends StatelessWidget {
       }
     } catch (_) {}
   }
+
+  DownloadManager get manager => widget.manager;
 
   static String _size(int bytes) {
     if (bytes <= 0) return '0 MB';
@@ -304,6 +352,9 @@ class _DownloadSheet extends StatefulWidget {
 class _DownloadSheetState extends State<_DownloadSheet> {
   bool _busy = false;
   String _qualityId = 'original';
+  late final Future<String> _storage = widget.manager
+      .storageDir()
+      .then((dir) => dir.path);
 
   @override
   Widget build(BuildContext context) => AlertDialog(
@@ -351,7 +402,7 @@ class _DownloadSheetState extends State<_DownloadSheet> {
           Text('存放位置', style: WowType.monoLabel(10, color: WowColors.muted)),
           const SizedBox(height: 4),
           FutureBuilder<String>(
-            future: widget.manager.storageDir().then((dir) => dir.path),
+            future: _storage,
             builder: (context, snapshot) => Text(
               snapshot.data ?? '默认位置',
               style: TextStyle(fontSize: 11, color: WowColors.muted),

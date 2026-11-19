@@ -179,7 +179,7 @@ class DetailView extends StatelessWidget {
                                       style: heroButton,
                                       onPressed: () async {
                                         final manager = downloads!;
-                                        if (manager.hasOffline(current.id)) {
+                                        if (manager.isCached(current)) {
                                           onPlay(current);
                                           return;
                                         }
@@ -207,14 +207,14 @@ class DetailView extends StatelessWidget {
                                         }
                                       },
                                       icon: Icon(
-                                        downloads!.hasOffline(current.id)
+                                        downloads!.isCached(current)
                                             ? Icons.offline_pin
                                             : Icons
                                                   .download_for_offline_outlined,
                                         size: 18,
                                       ),
                                       label: Text(
-                                        downloads!.hasOffline(current.id)
+                                        downloads!.isCached(current)
                                             ? '离线播放'
                                             : '缓存到本地',
                                       ),

@@ -96,14 +96,12 @@ class _LibraryViewState extends State<LibraryView> {
           items = items.where((i) => ids.contains(i.id)).toList();
         }
         final downloads = widget.downloads;
-        final offlineIds = downloads == null
+        final cachedIds = downloads == null
             ? const <String>{}
-            : downloads.offlineItemIds;
-        final offlineCount = store.items
-            .where((i) => offlineIds.contains(i.id))
-            .length;
+            : downloads.cachedItemIds(store.items);
+        final offlineCount = cachedIds.length;
         if (_offline && downloads != null) {
-          items = items.where((i) => offlineIds.contains(i.id)).toList();
+          items = items.where((i) => cachedIds.contains(i.id)).toList();
         }
         final genres = store.items.expand((i) => i.genres).toSet().toList()
           ..sort();
@@ -561,7 +559,7 @@ class _LibraryViewState extends State<LibraryView> {
     if (manager == null) return;
     var queued = 0;
     for (final item in items) {
-      if (manager.hasOffline(item.id)) continue;
+      if (manager.isCached(item)) continue;
       final source = widget.store.sources
           .where((s) => s.id == item.sourceId)
           .firstOrNull;
