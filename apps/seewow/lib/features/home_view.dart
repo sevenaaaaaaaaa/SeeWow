@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/library_store.dart';
 import '../design/cinema_widgets.dart';
+import '../design/liquid_glass.dart';
 import '../design/tokens.dart';
 import '../design/skin.dart';
 import '../domain/catalog_category.dart';
@@ -111,6 +112,7 @@ class _HomeViewState extends State<HomeView> {
                 item: items[n],
                 store: widget.store,
                 onOpen: () => widget.onOpen(items[n]),
+                onPlay: () => widget.onPlay(items[n]),
               ),
             ),
           ),
@@ -191,10 +193,11 @@ class _HomeViewState extends State<HomeView> {
                         action: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            FilledButton.icon(
-                              onPressed: widget.onSources,
-                              icon: const Icon(Icons.add),
-                              label: const Text('连接第一个片源'),
+                            GlassButton(
+                              label: '连接第一个片源',
+                              icon: Icons.add_rounded,
+                              prominent: true,
+                              onTap: widget.onSources,
                             ),
                             if (widget.onSamples != null)
                               TextButton.icon(

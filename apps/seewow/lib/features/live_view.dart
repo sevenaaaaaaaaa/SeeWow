@@ -2,9 +2,11 @@ import 'dart:io';
 
 import 'subscription_dialog.dart';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../data/iptv_store.dart';
+import '../design/liquid_glass.dart';
 import '../design/pressable.dart';
 import '../design/tokens.dart';
 import '../domain/iptv.dart';
@@ -145,7 +147,7 @@ class _LiveViewState extends State<LiveView> {
               if (store.playlists.isNotEmpty)
                 Expanded(
                   child: SizedBox(
-                    height: 30,
+                    height: 44,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       itemCount: store.playlists.length,
@@ -171,7 +173,14 @@ class _LiveViewState extends State<LiveView> {
             child: store.channels.isEmpty
                 ? _EmptyLive(onAdd: () => _addDialog(), loading: store.loading)
                 : list.isEmpty
-                    ? _NoResults(filter: _filter)
+                    ? _NoResults(
+                        filter: _filter,
+                        onClear: () => setState(() {
+                          _search.clear();
+                          _query = '';
+                          _filter = _Filter.all;
+                        }),
+                      )
                     : ListView(
                         padding: const EdgeInsets.only(bottom: 60),
                         children: [
@@ -222,22 +231,42 @@ class _LiveViewState extends State<LiveView> {
     );
   }
 
+  /// 36 px of pill inside 44 px of hit area: the pill stays light, the finger
+  /// gets a target it can actually land on.
   Widget _filterChip(String label, _Filter value) {
     final active = _filter == value;
     return Pressable(
       onTap: () => setState(() => _filter = value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        height: 30,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: active ? WowColors.accent.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.04),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: active ? WowColors.accent.withValues(alpha: 0.45) : WowColors.line),
+      focusRadius: 22,
+      child: SizedBox(
+        height: GlassTokens.touchTarget,
+        child: Center(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: active
+                  ? WowColors.accent.withValues(alpha: 0.18)
+                  : Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: active
+                    ? WowColors.accent.withValues(alpha: 0.45)
+                    : WowColors.line,
+              ),
+            ),
+            child: Text(
+              label,
+              style: WowType.body(
+                11.5,
+                height: 1.2,
+                color: active ? WowColors.text : WowColors.muted,
+              ),
+            ),
+          ),
         ),
-        child: Text(label,
-            style: WowType.body(11.5, height: 1.2, color: active ? WowColors.text : WowColors.muted)),
       ),
     );
   }
@@ -427,6 +456,9 @@ class _ChannelTile extends StatefulWidget {
 
 class _ChannelTileState extends State<_ChannelTile> {
   bool _hover = false;
+  bool get _touch =>
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.android;
 
   @override
   Widget build(BuildContext context) {
@@ -477,16 +509,31 @@ class _ChannelTileState extends State<_ChannelTile> {
                       style: WowType.monoLabel(8, color: WowColors.faint, spacing: 0.6)),
               ]),
             ),
+            // A phone has no hover, so a star that only appears on hover is a
+            // star that does not exist there. It is always visible on touch,
+            // faint-but-present on the desktop, and 44 px everywhere.
             AnimatedOpacity(
               duration: const Duration(milliseconds: 160),
-              opacity: fav ? 1 : (_hover ? 0.62 : 0.26),
-              child: InkWell(
-                onTap: widget.onFavorite,
-                borderRadius: BorderRadius.circular(10),
-                child: Padding(
-                  padding: const EdgeInsets.all(6),
-                  child: Icon(fav ? Icons.star_rounded : Icons.star_border_rounded,
-                      size: 15, color: fav ? WowColors.accent : Colors.white),
+              opacity: fav || _touch
+                  ? 1
+                  : (_hover ? 0.70 : 0.34),
+              child: Semantics(
+                button: true,
+                label: fav ? '取消收藏频道' : '收藏频道',
+                child: InkWell(
+                  onTap: widget.onFavorite,
+                  borderRadius: BorderRadius.circular(22),
+                  child: SizedBox(
+                    width: GlassTokens.touchTarget,
+                    height: GlassTokens.touchTarget,
+                    child: Center(
+                      child: Icon(
+                        fav ? Icons.star_rounded : Icons.star_border_rounded,
+                        size: 18,
+                        color: fav ? WowColors.accent : Colors.white,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -532,18 +579,35 @@ class _ChannelLogo extends StatelessWidget {
 }
 
 class _NoResults extends StatelessWidget {
-  const _NoResults({required this.filter});
+  const _NoResults({required this.filter, required this.onClear});
   final _Filter filter;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
     final message = filter == _Filter.favorites
-        ? '还没有收藏的频道，把鼠标移到频道上点星号。'
+        ? '还没有收藏的频道。点频道右上角的星号就能收藏。'
         : filter == _Filter.recent
-            ? '看过直播后，这里会记住最近播放的频道。'
-            : '没有匹配的频道。';
+        ? '看过直播后，这里会记住最近播放的频道。'
+        : '没有匹配的频道。';
     return Center(
-      child: Text(message, style: WowType.body(12.5, color: WowColors.muted)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(message, style: WowType.body(12.5, color: WowColors.muted)),
+          // The old screen printed a sentence and stopped. Whatever the user
+          // typed or filtered, one button puts the whole list back.
+          if (filter != _Filter.favorites ||
+              message.contains('点频道右上角')) ...[
+            const SizedBox(height: 14),
+            GlassButton(
+              label: '清除搜索与筛选',
+              icon: Icons.filter_alt_off_outlined,
+              onTap: onClear,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

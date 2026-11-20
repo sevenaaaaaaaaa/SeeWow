@@ -4,6 +4,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../design/cinema_widgets.dart';
+import '../design/escape.dart';
+import '../design/liquid_glass.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import 'download_manager.dart';
@@ -14,43 +16,120 @@ Future<void> showDownloads(
   BuildContext context, {
   required DownloadManager manager,
   required Future<void> Function(DownloadTask task) onPlay,
+  VoidCallback? onBrowse,
 }) => Navigator.of(context).push(
-  MaterialPageRoute<void>(
-    builder: (_) => DownloadsPage(manager: manager, onPlay: onPlay),
+  GlassPageRoute<void>(
+    builder: (_) => DownloadsPage(
+      manager: manager,
+      onPlay: onPlay,
+      onBrowse: onBrowse,
+    ),
   ),
 );
 
 class DownloadsPage extends StatelessWidget {
-  const DownloadsPage({super.key, required this.manager, required this.onPlay});
+  const DownloadsPage({
+    super.key,
+    required this.manager,
+    required this.onPlay,
+    this.onBrowse,
+  });
   final DownloadManager manager;
   final Future<void> Function(DownloadTask task) onPlay;
+
+  /// Where to go when there is nothing cached yet. Without it the empty state
+  /// is a wall: it explains the feature and offers no way to start using it.
+  final VoidCallback? onBrowse;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: manager,
     builder: (context, _) => Scaffold(
       backgroundColor: WowColors.ink,
-      appBar: AppBar(backgroundColor: WowColors.ink, title: const Text('离线缓存')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
-        children: [
-          _StoragePanel(manager: manager),
-          const SizedBox(height: 18),
-          if (manager.tasks.isEmpty)
-            CinemaPanel(
-              child: EmptyCinema(
-                icon: Icons.download_for_offline_outlined,
-                title: '还没有离线影片',
-                description: '在影片详情页点「缓存到本地」，选择画质与存放位置；完成后即使片源离线也能播放。',
+      // No AppBar: this page is reached from the header of a shell that has no
+      // AppBar either, and the one screen with a system bar looked like a
+      // different app. The back control is the same glass circle every other
+      // pushed screen uses.
+      body: EscapeToPop(
+        child: SafeArea(
+          child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 16, 4),
+              child: Row(
+                children: [
+                  PressableLens(
+                    radius: 22,
+                    onTap: () => Navigator.of(context).maybePop(),
+                    semanticLabel: '返回',
+                    child: SizedBox(
+                      width: GlassTokens.touchTarget,
+                      height: GlassTokens.touchTarget,
+                      child: LiquidGlass(
+                        radius: 22,
+                        edge: .30,
+                        lifted: false,
+                        child: const Icon(
+                          Icons.arrow_back_rounded,
+                          size: 19,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '离线缓存',
+                    style: WowType.display(
+                      20,
+                      FontWeight.w500,
+                      spacing: -.5,
+                      height: 1.05,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    manager.tasks.isEmpty
+                        ? '无缓存'
+                        : manager.tasks.length.toString() + ' 项',
+                    style: WowType.monoLabel(9.5),
+                  ),
+                  const SizedBox(width: 14),
+                ],
               ),
-            )
-          else
-            for (final task in manager.tasks.reversed)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _taskCard(context, task),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
+                children: [
+                  _StoragePanel(manager: manager),
+                  const SizedBox(height: 18),
+                  if (manager.tasks.isEmpty)
+                    CinemaPanel(
+                      child: EmptyCinema(
+                        icon: Icons.download_for_offline_outlined,
+                        title: '还没有离线影片',
+                        description: '在影片详情页点「缓存到本地」，选择画质与存放位置；完成后即使片源离线也能播放。',
+                        action: onBrowse == null
+                            ? null
+                            : GlassButton(
+                                label: '去片库挑一部',
+                                icon: Icons.video_library_outlined,
+                                onTap: onBrowse,
+                              ),
+                      ),
+                    )
+                  else
+                    for (final task in manager.tasks.reversed)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _taskCard(context, task),
+                      ),
+                ],
               ),
-        ],
+            ),
+          ],
+          ),
+        ),
       ),
     ),
   );

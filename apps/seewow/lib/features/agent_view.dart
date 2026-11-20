@@ -1,11 +1,13 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../agent/agent_controller.dart';
 import '../agent/model_presets.dart';
 import '../data/iptv_store.dart';
 import '../design/cinema_widgets.dart';
+import '../design/liquid_glass.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import 'sources_view.dart';
@@ -105,16 +107,32 @@ class _AgentViewState extends State<AgentView> {
                               style: WowType.body(12, color: WowColors.muted),
                             ),
                             const SizedBox(height: 16),
-                            TextField(
-                              controller: _prompt,
-                              minLines: 3,
-                              maxLines: 6,
-                              enabled: !agent.busy,
-                              decoration: const InputDecoration(
-                                hintText: '例如：按我的口味，选几部周末想看的科幻电影，生成一份片单。',
-                                border: InputBorder.none,
+                            // ⌘/Ctrl + Enter sends. A multi-line box cannot
+                            // use Enter, and a composer that can only be sent
+                            // by finding a button is the slowest input in the
+                            // app — this is where the user types the most.
+                            CallbackShortcuts(
+                              bindings: {
+                                const SingleActivator(
+                                  LogicalKeyboardKey.enter,
+                                  meta: true,
+                                ): _send,
+                                const SingleActivator(
+                                  LogicalKeyboardKey.enter,
+                                  control: true,
+                                ): _send,
+                              },
+                              child: TextField(
+                                controller: _prompt,
+                                minLines: 3,
+                                maxLines: 6,
+                                enabled: !agent.busy,
+                                decoration: const InputDecoration(
+                                  hintText: '例如：按我的口味，选几部周末想看的科幻电影，生成一份片单。',
+                                  border: InputBorder.none,
+                                ),
+                                style: const TextStyle(fontSize: 14, height: 1.7),
                               ),
-                              style: const TextStyle(fontSize: 14, height: 1.7),
                             ),
                             const SizedBox(height: 12),
                             Row(
@@ -167,6 +185,8 @@ class _AgentViewState extends State<AgentView> {
                               '刷新片源并检查片库',
                             ])
                               ActionChip(
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.padded,
                                 label: Text(
                                   prompt,
                                   style: const TextStyle(fontSize: 11),
@@ -180,11 +200,21 @@ class _AgentViewState extends State<AgentView> {
                       ),
                       const SizedBox(height: 28),
                       if (agent.runs.isEmpty)
-                        const EmptyCinema(
+                        EmptyCinema(
                           icon: Icons.auto_awesome_outlined,
                           title: '从一个念头，到一场放映',
                           description:
                               '任务会留下执行记录。推荐结果可以加入待看，片单预览可以一键保存，连接失败也会明确告诉你。',
+                          // An empty history with no button is a dead end:
+                          // the most useful first command was always one tap
+                          // away, but nothing said so.
+                          action: GlassButton(
+                            label: '先让 Agent 检查片库',
+                            icon: Icons.auto_fix_high_outlined,
+                            onTap: agent.busy
+                                ? null
+                                : () => agent.run('刷新片源并检查片库'),
+                          ),
                         ),
                       for (final run in agent.runs.take(20))
                         Padding(

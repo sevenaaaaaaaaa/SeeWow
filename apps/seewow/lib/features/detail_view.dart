@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../data/library_store.dart';
 import '../design/cinema_widgets.dart';
+import '../design/escape.dart';
+import '../design/liquid_glass.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import '../downloads/download_manager.dart';
@@ -32,11 +34,6 @@ class DetailView extends StatelessWidget {
         : Listenable.merge([store, downloads!]),
     builder: (context, _) {
       final current = store.current(item);
-      final heroButton = OutlinedButton.styleFrom(
-        foregroundColor: Colors.white,
-        backgroundColor: Colors.black.withValues(alpha: .28),
-        side: BorderSide(color: Colors.white.withValues(alpha: .35)),
-      );
       final episodes = item.kind == MediaKind.episode
           ? store.episodes
                 .where(
@@ -57,8 +54,11 @@ class DetailView extends StatelessWidget {
           .toList();
       return Scaffold(
         backgroundColor: WowColors.ink,
-        body: SafeArea(
-          child: LayoutBuilder(
+        // Esc goes back from a film page. The rule (innermost open surface
+        // owns Escape) lives in design/escape.dart.
+        body: EscapeToPop(
+          child: SafeArea(
+            child: LayoutBuilder(
             builder: (context, box) {
               final compact = box.maxWidth < 700;
               final pad = compact ? 20.0 : 40.0;
@@ -158,26 +158,37 @@ class DetailView extends StatelessWidget {
                                           : '开始观看',
                                     ),
                                   ),
-                                  OutlinedButton.icon(
-                                    style: heroButton,
-                                    onPressed: () =>
+                                  // Secondary actions become icon buttons.
+                                  // Four equal-weight pill buttons made the
+                                  // page look like a settings form and left
+                                  // nobody sure which one starts the film.
+                                  GlassIconButton(
+                                    icon: store.taste.watchlist.contains(
+                                      current.id,
+                                    )
+                                        ? Icons.bookmark
+                                        : Icons.bookmark_add_outlined,
+                                    selected: store.taste.watchlist.contains(
+                                      current.id,
+                                    ),
+                                    label: store.taste.watchlist.contains(
+                                      current.id,
+                                    )
+                                        ? '已加入待看'
+                                        : '加入待看',
+                                    onTap: () =>
                                         store.toggleWatchlist(current),
-                                    icon: Icon(
-                                      store.taste.watchlist.contains(current.id)
-                                          ? Icons.bookmark
-                                          : Icons.bookmark_add_outlined,
-                                      size: 18,
-                                    ),
-                                    label: Text(
-                                      store.taste.watchlist.contains(current.id)
-                                          ? '已加入待看'
-                                          : '加入待看',
-                                    ),
                                   ),
                                   if (downloads != null)
-                                    OutlinedButton.icon(
-                                      style: heroButton,
-                                      onPressed: () async {
+                                    GlassIconButton(
+                                      icon: downloads!.isCached(current)
+                                          ? Icons.offline_pin
+                                          : Icons.download_for_offline_outlined,
+                                      label: downloads!.isCached(current)
+                                          ? '离线播放'
+                                          : '缓存到本地',
+                                      selected: downloads!.isCached(current),
+                                      onTap: () async {
                                         final manager = downloads!;
                                         if (manager.isCached(current)) {
                                           onPlay(current);
@@ -206,33 +217,16 @@ class DetailView extends StatelessWidget {
                                               );
                                         }
                                       },
-                                      icon: Icon(
-                                        downloads!.isCached(current)
-                                            ? Icons.offline_pin
-                                            : Icons
-                                                  .download_for_offline_outlined,
-                                        size: 18,
-                                      ),
-                                      label: Text(
-                                        downloads!.isCached(current)
-                                            ? '离线播放'
-                                            : '缓存到本地',
-                                      ),
                                     ),
-                                  OutlinedButton.icon(
-                                    style: heroButton,
-                                    onPressed: () => store.setFavorite(
+                                  GlassIconButton(
+                                    icon: current.isFavorite
+                                        ? Icons.favorite
+                                        : Icons.favorite_border,
+                                    selected: current.isFavorite,
+                                    label: current.isFavorite ? '已喜欢' : '喜欢',
+                                    onTap: () => store.setFavorite(
                                       current,
                                       !current.isFavorite,
-                                    ),
-                                    icon: Icon(
-                                      current.isFavorite
-                                          ? Icons.favorite
-                                          : Icons.favorite_border,
-                                      size: 18,
-                                    ),
-                                    label: Text(
-                                      current.isFavorite ? '已喜欢' : '喜欢',
                                     ),
                                   ),
                                 ],
@@ -489,10 +483,14 @@ class DetailView extends StatelessWidget {
                                   onOpen: () => Navigator.pushReplacement(
                                     context,
                                     MaterialPageRoute<void>(
+                                      // The manager used to be dropped
+                                      // here, so caching disappeared after one
+                                      // hop through a related film.
                                       builder: (_) => DetailView(
                                         item: related[n].item,
                                         store: store,
                                         onPlay: onPlay,
+                                        downloads: downloads,
                                       ),
                                     ),
                                   ),
@@ -507,6 +505,7 @@ class DetailView extends StatelessWidget {
                 ],
               );
             },
+            ),
           ),
         ),
       );

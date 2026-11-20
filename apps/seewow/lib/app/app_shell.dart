@@ -10,6 +10,7 @@ import '../agent/agent_controller.dart';
 import 'shake_refresh.dart';
 import '../data/iptv_store.dart';
 import '../data/library_store.dart';
+import '../design/brand_mark.dart';
 import '../design/cinema_widgets.dart';
 import '../design/liquid_glass.dart';
 import '../design/liquid_nav.dart';
@@ -57,6 +58,48 @@ const _destinations = [
   (Section.music, Icons.library_music_outlined, '音乐库'),
   (Section.settings, Icons.settings_outlined, '设置'),
 ];
+
+/// A group heading inside a glass sheet.
+class _SheetLabel extends StatelessWidget {
+  const _SheetLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+    child: Text(text, style: WowType.monoLabel(9.5, spacing: 1.6)),
+  );
+}
+
+/// What the fifth seat shows while it stands for a section.
+const _overflowMeta =
+    <Section, ({String label, IconData icon, IconData active})>{
+      Section.shortDramas: (
+        label: '短剧',
+        icon: Icons.movie_filter_outlined,
+        active: Icons.movie_filter,
+      ),
+      Section.collections: (
+        label: '片单',
+        icon: Icons.bookmarks_outlined,
+        active: Icons.bookmarks,
+      ),
+      Section.live: (
+        label: '直播',
+        icon: Icons.sensors_rounded,
+        active: Icons.sensors,
+      ),
+      Section.music: (
+        label: '音乐',
+        icon: Icons.library_music_outlined,
+        active: Icons.library_music,
+      ),
+      Section.settings: (
+        label: '设置',
+        icon: Icons.settings_outlined,
+        active: Icons.settings,
+      ),
+    };
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.store, required this.iptv});
@@ -293,45 +336,113 @@ class _AppShellState extends State<AppShell> {
     if (!_inSpace) _toggleSpace();
   }
 
+  /// The overflow shelf.
+  ///
+  /// Two groups, because the old sheet mixed "places to go" with "things to
+  /// change" in one flat list: 浏览 takes the four content destinations, 设置
+  /// stands alone. Choosing anything here also teaches the fifth seat which
+  /// section it now stands for.
   Future<void> _showMore() async {
-    final section = await showModalBottomSheet<Section>(
+    final phone = MediaQuery.sizeOf(context).width < 620;
+    final choice = await showGlassSheet<Object>(
       context: context,
-      backgroundColor: WowColors.panel,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      builder: (sheet) => GlassSheet(
+        title: '更多',
+        subtitle: '导航上留了四个常去处，其余都在这里',
+        children: [
+          const _SheetLabel('浏览'),
+          _sheetEntry(sheet, Section.shortDramas),
+          _sheetEntry(sheet, Section.collections),
+          _sheetEntry(sheet, Section.live),
+          _sheetEntry(sheet, Section.music),
+          const _SheetLabel('管理'),
+          _sheetEntry(sheet, Section.settings),
+          // A phone header cannot hold nine controls, so the two it dropped
+          // live here rather than disappearing.
+          if (phone) ...[
+            const SizedBox(height: 6),
+            _sheetAction(sheet, 'refresh', '刷新片库', Icons.refresh),
+            _sheetAction(
+              sheet,
+              'space',
+              _inSpace ? '回到主空间' : '进入解耦空间',
+              Icons.layers_outlined,
+            ),
+          ],
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (choice is Section) {
+      setState(() => _overflowSeat = choice);
+      _select(choice);
+    } else if (choice == 'refresh') {
+      await _refreshLibrary();
+    } else if (choice == 'space') {
+      _toggleSpace();
+    }
+  }
+
+  Widget _sheetAction(
+    BuildContext sheet,
+    String key,
+    String label,
+    IconData icon,
+  ) {
+    return PressableLens(
+      radius: 16,
+      semanticLabel: label,
+      onTap: () => Navigator.pop(sheet, key),
+      child: SizedBox(
+        height: 50,
+        child: Row(
           children: [
-            ListTile(
-              leading: const Icon(Icons.movie_filter_outlined),
-              title: const Text('短剧'),
-              onTap: () => Navigator.pop(context, Section.shortDramas),
-            ),
-            ListTile(
-              leading: const Icon(Icons.bookmarks_outlined),
-              title: const Text('我的片单'),
-              onTap: () => Navigator.pop(context, Section.collections),
-            ),
-            ListTile(
-              leading: const Icon(Icons.sensors_rounded),
-              title: const Text('直播'),
-              onTap: () => Navigator.pop(context, Section.live),
-            ),
-            ListTile(
-              leading: const Icon(Icons.library_music_outlined),
-              title: const Text('音乐库'),
-              onTap: () => Navigator.pop(context, Section.music),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text('设置'),
-              onTap: () => Navigator.pop(context, Section.settings),
-            ),
+            const SizedBox(width: 12),
+            Icon(icon, size: 18, color: WowColors.muted),
+            const SizedBox(width: 12),
+            Expanded(child: Text(label, style: WowType.body(14))),
+            Icon(Icons.chevron_right, size: 16, color: WowColors.faint),
+            const SizedBox(width: 12),
           ],
         ),
       ),
     );
-    if (section != null && mounted) _select(section);
+  }
+
+  /// One refresh path for the header button and the sheet row.
+  Future<void> _refreshLibrary() async {
+    await _store.refreshAll();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('片库已刷新'), duration: Duration(seconds: 1)),
+    );
+  }
+
+  Widget _sheetEntry(BuildContext sheet, Section s, {String? hint}) {
+    final meta = _overflowMeta[s]!;
+    final label = _destinations.firstWhere((d) => d.$1 == s).$3;
+    return PressableLens(
+      radius: 16,
+      semanticLabel: label,
+      onTap: () => Navigator.pop(sheet, s),
+      child: SizedBox(
+        height: 50,
+        child: Row(
+          children: [
+            const SizedBox(width: 12),
+            Icon(meta.icon, size: 18, color: WowColors.muted),
+            const SizedBox(width: 12),
+            Expanded(child: Text(label, style: WowType.body(14))),
+            if (hint != null) ...[
+              Text(hint, style: WowType.monoLabel(9.5)),
+              const SizedBox(width: 8),
+            ],
+            Icon(Icons.chevron_right, size: 16, color: WowColors.faint),
+            const SizedBox(width: 12),
+          ],
+        ),
+      ),
+    );
   }
 
   void _open(MediaItem item) => Navigator.of(context).push(
@@ -477,16 +588,76 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
+  /// ⌘K opens search; ⌘1…⌘5 stand on a seat.
+  ///
+  /// The five seat shortcuts live here rather than in the tab bar so they work
+  /// from any screen, and they route through [_navSelect], which means the
+  /// overflow seat behaves exactly like a tap.
+  Map<ShortcutActivator, VoidCallback> get _shortcuts {
+    final map = <ShortcutActivator, VoidCallback>{
+      const SingleActivator(LogicalKeyboardKey.keyK, meta: true): _search,
+      const SingleActivator(LogicalKeyboardKey.keyK, control: true): _search,
+    };
+    const digits = [
+      LogicalKeyboardKey.digit1,
+      LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit3,
+      LogicalKeyboardKey.digit4,
+      LogicalKeyboardKey.digit5,
+    ];
+    for (var i = 0; i < digits.length; i++) {
+      final seat = i;
+      map[SingleActivator(digits[i], meta: true)] = () => _navSelect(seat);
+      map[SingleActivator(digits[i], control: true)] = () => _navSelect(seat);
+    }
+    return map;
+  }
+
+  /// One entry point for the cache page, so the empty state can send the user
+  /// to the library instead of straight back to where they came from.
+  Future<void> _openDownloads() async {
+    await showDownloads(
+      context,
+      manager: _downloads,
+      onPlay: _playDownload,
+      onBrowse: () {
+        Navigator.of(context).maybePop();
+        _library();
+      },
+    );
+  }
+
   Future<void> _search() async {
     final selection = await showDialog<Object>(
       context: context,
-      builder: (_) => _CommandPalette(store: _store),
+      builder: (_) => _CommandPalette(store: _store, commands: _paletteCommands),
     );
     if (!mounted) return;
     if (selection is MediaItem) _open(selection);
     if (selection is Section) _select(selection);
+    if (selection is _PaletteCommand) {
+      await selection.run(context);
+      return;
+    }
     if (selection is String) _library(query: selection);
   }
+
+  /// Settings that live in a dialog, plus the cache page, offered where the
+  /// user already is. No destination is invented: each entry opens the dialog
+  /// the settings page opens.
+  List<_PaletteCommand> get _paletteCommands => [
+    _PaletteCommand(
+      label: '离线缓存',
+      icon: Icons.download_for_offline_outlined,
+      run: (_) async => _openDownloads(),
+    ),
+    for (final c in wowSettingsCommands())
+      _PaletteCommand(
+        label: c.label,
+        icon: c.icon,
+        run: (context) async => c.open(context),
+      ),
+  ];
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -496,11 +667,7 @@ class _AppShellState extends State<AppShell> {
       final sidebar = width >= 1180;
       final rail = width >= 760 && !sidebar;
       return CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.keyK, meta: true): _search,
-          const SingleActivator(LogicalKeyboardKey.keyK, control: true):
-              _search,
-        },
+        bindings: _shortcuts,
         child: Scaffold(
           backgroundColor: WowColors.ink,
           body: SkinCanvas(
@@ -523,71 +690,82 @@ class _AppShellState extends State<AppShell> {
                           ),
                           child: Row(
                             children: [
-                              if (width >= 760) ...[
-                                Text(
-                                  _destinations
-                                      .firstWhere((d) => d.$1 == _section)
-                                      .$3,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: WowColors.muted,
-                                  ),
-                                ),
-                                const SizedBox(width: 24),
-                              ],
-                              Expanded(
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: ConstrainedBox(
-                                    constraints: const BoxConstraints(
-                                      maxWidth: 390,
-                                    ),
-                                    child: OutlinedButton(
-                                      onPressed: _search,
-                                      style: OutlinedButton.styleFrom(
-                                        alignment: Alignment.centerLeft,
-                                        backgroundColor: WowColors.panel,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 14,
-                                          vertical: 13,
-                                        ),
-                                        side: BorderSide(color: WowColors.line),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            Icons.search,
-                                            size: 17,
-                                            color: WowColors.muted,
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              '搜索你的影院',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: WowColors.muted,
-                                              ),
-                                            ),
-                                          ),
-                                          if (width >= 760)
-                                            Text(
-                                              Platform.isMacOS
-                                                  ? '⌘ K'
-                                                  : 'Ctrl K',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                color: WowColors.muted,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
+                              // The section name used to appear only from
+                              // 760 px up — exactly the width where the user
+                              // least needs it. On a phone the header has room
+                              // for a title and one icon; that is what it shows.
+                              Text(
+                                _destinations
+                                    .firstWhere((d) => d.$1 == _section)
+                                    .$3,
+                                style: WowType.display(
+                                  width < 620 ? 18 : 20,
+                                  FontWeight.w500,
+                                  spacing: -.5,
+                                  height: 1.05,
                                 ),
                               ),
+                              const SizedBox(width: 18),
+                              if (width >= 620)
+                                Expanded(
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: 390,
+                                      ),
+                                      child: PressableLens(
+                                        radius: 99,
+                                        onTap: _search,
+                                        semanticLabel: '搜索你的影院',
+                                        child: LiquidGlass(
+                                          radius: 99,
+                                          edge: .26,
+                                          lifted: false,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 12,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                Icons.search,
+                                                size: 17,
+                                                color: WowColors.muted,
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Text(
+                                                  '搜索你的影院',
+                                                  style: WowType.body(
+                                                    12.5,
+                                                    color: WowColors.muted,
+                                                  ),
+                                                ),
+                                              ),
+                                              Text(
+                                                Platform.isMacOS
+                                                    ? '⌘K'
+                                                    : 'Ctrl K',
+                                                style: WowType.monoLabel(9.5),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else
+                                const Spacer(),
+                              if (width < 620)
+                                IconButton(
+                                  tooltip: '搜索（⌘K）',
+                                  onPressed: _search,
+                                  icon: const Icon(Icons.search, size: 19),
+                                ),
                               const SizedBox(width: 10),
-                              if (width >= 600)
+                              if (width >= 620)
                                 ActionChip(
                                   avatar: Icon(
                                     _inSpace
@@ -603,44 +781,30 @@ class _AppShellState extends State<AppShell> {
                                   materialTapTargetSize:
                                       MaterialTapTargetSize.shrinkWrap,
                                   onPressed: _toggleSpace,
-                                )
-                              else
-                                IconButton(
-                                  tooltip: _inSpace ? '解耦空间' : '主空间',
-                                  onPressed: _toggleSpace,
-                                  icon: Icon(
-                                    _inSpace
-                                        ? Icons.layers_rounded
-                                        : Icons.home_work_outlined,
-                                    size: 19,
-                                  ),
                                 ),
-                              const SizedBox(width: 6),
-                              IconButton(
-                                tooltip: '刷新片库',
-                                onPressed: _store.scanning
-                                    ? null
-                                    : () async {
-                                        await _store.refreshAll();
-                                        if (!mounted) return;
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                              const SnackBar(
-                                                content: Text('片库已刷新'),
-                                                duration: Duration(seconds: 1),
-                                              ),
-                                            );
-                                      },
-                                icon: _store.scanning
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(Icons.refresh, size: 19),
-                              ),
+                              // Refresh and the space switch move into the
+                              // overflow sheet on a phone: the header had 9 px
+                              // more than a 375 px screen could hold, and two
+                              // rarely used controls are the right thing to
+                              // give up, not the section title or search.
+                              if (width >= 620) ...[
+                                const SizedBox(width: 6),
+                                IconButton(
+                                  tooltip: '刷新片库',
+                                  onPressed: _store.scanning
+                                      ? null
+                                      : _refreshLibrary,
+                                  icon: _store.scanning
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(Icons.refresh, size: 19),
+                                ),
+                              ],
                               const SizedBox(width: 4),
                               ListenableBuilder(
                                 listenable: _downloads,
@@ -648,11 +812,7 @@ class _AppShellState extends State<AppShell> {
                                   final active = _downloads.activeCount;
                                   return IconButton(
                                     tooltip: '离线缓存',
-                                    onPressed: () => showDownloads(
-                                      context,
-                                      manager: _downloads,
-                                      onPlay: _playDownload,
-                                    ),
+                                    onPressed: () => _openDownloads(),
                                     icon: active > 0
                                         ? Badge.count(
                                             count: active,
@@ -766,8 +926,8 @@ class _AppShellState extends State<AppShell> {
       );
     },
   );
-  /// The bar tracks the current section; the four overflow entries all live
-  /// under 更多, which is why they share a seat.
+  /// The bar tracks the current section; the last four destinations share one
+  /// seat.
   int get _navIndex => switch (_section) {
     Section.home => 0,
     Section.library => 1,
@@ -776,9 +936,23 @@ class _AppShellState extends State<AppShell> {
     _ => 4,
   };
 
+  /// The seat stands for a section instead of for the word 更多.
+  ///
+  /// A tab that always reads 更多 hides four destinations behind a tap and
+  /// still tells the user nothing about where they lead. Remembering the last
+  /// one costs nothing, shows the destination in the bar, and keeps the seat's
+  /// icon and label meaningful while the user is standing on it.
+  Section _overflowSeat = Section.shortDramas;
+
+  bool _isOverflow(Section s) => _overflowMeta.containsKey(s);
+
   void _navSelect(int n) {
     if (n == 4) {
-      _showMore();
+      if (_isOverflow(_section)) {
+        _showMore();
+      } else {
+        _select(_overflowSeat);
+      }
       return;
     }
     _select(
@@ -790,7 +964,8 @@ class _AppShellState extends State<AppShell> {
     top: false,
     minimum: const EdgeInsets.only(bottom: 6),
     child: LiquidTabBar(
-      tabs: const [
+      tabs: [
+
         LiquidTab(
           label: '放映',
           icon: Icons.home_outlined,
@@ -811,7 +986,11 @@ class _AppShellState extends State<AppShell> {
           icon: Icons.hub_outlined,
           activeIcon: Icons.hub_rounded,
         ),
-        LiquidTab(label: '更多', icon: Icons.more_horiz),
+        LiquidTab(
+          label: _overflowMeta[_overflowSeat]!.label,
+          icon: _overflowMeta[_overflowSeat]!.icon,
+          activeIcon: _overflowMeta[_overflowSeat]!.active,
+        ),
       ],
       index: _navIndex,
       onSelect: _navSelect,
@@ -830,17 +1009,22 @@ class _AppShellState extends State<AppShell> {
             padding: EdgeInsets.fromLTRB(rail ? 20 : 24, 26, 16, 30),
             child: Row(
               children: [
+                // The app icon and the sidebar now show the same mark: a
+                // play shard cut from glass. An accent square with a play
+                // glyph in it is what every media app already has.
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 34,
+                  height: 34,
                   decoration: BoxDecoration(
                     color: WowColors.accent,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(11),
                   ),
-                  child: Icon(
-                    Icons.play_arrow_rounded,
-                    color: WowColors.onAccent,
-                    size: 24,
+                  child: Center(
+                    child: WowMark(
+                      size: 27,
+                      monochrome: true,
+                      color: WowColors.onAccent,
+                    ),
                   ),
                 ),
                 if (!rail) ...[
@@ -1007,6 +1191,7 @@ class _AppShellState extends State<AppShell> {
       key: const ValueKey('music'),
       store: _store,
       onOpen: _open,
+      onPlay: _play,
       initialKind: MediaKind.audio,
       onSources: () => _select(Section.sources),
       onInteract: _shakeGate.markInteraction,
@@ -1027,6 +1212,7 @@ class _AppShellState extends State<AppShell> {
       key: ValueKey(_libraryKey),
       store: _store,
       onOpen: _open,
+      onPlay: _play,
       initialText: _query,
       initialKind: _kind,
       initialWatch: _watch,
@@ -1052,20 +1238,29 @@ class _AppShellState extends State<AppShell> {
       agent: _agent,
       store: _store,
       downloads: _downloads,
-      onOpenDownloads: () => showDownloads(
-        context,
-        manager: _downloads,
-        onPlay: _playDownload,
-      ),
+      onOpenDownloads: _openDownloads,
       onConfigureAgent: () => configureAgent(context, _agent),
       onSources: () => _select(Section.sources),
     ),
   };
 }
 
+/// One action offered by the palette.
+class _PaletteCommand {
+  const _PaletteCommand({
+    required this.label,
+    required this.icon,
+    required this.run,
+  });
+  final String label;
+  final IconData icon;
+  final Future<void> Function(BuildContext) run;
+}
+
 class _CommandPalette extends StatefulWidget {
-  const _CommandPalette({required this.store});
+  const _CommandPalette({required this.store, required this.commands});
   final LibraryStore store;
+  final List<_PaletteCommand> commands;
   @override
   State<_CommandPalette> createState() => _CommandPaletteState();
 }
@@ -1121,6 +1316,25 @@ class _CommandPaletteState extends State<_CommandPalette> {
                             size: 16,
                           ),
                           onTap: () => Navigator.pop(context, d.$1),
+                        ),
+                      const Divider(height: 18),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                        child: Text(
+                          '设置',
+                          style: WowType.monoLabel(9, spacing: 1.4),
+                        ),
+                      ),
+                      for (final c in widget.commands)
+                        ListTile(
+                          dense: true,
+                          leading: Icon(c.icon, size: 18),
+                          title: Text(
+                            c.label,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          trailing: const Icon(Icons.tune, size: 15),
+                          onTap: () => Navigator.pop(context, c),
                         ),
                     ] else ...[
                       for (final i in items)

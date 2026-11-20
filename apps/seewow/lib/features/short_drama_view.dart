@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../data/library_store.dart';
 import '../design/cinema_widgets.dart';
+import '../design/liquid_glass.dart';
+import '../design/pressable.dart';
 import '../design/tokens.dart';
 import '../domain/catalog_category.dart';
 import '../domain/media_item.dart';
@@ -29,7 +31,14 @@ class ShortDramaView extends StatelessWidget {
   Widget build(BuildContext context) {
     final seasons = _group(store.items);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(28, 24, 28, 48),
+      // Same gutter as the library and the home feed: one number per
+      // breakpoint, not one per screen.
+      padding: EdgeInsets.fromLTRB(
+        WowSpace.gutter(MediaQuery.sizeOf(context).width),
+        24,
+        WowSpace.gutter(MediaQuery.sizeOf(context).width),
+        48,
+      ),
       children: [
         PageIntro(
           eyebrow: 'SHORT DRAMA',
@@ -50,10 +59,11 @@ class ShortDramaView extends StatelessWidget {
               icon: Icons.movie_filter_outlined,
               title: '还没有短剧',
               description: '片源里的竖屏短剧、微短剧，或单集 20 分钟以内的剧集会自动出现在这里。',
-              action: FilledButton.icon(
-                onPressed: onSources,
-                icon: const Icon(Icons.add),
-                label: const Text('连接片源'),
+              action: GlassButton(
+                label: '连接片源',
+                icon: Icons.add_rounded,
+                prominent: true,
+                onTap: onSources,
               ),
             ),
           )
@@ -154,8 +164,11 @@ class _DramaCardState extends State<_DramaCard> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
+      // A bare GestureDetector cannot be focused, so a keyboard user could not
+      // open a series at all. Pressable gives it focus ring + Enter/Space.
+      child: Pressable(
         onTap: widget.onOpen,
+        focusRadius: 14,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

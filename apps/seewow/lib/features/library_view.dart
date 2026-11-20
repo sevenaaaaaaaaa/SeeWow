@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/library_store.dart';
 import '../downloads/download_manager.dart';
 import '../design/cinema_widgets.dart';
+import '../design/liquid_glass.dart';
 import '../design/skeleton.dart';
 import '../design/tokens.dart';
 import '../design/skin.dart';
@@ -23,9 +24,13 @@ class LibraryView extends StatefulWidget {
     this.onSources,
     this.onInteract,
     this.downloads,
+    this.onPlay,
   });
   final LibraryStore store;
   final ValueChanged<MediaItem> onOpen;
+
+  /// Optional: play straight from a poster instead of opening the detail page.
+  final ValueChanged<MediaItem>? onPlay;
   final VoidCallback? onSources;
 
   /// Fired on any pointer-down: a shake right after a tap is never intended.
@@ -433,12 +438,21 @@ class _LibraryViewState extends State<LibraryView> {
                         : _offline
                         ? '还没有可离线播放的缓存：选中影片或整个片单后点「缓存选中」，就能在这里直接找到。'
                         : '试试更短的关键词，或调整来源、类型和观看状态。',
+                    // A no-result screen with no button is a dead end: the
+                    // user can see that nothing matched and has no way back
+                    // except editing six filters one at a time.
                     action: store.items.isEmpty
-                        ? FilledButton(
-                            onPressed: widget.onSources,
-                            child: const Text('连接片源'),
+                        ? GlassButton(
+                            label: '连接片源',
+                            icon: Icons.add_rounded,
+                            prominent: true,
+                            onTap: widget.onSources,
                           )
-                        : null,
+                        : GlassButton(
+                            label: '清除筛选',
+                            icon: Icons.filter_alt_off_outlined,
+                            onTap: _clearFilters,
+                          ),
                   ),
                 )
               else if (_list)
@@ -538,6 +552,9 @@ class _LibraryViewState extends State<LibraryView> {
                       item: items[n],
                       store: store,
                       onOpen: () => widget.onOpen(items[n]),
+                      onPlay: widget.onPlay == null
+                          ? null
+                          : () => widget.onPlay!(items[n]),
                       selectionMode: _selecting,
                       selected: _selected.contains(items[n].id),
                       onSelect: () => _toggle(items[n].id),
@@ -578,6 +595,19 @@ class _LibraryViewState extends State<LibraryView> {
       ),
     );
   }
+
+  /// Back to the whole library in one move.
+  void _clearFilters() => setState(() {
+    _search.clear();
+    _source = null;
+    _genre = null;
+    _kind = null;
+    _category = CatalogCategory.all;
+    _watch = WatchFilter.all;
+    _offline = false;
+    _audit = false;
+    _sort = LibrarySort.recent;
+  });
 
   void _toggle(String id) => setState(() {
     if (!_selected.remove(id)) _selected.add(id);

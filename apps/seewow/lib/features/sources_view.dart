@@ -11,6 +11,7 @@ import 'subscription_dialog.dart';
 import '../data/iptv_store.dart';
 import '../data/library_store.dart';
 import '../design/cinema_widgets.dart';
+import '../design/liquid_glass.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import '../domain/source_catalog.dart';
@@ -422,11 +423,16 @@ class _SourcesViewState extends State<SourcesView> {
               spacing: 10,
               runSpacing: 8,
               children: [
-                FilledButton.icon(
+                // One primary, one fallback. A filled button and the NAS
+                // tile above it opened the same chooser, so the page had two
+                // competing "start here" buttons for one door. The tiles are
+                // the primary; this is the honest fallback for someone who
+                // does not know which tile they need.
+                TextButton.icon(
                   onPressed: () =>
                       chooseSourceProvider(context, store, widget.iptv),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('选择网盘、NAS 或音乐服务'),
+                  icon: const Icon(Icons.help_outline, size: 17),
+                  label: const Text('不知道选哪个？查看全部接入方式'),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => connectSource(
@@ -490,10 +496,25 @@ class _SourcesViewState extends State<SourcesView> {
             ),
             const SizedBox(height: 16),
             if (store.sources.isEmpty)
-              const CinemaPanel(
-                child: Text(
-                  '还没有添加媒体来源。选择上方任一入口开始。',
-                  style: TextStyle(fontSize: 13),
+              CinemaPanel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '还没有添加媒体来源。',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    // 入口保留：已经连了来源的人也要能加第二个。空态这里
+                    // 给一个真正的按钮，而不是把用户送回页面顶部找磁贴。
+                    GlassButton(
+                      label: '选择接入方式',
+                      icon: Icons.hub_outlined,
+                      prominent: true,
+                      onTap: () =>
+                          chooseSourceProvider(context, store, widget.iptv),
+                    ),
+                  ],
                 ),
               ),
             for (final s in store.sources)

@@ -324,7 +324,15 @@ class _WatchCompanionPanelState extends State<WatchCompanionPanel> {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: ai,
-    builder: (context, _) => Padding(
+    builder: (context, _) => CallbackShortcuts(
+      // Esc belongs to the innermost surface that is open: here that is the
+      // companion panel, not the player behind it. The player still owns Esc
+      // when the panel is closed.
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () =>
+            Navigator.of(context).maybePop(),
+      },
+      child: Padding(
       padding: EdgeInsets.fromLTRB(
         20,
         12,
@@ -334,6 +342,28 @@ class _WatchCompanionPanelState extends State<WatchCompanionPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // A grabber that actually works: drag it down and the panel goes.
+          // Three text buttons at the bottom said the same thing and none of
+          // them followed the finger.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragEnd: (details) {
+              if ((details.primaryVelocity ?? 0) > 180) {
+                Navigator.of(context).maybePop();
+              }
+            },
+            child: Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: WowColors.muted.withValues(alpha: .55),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
           Row(
             children: [
               Container(
@@ -373,6 +403,11 @@ class _WatchCompanionPanelState extends State<WatchCompanionPanel> {
                 onPressed: () =>
                     configureWatchAi(context, settings: ai.settings),
                 icon: const Icon(Icons.tune, size: 20),
+              ),
+              IconButton(
+                tooltip: '收起（Esc）',
+                onPressed: () => Navigator.of(context).maybePop(),
+                icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 22),
               ),
             ],
           ),
@@ -577,14 +612,10 @@ class _WatchCompanionPanelState extends State<WatchCompanionPanel> {
               if (ai.busy || ai.translating)
                 TextButton(onPressed: ai.stop, child: const Text('停止请求')),
               TextButton(onPressed: ai.clear, child: const Text('清理会话与缓存')),
-              const Spacer(),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('收起'),
-              ),
             ],
           ),
         ],
+      ),
       ),
     ),
   );
