@@ -2,7 +2,7 @@
 
 **Cinema, made personal.** 一个以私人媒体库为中心的跨平台播放器，使用 Flutter + media_kit / libmpv。
 
-当前工作区为 **1.21.2 内置源包版**：修掉 iOS 已下载资源被误判为已丢失（应用容器 UUID 变更导致绝对路径失效）、底部 tab 整排偏左、媒体库筛选区占掉四分之一屏这三件真机问题，并把「在线源」「短剧分类浏览」「来源批量管理」「分享页三层解析」接进界面。**本版只出 iOS 包**，1.21.2 (27)，未签名、未上传 Release，文件在 `dist/SeeWow-iOS-1.21.2-arm64-unsigned.ipa`；内置 14 个直连采集站，装完打开「在线源」即可直接搜片；macOS / Android 仍停在 1.20.1。逐条见 [1.21.2 发布说明](docs/releases/1.21.2.md)（修复明细见 [1.21.1](docs/releases/1.21.1.md)）。
+当前工作区为 **1.21.2 内置源包版**：修掉 iOS 已下载资源被误判为已丢失（应用容器 UUID 变更导致绝对路径失效）、底部 tab 整排偏左、媒体库筛选区占掉四分之一屏这三件真机问题，并把「在线源」「短剧分类浏览」「来源批量管理」「分享页三层解析」接进界面。**本版出 iOS 与 macOS 两个本地包**，1.21.2 (27)，均未上传 Release：iOS 是 `dist/SeeWow-iOS-1.21.2-arm64-unsigned.ipa`（未签名），macOS 是 `dist/SeeWow-macos-1.21.2-preview.zip`（ad-hoc 签名、未公证）。两包都内置 14 个直连采集站，装完打开「在线源」即可直接搜片；Android 仍停在 1.20.1。逐条见 [1.21.2 发布说明](docs/releases/1.21.2.md)（修复明细见 [1.21.1](docs/releases/1.21.1.md)）。
 
 上一版 **1.21.0 视觉与入口版**：按液态玻璃规范重做材质、重排各屏入口并换掉标识，不改片源、扫描与播放内核，升级不需要迁移，见 [1.21.0 发布说明](docs/releases/1.21.0.md)。
 
@@ -10,9 +10,9 @@
 
 **质量与计划。** 当前版本的质检结论、缺陷清单与后续计划见 [路线图](docs/roadmap.md)；想确认"哪一版有什么、哪个平台现在能装什么"，见 [版本汇总](docs/release-index.md)；跨端对齐状态见 [对齐说明](docs/parity.md)。资源管理（本地目录 / Plex）的缺陷编号为 RM-01…RM-09，1.19.0 起已全部修复，对应 issue #2–#12。
 
-## 下载 1.21.2 预览包（仅 iOS，内置播放源）
+## 下载 1.21.2 预览包（iOS + macOS，内置播放源）
 
-> 本版**只出 iOS 一个包**，在本地 `dist/` 与 iCloud 各存一份，**尚未上传 GitHub Release**。macOS / Android 下载仍指向 1.20.1，Windows / Linux 仍指向 1.17.0。
+> 本版出 **iOS 与 macOS** 两个包，在本地 `dist/` 与 iCloud 各存一份，**尚未上传 GitHub Release**。Android 下载仍指向 1.20.1，Windows / Linux 仍指向 1.17.0。
 
 完整更新记录见 [1.21.2 发布说明](docs/releases/1.21.2.md)，校验值见同目录 `.sha256` 文件。
 
@@ -20,13 +20,13 @@
 
 | 平台 | 安装包 | 安装与签名状态 |
 | --- | --- | --- |
-| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.1/SeeWow-macos-1.20.1-preview.zip) | **1.21.2 未出包，仍是 1.20.1**；macOS 13+；ad-hoc 签名、未公证 |
+| macOS Universal | `dist/SeeWow-macos-1.21.2-preview.zip`（本地预览，未上传） | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证 |
 | iOS / iPadOS ARM64 | `dist/SeeWow-iOS-1.21.2-arm64-unsigned.ipa`（本地预览，未上传；内置 14 个采集站） | iOS 15+；**未签名**，需使用自己的证书与描述文件重签；不是 App Store / TestFlight 包 |
 | Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.1/SeeWow-Android-1.20.1-preview.apk) | **1.21.2 未出包，仍是 1.20.1**；Android 7.0+；开发签名预览包 |
 | Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-windows-1.17.0.zip) | **1.21.2 未出包，仍是 1.17.0**；解压后运行 `seewow.exe` |
 | Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-linux-1.17.0.zip) | **1.21.2 未出包，仍是 1.17.0**；解压后运行 `seewow`，需要系统 libmpv |
 
-iOS 为 1.21.2；macOS / Android 停在 1.20.1；Windows / Linux 停在 1.17.0。
+iOS 与 macOS 为 1.21.2（本地包）；Android 停在 1.20.1；Windows / Linux 停在 1.17.0。
 
 AI 功能默认关闭，需要用户自行配置 API；自动解说依赖系统语音（macOS / Windows / Linux 各自内置）。使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
 
