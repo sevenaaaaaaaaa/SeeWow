@@ -1006,7 +1006,8 @@ class _SitesDialogState extends State<_SitesDialog> {
               Text('站点', style: WowType.display(22, FontWeight.w500)),
               const SizedBox(height: 4),
               Text(
-                '采集站用纯 HTTP 接口；直播源导入后进「直播」页',
+                '内置 ${dedupeSites(seedOnlineSites).length} 个直连采集站 · '
+                '粘一条 TVBox 配置可再导入；直播源导入后进「直播」页',
                 style: WowType.monoLabel(
                   9,
                   color: Colors.white.withValues(alpha: 0.34),

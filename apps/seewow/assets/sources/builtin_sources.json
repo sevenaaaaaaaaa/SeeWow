@@ -1,0 +1,97 @@
+{
+  "schema": "seewow.online-sources/v1",
+  "packVersion": "1",
+  "generatedAt": "2026-11-21",
+  "notes": [
+    "随包内置的播放源：14 个苹果 CMS 直连采集站（?ac=videolist&wd= 查询，返回 JSON/XML，播放地址直出 m3u8/mp4）。",
+    "不含 jar / js / py 爬虫。这类站点需要 TVBox 插件运行时，本应用不加载。",
+    "直播源不在内置清单里：从「在线源 → 站点」粘一条 TVBox 配置地址，导入后进「直播」页。",
+    "字段含义与 apps/seewow/lib/domain/online_source.dart 一致；改这个文件即可换包，不需要改代码。"
+  ],
+  "sites": [
+    {
+      "id": "dytt",
+      "name": "电影天堂",
+      "api": "http://caiji.dyttzyapi.com/api.php/provide/vod",
+      "enabled": true
+    },
+    {
+      "id": "tyys",
+      "name": "天涯",
+      "api": "http://tyyszy.com/api.php/provide/vod",
+      "enabled": true
+    },
+    {
+      "id": "lzi",
+      "name": "量子",
+      "api": "https://cj.lziapi.com/api.php/provide/vod/",
+      "enabled": true
+    },
+    {
+      "id": "ffzy",
+      "name": "非凡",
+      "api": "http://ffzy.tv/api.php/provide/vod/",
+      "enabled": true
+    },
+    {
+      "id": "sony",
+      "name": "索尼",
+      "api": "https://suoniapi.com/api.php/provide/vod/at/xml/",
+      "enabled": true
+    },
+    {
+      "id": "wolong",
+      "name": "卧龙资源",
+      "api": "https://wolongzyw.com/api.php/provide/vod/?ac=list",
+      "enabled": true
+    },
+    {
+      "id": "uku",
+      "name": "尤酷",
+      "api": "https://api.ukuapi.com/api.php/provide/vod/?ac=list",
+      "enabled": true
+    },
+    {
+      "id": "jisu",
+      "name": "极速资源",
+      "api": "https://jszyapi.com/api.php/provide/vod/?ac=list",
+      "enabled": true
+    },
+    {
+      "id": "jianan",
+      "name": "建安采集",
+      "api": "http://154.219.117.232:9981/jacloudapi.php/provide/vod",
+      "enabled": true
+    },
+    {
+      "id": "jinchan",
+      "name": "金蝉采集",
+      "api": "https://zy.jinchancaiji.com/api.php/provide/vod",
+      "enabled": true
+    },
+    {
+      "id": "xiaomianyang",
+      "name": "小绵阳",
+      "api": "https://vs.okcdn100.top/api.php/provide/vod",
+      "enabled": true
+    },
+    {
+      "id": "lv",
+      "name": "率率",
+      "api": "https://suoniapi.com/api.php/provide/vod/?ac=list",
+      "enabled": true
+    },
+    {
+      "id": "baidu",
+      "name": "百度资源",
+      "api": "https://api.apibdzy.com/api.php/provide/vod?ac=list",
+      "enabled": true
+    },
+    {
+      "id": "bfzy",
+      "name": "暴风资源",
+      "api": "https://bfzyapi.com/api.php/provide/vod/?ac=list",
+      "enabled": true
+    }
+  ]
+}

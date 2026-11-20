@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 
 import '../domain/online_source.dart';
@@ -14,6 +15,9 @@ class OnlineSourceStore extends ChangeNotifier {
   OnlineSourceStore.empty()
     : _override = null,
       _inMemory = true;
+
+  /// 随包内置的源包。改这个 JSON 就能换包，不必改代码。
+  static const builtinPack = 'assets/sources/builtin_sources.json';
 
   final Directory? _override;
   bool _inMemory = false;
@@ -56,6 +60,8 @@ class OnlineSourceStore extends ChangeNotifier {
             ..addAll(list.map(OnlineSite.fromJson).whereType<OnlineSite>());
         }
       }
+      // 首次启动（还没有本地清单）先认内置源包；读不到才回落到代码里的种子。
+      if (!existed) sites.addAll(await _readBuiltinPack());
       if (sites.isEmpty) sites.addAll(seedOnlineSites);
       final unique = dedupeSites(sites);
       sites
@@ -70,6 +76,25 @@ class OnlineSourceStore extends ChangeNotifier {
     } finally {
       loading = false;
       notifyListeners();
+    }
+  }
+
+  /// 读随包内置的站点清单。任何失败都返回空，交给调用方回落，不抛给界面。
+  Future<List<OnlineSite>> _readBuiltinPack() async {
+    if (_inMemory) return const [];
+    try {
+      // 源包是加分项，不是启动门槛：读不到（旧包、测试环境、插件异常）
+      // 就当作空，让调用方回落到代码里的种子，绝不让启动卡在这里。
+      final text = await rootBundle
+          .loadString(builtinPack)
+          .timeout(const Duration(milliseconds: 750), onTimeout: () => '');
+      if (text.isEmpty) return const [];
+      final raw = jsonDecode(text);
+      final list = raw is Map ? raw['sites'] : null;
+      if (list is! List) return const [];
+      return dedupeSites(list.map(OnlineSite.fromJson).whereType<OnlineSite>());
+    } catch (_) {
+      return const [];
     }
   }
 

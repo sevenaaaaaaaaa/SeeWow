@@ -1,7 +1,7 @@
 name: seewow
 description: "SeeWow — Cinema for every screen. A cross-platform personal cinema player."
 publish_to: 'none'
-version: 1.21.1+26
+version: 1.21.2+27
 
 environment:
   sdk: ^3.13.7
@@ -30,6 +30,7 @@ flutter:
   assets:
     - assets/fonts/
     - assets/branding/
+    - assets/sources/builtin_sources.json
   fonts:
     - family: NotoSerifTibetan
       fonts:
