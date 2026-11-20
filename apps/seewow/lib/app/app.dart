@@ -6,6 +6,7 @@ import '../data/iptv_store.dart';
 import '../data/library_store.dart';
 import '../sources/native_bridge.dart';
 import '../sources/source_scanner.dart';
+import '../design/brand_mark.dart';
 import '../design/skin.dart';
 import '../watch_ai/watch_ai_settings.dart';
 import '../design/theme.dart';
@@ -193,11 +194,17 @@ class _BootScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // The first frame of the app is the mark, not a progress bar. A
+            // cold start is the one moment the user is looking at nothing but
+            // the brand, and a serif title with a hairline under it said
+            // "loading screen" instead of "cinema".
+            const WowMark(size: 92),
+            const SizedBox(height: 20),
             Text(
               'SeeWow',
-              style: WowType.display(34, FontWeight.w600, spacing: -0.6),
+              style: WowType.display(30, FontWeight.w500, spacing: -0.6),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 18),
             SizedBox(
               width: 120,
               child: LinearProgressIndicator(
