@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../data/iptv_store.dart';
+import '../data/online_source_store.dart';
 import '../data/library_store.dart';
 import '../sources/native_bridge.dart';
 import '../sources/source_scanner.dart';
@@ -26,6 +27,7 @@ class SeeWowApp extends StatefulWidget {
 class _SeeWowAppState extends State<SeeWowApp> {
   final LibraryStore _store = LibraryStore();
   final IPTVStore _iptv = IPTVStore();
+  final OnlineSourceStore _online = OnlineSourceStore();
   bool _ready = false;
 
   @override
@@ -52,6 +54,7 @@ class _SeeWowAppState extends State<SeeWowApp> {
     }
     await _store.load();
     await _iptv.load();
+    await _online.load();
     final scanner = SourceScanner();
     _store.scanner = scanner.scan;
     await _store.hydrateCredentials(scanner.headersFor);
@@ -177,7 +180,7 @@ class _SeeWowAppState extends State<SeeWowApp> {
         debugShowCheckedModeBanner: false,
         theme: buildWowTheme(),
         home: _ready
-            ? AppShell(store: _store, iptv: _iptv)
+            ? AppShell(store: _store, iptv: _iptv, online: _online)
             : const _BootScreen(),
       ),
     );

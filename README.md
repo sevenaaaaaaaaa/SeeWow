@@ -2,29 +2,29 @@
 
 **Cinema, made personal.** 一个以私人媒体库为中心的跨平台播放器，使用 Flutter + media_kit / libmpv。
 
-当前工作区为 **1.21.0 视觉与入口版**（本地预览包，未上传 Release；下载页仍指向 1.20.1）。这一版按液态玻璃规范重做材质、重排各屏入口并换掉标识，不改片源、扫描与播放内核，升级不需要迁移；逐条见 [1.21.0 发布说明](docs/releases/1.21.0.md)。
+当前工作区为 **1.21.0 视觉与入口版**，已发布 v1.21.0：**macOS / iOS / Android** 三包齐出。这一版按液态玻璃规范重做材质、重排各屏入口并换掉标识，不改片源、扫描与播放内核，升级不需要迁移；逐条见 [1.21.0 发布说明](docs/releases/1.21.0.md)。
 
 上一版 **1.20.1 离线缓存修复版**。这一版只修一件真机点出来的事：**已经下载到本机的文件，必须能在离线时被找到并播放**——缓存匹配改成按「文件真的在磁盘上 + 同来源同标题」认定，不再只信会随来源重连而变化的条目 id；下载页的「离线播放」直接把 `file://` 交给播放器，不再绕回片源联网；文件被移走时显示「文件已丢失」，不假装能播。逐条见 [1.20.1 发布说明](docs/releases/1.20.1.md)。上一版 1.20.0 的模型平台预设与地址补全、语音译配通用 JSON 适配、Plex 音乐曲目导入、媒体库「已缓存」筛选、设置页分组保持不变（见 [1.20.0 发布说明](docs/releases/1.20.0.md)）；1.19.0 的资源管理修复（RM-01…09）、1.17.0 的多源资料匹配与自动解说同样不变。默认关闭的 [AI 字幕与小映陪看](docs/ai-watch.md) 保持可用；支持三套主题、皮肤工作室和 design.md 生成，详见 [皮肤说明](skins/README.md) 与 [design.md 模板](design.md)。
 
 **质量与计划。** 当前版本的质检结论、缺陷清单与后续计划见 [路线图](docs/roadmap.md)；想确认"哪一版有什么、哪个平台现在能装什么"，见 [版本汇总](docs/release-index.md)；跨端对齐状态见 [对齐说明](docs/parity.md)。资源管理（本地目录 / Plex）的缺陷编号为 RM-01…RM-09，1.19.0 起已全部修复，对应 issue #2–#12。
 
-## 下载 1.20.1 体验预览版
+## 下载 1.21.0 体验预览版
 
 > 本版出 **macOS / iOS / Android** 三包，`SHA256SUMS.txt` 随资产上传。**Windows / Linux 本版未出包**，下载仍指向 1.17.0。
 
-完整更新记录见 [1.20.1 发布说明](docs/releases/1.20.1.md)，安装包与校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.20.1)。
+完整更新记录见 [1.21.0 发布说明](docs/releases/1.21.0.md)，安装包与校验文件见 [GitHub Release](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.21.0)。
 
-这一版修的是离线缓存：已经下载的文件按文件与标题找回，下载页「离线播放」不再联网。三端按版本号 1.20.1 / versionCode 24 构建，不新增功能；各包大小与 SHA-256 见发布说明。
+这一版只改外观与入口：液态玻璃按规范重做、各屏入口重排、标识换新，功能内核与数据格式不变。三端均按 1.21.0 (25) 构建；大小与 SHA-256 见发布说明。
 
 | 平台 | 安装包 | 安装与签名状态 |
 | --- | --- | --- |
-| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.1/SeeWow-macos-1.20.1-preview.zip) | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证 |
-| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.1/SeeWow-iOS-1.20.1-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
-| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.1/SeeWow-Android-1.20.1-preview.apk) | Android 7.0+；Release 编译、开发签名预览包（versionCode 24） |
-| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-windows-1.17.0.zip) | **1.20.1 未出包，仍是 1.17.0**；解压后运行 `seewow.exe` |
-| Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-linux-1.17.0.zip) | **1.20.1 未出包，仍是 1.17.0**；解压后运行 `seewow`，需要系统 libmpv |
+| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.0/SeeWow-macos-1.21.0-preview.zip) | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证 |
+| iOS / iPadOS ARM64 | [下载 IPA](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.0/SeeWow-iOS-1.21.0-arm64-unsigned.ipa) | iOS 15+；未签名，需使用自己的证书与描述文件重签 |
+| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.0/SeeWow-Android-1.21.0-preview.apk) | Android 7.0+；Release 编译、开发签名预览包（versionCode 25） |
+| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-windows-1.17.0.zip) | **1.21.0 未出包，仍是 1.17.0**；解压后运行 `seewow.exe` |
+| Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-linux-1.17.0.zip) | **1.21.0 未出包，仍是 1.17.0**；解压后运行 `seewow`，需要系统 libmpv |
 
-三端均为 1.20.1；Windows / Linux 仍停在 1.17.0。
+macOS / iOS / Android 均为 1.21.0；Windows / Linux 仍停在 1.17.0。
 
 AI 功能默认关闭，需要用户自行配置 API；自动解说依赖系统语音（macOS / Windows / Linux 各自内置）。使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
 

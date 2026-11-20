@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:seewow/agent/agent_controller.dart';
 import 'package:seewow/app/app_shell.dart';
+import 'package:seewow/data/online_source_store.dart';
 import 'package:seewow/data/iptv_store.dart';
 import 'package:seewow/data/library_store.dart';
 import 'package:seewow/design/skin.dart';
@@ -183,7 +184,7 @@ void main() {
     tester,
   ) async {
     addTearDown(tester.view.reset);
-    await mount(tester, AppShell(store: store, iptv: iptv), 1440);
+    await mount(tester, AppShell(store: store, iptv: iptv, online: OnlineSourceStore.empty()), 1440);
     await tester.tap(find.text('搜索你的影院'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, 'Dune');
@@ -196,7 +197,7 @@ void main() {
   testWidgets('offline cache lives in the global top bar', (tester) async {
     addTearDown(tester.view.reset);
     for (final width in [375.0, 1440.0]) {
-      await mount(tester, AppShell(store: store, iptv: iptv), width);
+      await mount(tester, AppShell(store: store, iptv: iptv, online: OnlineSourceStore.empty()), width);
       expect(
         find.byTooltip('离线缓存'),
         findsOneWidget,

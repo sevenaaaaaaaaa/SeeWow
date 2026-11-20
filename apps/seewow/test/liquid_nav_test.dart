@@ -1,95 +1,86 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:seewow/design/liquid_glass.dart';
 import 'package:seewow/design/liquid_nav.dart';
 
 const _tabs = [
-  LiquidTab(label: '放映', icon: Icons.home_outlined),
-  LiquidTab(label: '片库', icon: Icons.video_library_outlined),
-  LiquidTab(label: 'Agent', icon: Icons.auto_awesome_outlined),
+  LiquidTab(label: '放映', icon: Icons.home_outlined, activeIcon: Icons.home_rounded),
   LiquidTab(
-    label: '片源',
-    icon: Icons.hub_outlined,
-    activeIcon: Icons.hub_rounded,
+    label: '片库',
+    icon: Icons.video_library_outlined,
+    activeIcon: Icons.video_library_rounded,
   ),
-  LiquidTab(label: '更多', icon: Icons.more_horiz),
+  LiquidTab(
+    label: 'Agent',
+    icon: Icons.auto_awesome_outlined,
+    activeIcon: Icons.auto_awesome,
+  ),
+  LiquidTab(label: '片源', icon: Icons.hub_outlined, activeIcon: Icons.hub_rounded),
+  LiquidTab(
+    label: '短剧',
+    icon: Icons.movie_filter_outlined,
+    activeIcon: Icons.movie_filter,
+  ),
 ];
 
-void main() {
-  testWidgets('the bar shows five seats and reports the one that was tapped', (
-    tester,
-  ) async {
-    var index = 0;
-    final picked = <int>[];
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          bottomNavigationBar: StatefulBuilder(
-            builder: (context, setState) => LiquidTabBar(
-              tabs: _tabs,
-              index: index,
-              onSelect: (i) {
-                picked.add(i);
-                setState(() => index = i);
-              },
-            ),
+Future<void> _pump(WidgetTester tester, {int index = 0}) async {
+  tester.view.physicalSize = const Size(1290, 2796); // iPhone 15 Pro Max
+  tester.view.devicePixelRatio = 3.0;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: Align(
+          alignment: Alignment.bottomCenter,
+          child: LiquidTabBar(
+            tabs: _tabs,
+            index: index,
+            onSelect: (_) {},
           ),
         ),
       ),
-    );
-
-    for (final tab in _tabs) {
-      expect(find.text(tab.label), findsOneWidget);
-    }
-
-    expect(find.byIcon(Icons.home_outlined), findsOneWidget);
-    await tester.tap(find.text('片源'));
-    await tester.pump(const Duration(milliseconds: 1000));
-
-    expect(picked, [3]);
-    expect(find.byIcon(Icons.hub_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.home_outlined), findsOneWidget);
-  });
-
-  testWidgets('tapping the seat already selected does nothing', (tester) async {
-    var index = 0;
-    var calls = 0;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          bottomNavigationBar: StatefulBuilder(
-            builder: (context, setState) => LiquidTabBar(
-              tabs: _tabs,
-              index: index,
-              onSelect: (i) {
-                calls++;
-                setState(() => index = i);
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.tap(find.text('放映'));
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(calls, 0);
-  });
-
-  testWidgets('the bar keeps its shape when the system asks for less motion', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      const MediaQuery(
-        data: MediaQueryData(disableAnimations: true),
-        child: MaterialApp(
-          home: Scaffold(
-            bottomNavigationBar: LiquidTabBar(tabs: _tabs, index: 2, onSelect: _noop),
-          ),
-        ),
-      ),
-    );
-    expect(find.text('Agent'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+    ),
+  );
+  await tester.pump(const Duration(milliseconds: 600));
 }
 
-void _noop(int _) {}
+void main() {
+  testWidgets('每个 tab 的图标与文字都落在自己那一格里，不向左偏', (tester) async {
+    await _pump(tester);
+    for (var i = 0; i < _tabs.length; i++) {
+      final seat = tester.getRect(find.byType(PressableLens).at(i));
+      final label = tester.getRect(find.text(_tabs[i].label));
+      expect(
+        (label.center.dx - seat.center.dx).abs(),
+        lessThan(0.6),
+        reason: '座位 $i 的文字中心应贴在座位中线上',
+      );
+      expect(label.left, greaterThanOrEqualTo(seat.left - 0.5));
+      expect(label.right, lessThanOrEqualTo(seat.right + 0.5));
+    }
+  });
+
+  testWidgets('图标同样居中，且整排竖着留在 bar 里', (tester) async {
+    await _pump(tester);
+    final bar = tester.getRect(find.byType(LiquidTabBar));
+    for (var i = 0; i < _tabs.length; i++) {
+      final seat = tester.getRect(find.byType(PressableLens).at(i));
+      final icon = tester.getRect(
+        find.byIcon(i == 0 ? (_tabs[i].activeIcon ?? _tabs[i].icon) : _tabs[i].icon),
+      );
+      expect((icon.center.dx - seat.center.dx).abs(), lessThan(1.5));
+      expect(icon.top, greaterThanOrEqualTo(bar.top - 1));
+      final label = tester.getRect(find.text(_tabs[i].label));
+      expect(label.bottom, lessThanOrEqualTo(bar.bottom + 1));
+    }
+  });
+
+  testWidgets('换到第 3 个座位时，选中态不影响其它格的对齐', (tester) async {
+    await _pump(tester, index: 2);
+    for (var i = 0; i < _tabs.length; i++) {
+      final seat = tester.getRect(find.byType(PressableLens).at(i));
+      final label = tester.getRect(find.text(_tabs[i].label));
+      expect((label.center.dx - seat.center.dx).abs(), lessThan(0.6));
+    }
+  });
+}

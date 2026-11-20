@@ -1,0 +1,139 @@
+{
+ "sites": [
+  {
+   "key": "电影天堂",
+   "name": "影视 • 电影天堂",
+   "type": 1,
+   "api": "http://caiji.dyttzyapi.com/api.php/provide/vod",
+   "searchable": 1,
+   "quickSearch": 1,
+   "filterable": 1,
+   "changeable": 1,
+   "playerType": 2
+  },
+  {
+   "key": "天涯采集",
+   "name": "影视 • 天涯",
+   "type": 1,
+   "api": "http://tyyszy.com/api.php/provide/vod",
+   "style": {
+    "type": "rect",
+    "ratio": 1.33
+   },
+   "searchable": 1,
+   "quickSearch": 1,
+   "filterable": 1,
+   "changeable": 1,
+   "playerType": 2
+  },
+  {
+   "key": "量子",
+   "name": "影视 • 量子[直连]",
+   "type": 1,
+   "api": "https://cj.lziapi.com/api.php/provide/vod/",
+   "searchable": 1,
+   "categories": [
+    "动作片",
+    "喜剧片",
+    "爱情片",
+    "科幻片",
+    "恐怖片",
+    "剧情片",
+    "战争片",
+    "国产剧",
+    "香港剧",
+    "韩国剧",
+    "欧美剧",
+    "记录片",
+    "台湾剧",
+    "日本剧",
+    "海外剧",
+    "泰国剧",
+    "大陆综艺",
+    "港台综艺",
+    "日韩综艺",
+    "欧美综艺",
+    "国产动漫",
+    "日韩动漫",
+    "欧美动漫",
+    "港台动漫",
+    "海外动漫"
+   ]
+  },
+  {
+   "key": "配置中心",
+   "name": "配置 • 中心",
+   "type": 3,
+   "api": "csp_Config",
+   "searchable": 0,
+   "changeable": 0,
+   "indexs": 0,
+   "style": {
+    "type": "rect",
+    "ratio": 1.597
+   }
+  },
+  {
+   "key": "本地",
+   "name": "本地 • 视频",
+   "type": 3,
+   "api": "csp_LocalFile"
+  },
+  {
+   "key": "drpy_js_豆瓣",
+   "name": "搜索 • 豆瓣",
+   "type": 3,
+   "api": "./lib/drpy2.min.js",
+   "ext": "./js/drpy.js",
+   "searchable": 1,
+   "quickSearch": 0,
+   "changeable": 0
+  },
+  {
+   "key": "italkbbtv",
+   "name": "ITalkBB • 外",
+   "type": 3,
+   "api": "./py/ITalkBBTV.py",
+   "searchable": 1,
+   "quickSearch": 1,
+   "filterable": 0,
+   "changeable": 1
+  }
+ ],
+ "lives": [
+  {
+   "name": "migu",
+   "type": 0,
+   "url": "https://develop202.github.io/migu_video/interface.txt",
+   "playerType": 1,
+   "ua": "okhttp/3.8.1",
+   "timeout": 20,
+   "epg": "https://epg.cdn.loc.cc/?ch={name}&date={date}",
+   "logo": "https://logo.wyfc.qzz.io/{name}.png"
+  },
+  {
+   "name": "live",
+   "type": 0,
+   "url": "https://epg.pw/test_channels.m3u",
+   "playerType": 1,
+   "ua": "okhttp/3.8.1",
+   "timeout": 20,
+   "epg": "https://epg.cdn.loc.cc/?ch={name}&date={date}",
+   "logo": "https://logo.wyfc.qzz.io/{name}.png"
+  }
+ ],
+ "parses": [
+  {
+   "name": "Json聚合",
+   "type": 3,
+   "url": "Demo"
+  },
+  {
+   "name": "jx",
+   "type": 0,
+   "url": "https://jx.m3u8.tv/jx/jx.php?url="
+  }
+ ],
+ "spider": "",
+ "sitesCountObserved": 165
+}

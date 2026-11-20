@@ -9,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 import '../agent/agent_controller.dart';
 import 'shake_refresh.dart';
 import '../data/iptv_store.dart';
+import '../data/online_source_store.dart';
 import '../data/library_store.dart';
 import '../design/brand_mark.dart';
 import '../design/cinema_widgets.dart';
@@ -28,6 +29,7 @@ import '../features/library_view.dart';
 import '../features/live_view.dart';
 import '../features/settings_view.dart';
 import '../features/short_drama_view.dart';
+import '../features/online_source_view.dart';
 import '../features/sources_view.dart';
 import '../playback/player_screen.dart';
 import '../remote/remote_hub.dart';
@@ -43,6 +45,7 @@ enum Section {
   sources,
   agent,
   live,
+  online,
   settings,
   music,
 }
@@ -55,6 +58,7 @@ const _destinations = [
   (Section.sources, Icons.hub_outlined, '片源与订阅'),
   (Section.agent, Icons.auto_awesome_outlined, '影院 Agent'),
   (Section.live, Icons.sensors_rounded, '直播'),
+  (Section.online, Icons.travel_explore_rounded, '在线源'),
   (Section.music, Icons.library_music_outlined, '音乐库'),
   (Section.settings, Icons.settings_outlined, '设置'),
 ];
@@ -74,6 +78,11 @@ class _SheetLabel extends StatelessWidget {
 /// What the fifth seat shows while it stands for a section.
 const _overflowMeta =
     <Section, ({String label, IconData icon, IconData active})>{
+      Section.online: (
+        label: '在线源',
+        icon: Icons.travel_explore_outlined,
+        active: Icons.travel_explore_rounded,
+      ),
       Section.shortDramas: (
         label: '短剧',
         icon: Icons.movie_filter_outlined,
@@ -102,9 +111,15 @@ const _overflowMeta =
     };
 
 class AppShell extends StatefulWidget {
-  const AppShell({super.key, required this.store, required this.iptv});
+  const AppShell({
+    super.key,
+    required this.store,
+    required this.iptv,
+    required this.online,
+  });
   final LibraryStore store;
   final IPTVStore iptv;
+  final OnlineSourceStore online;
   @override
   State<AppShell> createState() => _AppShellState();
 }
@@ -1186,6 +1201,7 @@ class _AppShellState extends State<AppShell> {
       store: _store,
       onPlayQueue: _playDramaQueue,
       onSources: () => _select(Section.sources),
+      onOnline: () => _select(Section.online),
     ),
     Section.music => LibraryView(
       key: const ValueKey('music'),
@@ -1234,6 +1250,11 @@ class _AppShellState extends State<AppShell> {
     ),
     Section.agent => AgentView(agent: _agent, iptv: widget.iptv, onOpen: _open),
     Section.live => LiveView(store: widget.iptv, onPlay: _playLive),
+    Section.online => OnlineSourceView(
+      store: widget.online,
+      iptv: widget.iptv,
+      onPlay: (item, {live = false}) => _playLive(item, live: live),
+    ),
     Section.settings => SettingsView(
       agent: _agent,
       store: _store,

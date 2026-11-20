@@ -179,6 +179,12 @@ class _LibraryViewState extends State<LibraryView> {
                                   : Icons.view_list_rounded,
                             ),
                           ),
+                          if (items.isNotEmpty)
+                            IconButton(
+                              tooltip: '结果保存为片单',
+                              onPressed: () => _save(items),
+                              icon: const Icon(Icons.playlist_add, size: 20),
+                            ),
                           IconButton(
                             tooltip: '批量选择',
                             isSelected: _selecting,
@@ -191,97 +197,51 @@ class _LibraryViewState extends State<LibraryView> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          for (final category in CatalogCategory.values)
-                            ChoiceChip(
-                              label: Text(
-                                categoryLabel(category),
-                                style: const TextStyle(fontSize: 11),
+                      // 筛选条只占一行：分类、筛选、待整理、已缓存、保存片单
+                      // 全在这条横滚带上。五个下拉原本各占一格、手机上排成
+                      // 三行，把结果压到半屏以下，现在收进「筛选」面板。
+                      SizedBox(
+                        height: 34,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: [
+                            for (final category in CatalogCategory.values) ...[
+                              _chip(
+                                label: categoryLabel(category),
+                                selected: _category == category,
+                                onTap: () =>
+                                    setState(() => _category = category),
                               ),
-                              selected: _category == category,
-                              visualDensity: VisualDensity.compact,
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                              onSelected: (_) =>
-                                  setState(() => _category = category),
+                              const SizedBox(width: 6),
+                            ],
+                            _chip(
+                              label: activeFilters == 0
+                                  ? '筛选'
+                                  : '筛选 · $activeFilters',
+                              icon: Icons.tune_rounded,
+                              selected: activeFilters > 0,
+                              onTap: () => _openFilters(store, genres),
                             ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          _filter<String>('全部来源', _source, [
-                            for (final s in store.sources)
-                              DropdownMenuItem(
-                                value: s.id,
-                                child: Text(s.name),
+                            const SizedBox(width: 6),
+                            _chip(
+                              label:
+                                  '待整理 · ${audit.duplicates.length}/${audit.missingMetadata.length}',
+                              icon: Icons.fact_check_outlined,
+                              selected: _audit,
+                              onTap: () => setState(() => _audit = !_audit),
+                            ),
+                            if (downloads != null) ...[
+                              const SizedBox(width: 6),
+                              _chip(
+                                label: '已缓存 · $offlineCount',
+                                icon: Icons.download_done_outlined,
+                                selected: _offline,
+                                onTap: () =>
+                                    setState(() => _offline = !_offline),
                               ),
-                          ], (v) => setState(() => _source = v)),
-                          _filter<String>('全部类型', _genre, [
-                            for (final g in genres)
-                              DropdownMenuItem(value: g, child: Text(g)),
-                          ], (v) => setState(() => _genre = v)),
-                          _filter<MediaKind>('全部媒体', _kind, const [
-                            DropdownMenuItem(
-                              value: MediaKind.movie,
-                              child: Text('电影'),
-                            ),
-                            DropdownMenuItem(
-                              value: MediaKind.episode,
-                              child: Text('剧集'),
-                            ),
-                            DropdownMenuItem(
-                              value: MediaKind.audio,
-                              child: Text('音乐'),
-                            ),
-                          ], (v) => setState(() => _kind = v)),
-                          SizedBox(
-                            width: 138,
-                            child: DropdownButtonFormField<WatchFilter>(
-                              initialValue: _watch,
-                              isExpanded: true,
-                              decoration: const InputDecoration(isDense: true),
-                              items: [
-                                for (final f in WatchFilter.values)
-                                  DropdownMenuItem(
-                                    value: f,
-                                    child: Text(
-                                      _watchLabel(f),
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  ),
-                              ],
-                              onChanged: (v) => setState(() => _watch = v!),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 138,
-                            child: DropdownButtonFormField<LibrarySort>(
-                              initialValue: _sort,
-                              isExpanded: true,
-                              decoration: const InputDecoration(isDense: true),
-                              items: [
-                                for (final f in LibrarySort.values)
-                                  DropdownMenuItem(
-                                    value: f,
-                                    child: Text(switch (f) {
-                                      LibrarySort.recent => '最近添加',
-                                      LibrarySort.title => '片名排序',
-                                      LibrarySort.rating => '评分优先',
-                                      LibrarySort.year => '最新年份',
-                                    }, style: const TextStyle(fontSize: 12)),
-                                  ),
-                              ],
-                              onChanged: (v) => setState(() => _sort = v!),
-                            ),
-                          ),
-                        ],
+                            ],
+                          ],
+                        ),
                       ),
                       if (_category == CatalogCategory.shortDrama)
                         Padding(
@@ -294,56 +254,44 @@ class _LibraryViewState extends State<LibraryView> {
                             ),
                           ),
                         ),
-                      const SizedBox(height: 18),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
+                      const SizedBox(height: 8),
+                      Row(
                         children: [
                           Text(
                             '${items.length} 个条目',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 11.5,
                               color: WowColors.muted,
                             ),
                           ),
-                          FilterChip(
-                            selected: _audit,
-                            visualDensity: VisualDensity.compact,
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                            avatar: const Icon(
-                              Icons.fact_check_outlined,
-                              size: 14,
-                            ),
-                            label: Text(
-                              '待整理 · ${audit.duplicates.length} 组重复 / ${audit.missingMetadata.length} 项信息缺失',
-                              style: const TextStyle(fontSize: 10.5),
-                            ),
-                            onSelected: (v) => setState(() => _audit = v),
-                          ),
-                          if (downloads != null)
-                            FilterChip(
-                              selected: _offline,
-                              visualDensity: VisualDensity.compact,
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                              avatar: const Icon(
-                                Icons.download_done_outlined,
-                                size: 14,
+                          if (_audit)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: Text(
+                                '重复 ${audit.duplicates.length} 组 · 缺信息 ${audit.missingMetadata.length} 项',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: WowColors.accent,
+                                ),
                               ),
-                              label: Text(
-                                '已缓存 · $offlineCount',
-                                style: const TextStyle(fontSize: 10.5),
-                              ),
-                              tooltip: '只看已离线缓存到本机的作品',
-                              onSelected: (v) => setState(() => _offline = v),
                             ),
-                          if (items.isNotEmpty)
-                            TextButton.icon(
-                              onPressed: () => _save(items),
-                              icon: const Icon(Icons.playlist_add, size: 17),
-                              label: const Text('结果保存为片单'),
+                          const Spacer(),
+                          if (activeFilters > 0)
+                            TextButton(
+                              onPressed: () => setState(() {
+                                _source = null;
+                                _genre = null;
+                                _kind = null;
+                                _watch = WatchFilter.all;
+                                _sort = LibrarySort.recent;
+                              }),
+                              style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
+                              ),
+                              child: const Text('清除筛选'),
                             ),
                         ],
                       ),
@@ -522,8 +470,7 @@ class _LibraryViewState extends State<LibraryView> {
                                         store.taste.watchlist.contains(i.id)
                                         ? '移出待看'
                                         : '加入待看',
-                                    onPressed: () =>
-                                        store.toggleWatchlist(i),
+                                    onPressed: () => store.toggleWatchlist(i),
                                     icon: Icon(
                                       store.taste.watchlist.contains(i.id)
                                           ? Icons.bookmark_rounded
@@ -623,6 +570,154 @@ class _LibraryViewState extends State<LibraryView> {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('片单已保存，可在「我的片单」查看')));
     }
+  }
+
+  int get activeFilters =>
+      (_source != null ? 1 : 0) +
+      (_genre != null ? 1 : 0) +
+      (_kind != null ? 1 : 0) +
+      (_watch != WatchFilter.all ? 1 : 0) +
+      (_sort != LibrarySort.recent ? 1 : 0);
+
+  /// 筛选条上的小胶囊：图标可选，选中态沿用项目里的 ChoiceChip。
+  Widget _chip({
+    required String label,
+    required VoidCallback onTap,
+    bool selected = false,
+    IconData? icon,
+  }) => ChoiceChip(
+    label: Text(label, style: const TextStyle(fontSize: 11)),
+    selected: selected,
+    visualDensity: VisualDensity.compact,
+    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    avatar: icon == null ? null : Icon(icon, size: 14),
+    onSelected: (_) => onTap(),
+  );
+
+  /// 五个下拉进面板：手机上它们原来独占三行，把结果挤到半屏以下。
+  Future<void> _openFilters(LibraryStore store, List<String> genres) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheet) {
+          void touch(VoidCallback change) {
+            setSheet(change);
+            setState(() {});
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              0,
+              20,
+              20 + MediaQuery.viewInsetsOf(context).bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '筛选',
+                  style: WowType.display(22, FontWeight.w500, spacing: -0.4),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _filter<String>('全部来源', _source, [
+                      for (final s in store.sources)
+                        DropdownMenuItem(value: s.id, child: Text(s.name)),
+                    ], (v) => touch(() => _source = v)),
+                    _filter<String>('全部类型', _genre, [
+                      for (final g in genres)
+                        DropdownMenuItem(value: g, child: Text(g)),
+                    ], (v) => touch(() => _genre = v)),
+                    _filter<MediaKind>('全部媒体', _kind, const [
+                      DropdownMenuItem(
+                        value: MediaKind.movie,
+                        child: Text('电影'),
+                      ),
+                      DropdownMenuItem(
+                        value: MediaKind.episode,
+                        child: Text('剧集'),
+                      ),
+                      DropdownMenuItem(
+                        value: MediaKind.audio,
+                        child: Text('音乐'),
+                      ),
+                    ], (v) => touch(() => _kind = v)),
+                    SizedBox(
+                      width: 150,
+                      child: DropdownButtonFormField<WatchFilter>(
+                        initialValue: _watch,
+                        isExpanded: true,
+                        decoration: const InputDecoration(isDense: true),
+                        items: [
+                          for (final f in WatchFilter.values)
+                            DropdownMenuItem(
+                              value: f,
+                              child: Text(
+                                _watchLabel(f),
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                        ],
+                        onChanged: (v) => touch(() => _watch = v!),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 150,
+                      child: DropdownButtonFormField<LibrarySort>(
+                        initialValue: _sort,
+                        isExpanded: true,
+                        decoration: const InputDecoration(isDense: true),
+                        items: [
+                          for (final f in LibrarySort.values)
+                            DropdownMenuItem(
+                              value: f,
+                              child: Text(switch (f) {
+                                LibrarySort.recent => '最近添加',
+                                LibrarySort.title => '片名排序',
+                                LibrarySort.rating => '评分优先',
+                                LibrarySort.year => '最新年份',
+                              }, style: const TextStyle(fontSize: 12)),
+                            ),
+                        ],
+                        onChanged: (v) => touch(() => _sort = v!),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    if (activeFilters > 0)
+                      TextButton(
+                        onPressed: () => touch(() {
+                          _source = null;
+                          _genre = null;
+                          _kind = null;
+                          _watch = WatchFilter.all;
+                          _sort = LibrarySort.recent;
+                        }),
+                        child: const Text('清除筛选'),
+                      ),
+                    const Spacer(),
+                    FilledButton(
+                      onPressed: () => Navigator.of(sheetContext).pop(),
+                      child: const Text('完成'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Widget _filter<T>(

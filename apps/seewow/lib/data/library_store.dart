@@ -423,6 +423,52 @@ class LibraryStore extends ChangeNotifier {
     }
   }
 
+  /// 批量操作：一次处理多个来源，中间的失败不影响剩下的。
+  Future<int> removeMany(Iterable<MediaSource> list) async {
+    var removed = 0;
+    for (final source in List<MediaSource>.from(list)) {
+      try {
+        await removeSource(source);
+        removed++;
+      } catch (_) {
+        // 单个来源断开失败不该拖住整批。
+      }
+    }
+    return removed;
+  }
+
+  Future<int> setEnabledMany(Iterable<MediaSource> list, bool enabled) async {
+    var changed = 0;
+    for (final source in List<MediaSource>.from(list)) {
+      if (source.enabled == enabled) continue;
+      await setSourceEnabled(source, enabled);
+      changed++;
+    }
+    return changed;
+  }
+
+  /// 批量重新扫描；返回成功数，失败的原因按来源名记下来。
+  Future<({int ok, Map<String, String> failed})> refreshMany(
+    Iterable<MediaSource> list,
+  ) async {
+    var ok = 0;
+    final failed = <String, String>{};
+    for (final source in List<MediaSource>.from(list)) {
+      try {
+        await rescan(source);
+        final error = sourceErrors[source.id];
+        if (error == null) {
+          ok++;
+        } else {
+          failed[source.name] = error;
+        }
+      } catch (error) {
+        failed[source.name] = error.toString();
+      }
+    }
+    return (ok: ok, failed: failed);
+  }
+
   Future<List<MediaItem>> Function(MediaSource source)? scanner;
 
   /// 播放进度的落盘节奏。播放时每 5 秒一次回调，如果每次都走 save()，

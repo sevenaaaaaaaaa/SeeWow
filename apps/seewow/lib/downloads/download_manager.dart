@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'sandbox_path.dart';
+
 import '../domain/media_item.dart';
 import 'download_quality.dart';
 import 'download_task.dart';
@@ -18,7 +20,15 @@ class ResolvedMedia {
 typedef DownloadItemResolver = Future<ResolvedMedia?> Function(String itemId);
 
 class DownloadManager extends ChangeNotifier {
-  DownloadManager({this.directory, this.storageDirectory, this.resolver});
+  DownloadManager({
+    this.directory,
+    this.storageDirectory,
+    this.resolver,
+    this.relocator,
+  });
+
+  /// 旧沙盒路径的换算钩子（iOS 容器 UUID 会变）。测试里注入固定容器根。
+  final Future<String?> Function(String stored)? relocator;
 
   final Directory? directory;
   final Directory? storageDirectory;
@@ -189,6 +199,45 @@ class DownloadManager extends ChangeNotifier {
           if (task.status == DownloadStatus.downloading) {
             task.status = DownloadStatus.paused;
             task.error = '上次退出时未完成，点继续可续传';
+          }
+        }
+        // iOS 升级后应用容器 UUID 会变，存下来的绝对路径全部失效。
+        // 先修存储目录，再修每个任务的路径：按容器内相对位置重挂，
+        // 重挂不上再在下载目录里按文件名找一次唯一匹配。
+        var remapped = false;
+        final relocate = relocator ?? relocateSandboxPath;
+        final savedStorage = storagePath;
+        if (savedStorage != null &&
+            savedStorage.trim().isNotEmpty &&
+            !Directory(savedStorage).existsSync()) {
+          final relocated = await relocate(savedStorage);
+          if (relocated != null) {
+            storagePath = relocated;
+            remapped = true;
+          }
+        }
+        Directory? storageRoot;
+        try {
+          storageRoot = await storageDir();
+        } catch (_) {
+          storageRoot = null;
+        }
+        for (final task in tasks) {
+          final path = task.filePath;
+          if (path == null || path.isEmpty || File(path).existsSync()) continue;
+          var relocated = await relocate(path);
+          if (relocated == null && storageRoot != null) {
+            relocated = await findByName(path, root: storageRoot);
+          }
+          if (relocated == null) continue;
+          task.filePath = relocated;
+          remapped = true;
+        }
+        if (remapped) {
+          try {
+            await save();
+          } catch (_) {
+            // 写回失败不影响这次的可用性；下次启动还会再算一遍。
           }
         }
       } catch (error) {

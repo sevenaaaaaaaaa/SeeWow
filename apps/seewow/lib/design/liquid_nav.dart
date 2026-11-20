@@ -162,50 +162,46 @@ class _SelectionPane extends StatelessWidget {
         ],
       ),
       child: LiquidGlass(
-      radius: radius,
-      tint: WowColors.accent,
-      opacity: strength,
-      edge: .30,
-      refraction: .55,
-      lifted: false,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: Stack(
-          children: [
-            // Specular band: the pill is lit from above, like a bead of glass.
-            Positioned(
-              left: 5,
-              right: 5,
-              top: 1.5,
-              height: 16,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.white.withValues(alpha: .26),
-                      Colors.white.withValues(alpha: 0),
-                    ],
+        radius: radius,
+        tint: WowColors.accent,
+        opacity: strength,
+        edge: .30,
+        refraction: .55,
+        lifted: false,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: Stack(
+            children: [
+              // Specular band: the pill is lit from above, like a bead of glass.
+              Positioned(
+                left: 5,
+                right: 5,
+                top: 1.5,
+                height: 16,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: .26),
+                        Colors.white.withValues(alpha: 0),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
 }
 
 class _Seat extends StatelessWidget {
-  const _Seat({
-    required this.tab,
-    required this.selected,
-    required this.onTap,
-  });
+  const _Seat({required this.tab, required this.selected, required this.onTap});
 
   final LiquidTab tab;
   final bool selected;
@@ -223,39 +219,45 @@ class _Seat extends StatelessWidget {
       onTap: onTap,
       selected: selected,
       semanticLabel: tab.label,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          AnimatedScale(
-            duration: dur,
-            curve: WowMotion.page,
-            scale: selected ? 1.06 : 1,
-            child: Icon(
-              selected ? (tab.activeIcon ?? tab.icon) : tab.icon,
-              size: 21,
-              color: color,
+      // 座位是定宽定高的 Positioned，但 PressableLens 里的 Stack 会把
+      // 非 Positioned 的子节点按 topStart 摆、并让它们自己缩到内容宽——
+      // 结果图标和文字贴着座位左边，视觉上整排 tab 都向左错位。
+      // 撑满座位再居中，才是「每个座位一格、内容在格里」。
+      child: SizedBox.expand(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedScale(
+              duration: dur,
+              curve: WowMotion.page,
+              scale: selected ? 1.06 : 1,
+              child: Icon(
+                selected ? (tab.activeIcon ?? tab.icon) : tab.icon,
+                size: 21,
+                color: color,
+              ),
             ),
-          ),
-          const SizedBox(height: 3),
-          AnimatedDefaultTextStyle(
-            duration: dur,
-            curve: WowMotion.page,
-            // The label follows the skin's voice instead of whatever the
-            // ambient DefaultTextStyle happens to be: a serif skin gets a
-            // serif label, a sans skin gets a sans one, and neither depends on
-            // a fallback the platform may not have.
-            style: TextStyle(
-              fontSize: 9.5,
-              height: 1,
-              letterSpacing: .1,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              color: color,
-              fontFamily: WowSkin.I.voice.display,
-              fontFamilyFallback: WowSkin.I.voice.fallback,
+            const SizedBox(height: 3),
+            AnimatedDefaultTextStyle(
+              duration: dur,
+              curve: WowMotion.page,
+              // The label follows the skin's voice instead of whatever the
+              // ambient DefaultTextStyle happens to be: a serif skin gets a
+              // serif label, a sans skin gets a sans one, and neither depends on
+              // a fallback the platform may not have.
+              style: TextStyle(
+                fontSize: 9.5,
+                height: 1,
+                letterSpacing: .1,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: color,
+                fontFamily: WowSkin.I.voice.display,
+                fontFamilyFallback: WowSkin.I.voice.fallback,
+              ),
+              child: Text(tab.label, maxLines: 1),
             ),
-            child: Text(tab.label, maxLines: 1),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

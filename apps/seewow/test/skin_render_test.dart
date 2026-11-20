@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:seewow/app/app_shell.dart';
+import 'package:seewow/data/online_source_store.dart';
 import 'package:seewow/data/iptv_store.dart';
 import 'package:seewow/data/library_store.dart';
 import 'package:seewow/design/skin.dart';
@@ -127,7 +128,7 @@ void main() {
             key: key,
             child: Scaffold(
               backgroundColor: WowColors.ink,
-              body: AppShell(store: store, iptv: iptv),
+              body: AppShell(store: store, iptv: iptv, online: OnlineSourceStore.empty()),
             ),
           ),
         ),

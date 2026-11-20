@@ -19,6 +19,7 @@ class ShortDramaView extends StatelessWidget {
     required this.store,
     required this.onPlayQueue,
     this.onSources,
+    this.onOnline,
   });
 
   final LibraryStore store;
@@ -26,6 +27,9 @@ class ShortDramaView extends StatelessWidget {
   /// Plays [queue] from [index] and keeps rolling to the next episode.
   final void Function(List<MediaItem> queue, int index) onPlayQueue;
   final VoidCallback? onSources;
+
+  /// 打开「在线源」里的短剧分类：采集站自带短剧专栏，比本地片源更快有货。
+  final VoidCallback? onOnline;
 
   @override
   Widget build(BuildContext context) {
@@ -59,11 +63,24 @@ class ShortDramaView extends StatelessWidget {
               icon: Icons.movie_filter_outlined,
               title: '还没有短剧',
               description: '片源里的竖屏短剧、微短剧，或单集 20 分钟以内的剧集会自动出现在这里。',
-              action: GlassButton(
-                label: '连接片源',
-                icon: Icons.add_rounded,
-                prominent: true,
-                onTap: onSources,
+              action: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: [
+                  GlassButton(
+                    label: '连接片源',
+                    icon: Icons.add_rounded,
+                    prominent: true,
+                    onTap: onSources,
+                  ),
+                  if (onOnline != null)
+                    GlassButton(
+                      label: '在线短剧',
+                      icon: Icons.travel_explore_rounded,
+                      onTap: onOnline,
+                    ),
+                ],
               ),
             ),
           )

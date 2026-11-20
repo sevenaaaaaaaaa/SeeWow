@@ -15,6 +15,7 @@ import '../design/liquid_glass.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import '../domain/source_catalog.dart';
+import '../sources/bulk_source.dart';
 import '../sources/remote_files.dart';
 import '../sources/native_bridge.dart';
 import '../sources/plex_login.dart';
@@ -305,6 +306,43 @@ class SourcesView extends StatefulWidget {
 class _SourcesViewState extends State<SourcesView> {
   final _links = TextEditingController();
   bool _folderBusy = false;
+  bool _bulkBusy = false;
+
+  Future<void> _refreshAll(LibraryStore store) async {
+    setState(() => _bulkBusy = true);
+    try {
+      final report = await store.refreshMany(
+        store.sources.where((source) => source.enabled),
+      );
+      if (!mounted) return;
+      final failed = report.failed.entries.take(3).map((e) => '${e.key}（${e.value}）');
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(
+            report.failed.isEmpty
+                ? '全部更新完成：${report.ok} 个来源'
+                : '${report.ok} 个成功 · ${report.failed.length} 个失败：${failed.join(' · ')}',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _bulkBusy = false);
+    }
+  }
+
+  Future<void> _bulkAdd(LibraryStore store) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _BulkAddDialog(store: store, iptv: widget.iptv),
+    );
+  }
+
+  Future<void> _bulkManage(LibraryStore store) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _BulkManageDialog(store: store),
+    );
+  }
   @override
   void dispose() {
     _links.dispose();
@@ -492,7 +530,40 @@ class _SourcesViewState extends State<SourcesView> {
             const SizedBox(height: 30),
             SectionTitle(
               '已添加的媒体来源',
-              subtitle: '${store.sources.length} 个来源 · 扫描失败保留原片库',
+              subtitle:
+                  '${store.sources.length} 个来源 · ${store.sources.where((s) => s.enabled).length} 个启用 · 扫描失败保留原片库',
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: store.sources.isEmpty || _bulkBusy
+                      ? null
+                      : () => _refreshAll(store),
+                  icon: _bulkBusy
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 1.6),
+                        )
+                      : const Icon(Icons.sync, size: 17),
+                  label: const Text('全部更新'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _bulkAdd(store),
+                  icon: const Icon(Icons.playlist_add, size: 18),
+                  label: const Text('批量添加'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: store.sources.isEmpty
+                      ? null
+                      : () => _bulkManage(store),
+                  icon: const Icon(Icons.checklist_rounded, size: 18),
+                  label: const Text('批量管理'),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             if (store.sources.isEmpty)
@@ -1535,4 +1606,416 @@ class _ConnectDialogState extends State<_ConnectDialog> {
       ),
     );
   }
+}
+
+
+enum _BulkMode { local, webdav, iptv }
+
+/// 一次粘贴多条，按行添加；每行独立成败，最后给一份小结。
+class _BulkAddDialog extends StatefulWidget {
+  const _BulkAddDialog({required this.store, required this.iptv});
+  final LibraryStore store;
+  final IPTVStore iptv;
+
+  @override
+  State<_BulkAddDialog> createState() => _BulkAddDialogState();
+}
+
+class _BulkAddDialogState extends State<_BulkAddDialog> {
+  final _entries = TextEditingController();
+  final _user = TextEditingController();
+  final _password = TextEditingController();
+  _BulkMode _mode = _BulkMode.local;
+  bool _busy = false;
+  String? _status;
+
+  @override
+  void dispose() {
+    _entries.dispose();
+    _user.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  List<String> get _parsed => bulkEntries(
+    _entries.text,
+    webOnly: _mode != _BulkMode.local,
+  );
+
+  Future<void> _run() async {
+    final list = _parsed;
+    if (list.isEmpty) {
+      setState(() => _status = '没有识别到可添加的地址');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _status = null;
+    });
+    var ok = 0;
+    final failed = <String>[];
+    for (final entry in list) {
+      try {
+        switch (_mode) {
+          case _BulkMode.local:
+            await widget.store.addSource(
+              MediaSource(
+                id: 'local-${entry.hashCode}',
+                kind: SourceKind.local,
+                name: entry.split(RegExp(r'[\\/]')).lastWhere(
+                  (part) => part.isNotEmpty,
+                  orElse: () => entry,
+                ),
+                location: entry,
+              ),
+            );
+          case _BulkMode.webdav:
+            final uri = Uri.parse(entry);
+            final source = MediaSource(
+              id: 'webdav-${entry.hashCode}',
+              kind: SourceKind.webdav,
+              name: uri.host,
+              location: entry,
+              username: _user.text.trim(),
+            );
+            if (_password.text.isNotEmpty) {
+              await NativeBridge.secretWrite(
+                sourceSecretKey(source),
+                _password.text,
+              );
+            }
+            await widget.store.addSource(source);
+          case _BulkMode.iptv:
+            final uri = Uri.tryParse(entry);
+            final added = await widget.iptv.addPlaylist(
+              name: uri?.host.isNotEmpty == true ? uri!.host : entry,
+              source: entry,
+            );
+            if (!added) throw StateError(widget.iptv.toast ?? '读取失败');
+        }
+        ok++;
+      } catch (error) {
+        final message = error is StateError
+            ? error.message
+            : error.toString();
+        failed.add('${entry.split('/').last}（$message）');
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _status = failed.isEmpty
+          ? '全部成功：$ok 条'
+          : '$ok 条成功 · ${failed.length} 条失败：${failed.take(3).join(' · ')}';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = _parsed.length;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 620, maxHeight: 640),
+        child: CinemaPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SectionTitle(
+                '批量添加',
+                subtitle: '一行一条；支持名称,地址 这种从别处抄来的行；空行与 # 注释会被忽略。',
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final mode in _BulkMode.values)
+                    ChoiceChip(
+                      label: Text(switch (mode) {
+                        _BulkMode.local => '本地文件夹',
+                        _BulkMode.webdav => 'WebDAV',
+                        _BulkMode.iptv => '直播订阅',
+                      }),
+                      selected: _mode == mode,
+                      onSelected: (_) => setState(() => _mode = mode),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (_mode == _BulkMode.webdav)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    children: [
+                      Expanded(child: TextField(controller: _user, decoration: const InputDecoration(labelText: '共用用户名', isDense: true))),
+                      const SizedBox(width: 10),
+                      Expanded(child: TextField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: '共用密码', isDense: true))),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: TextField(
+                  controller: _entries,
+                  onChanged: (_) => setState(() {}),
+                  minLines: 6,
+                  maxLines: 12,
+                  decoration: InputDecoration(
+                    labelText: '地址列表',
+                    hintText: switch (_mode) {
+                      _BulkMode.local => '/Users/me/Movies\n/Volumes/NAS/TV',
+                      _BulkMode.webdav => 'https://nas.local:5006/video\nhttps://backup.local/dav',
+                      _BulkMode.iptv => 'https://example.com/live.m3u\nhttps://example.com/iptv.txt',
+                    },
+                    alignLabelWithHint: true,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Text(
+                    '已识别 $count 条',
+                    style: TextStyle(fontSize: 12, color: WowColors.muted),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('关闭'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: _busy || count == 0 ? null : _run,
+                    icon: _busy
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 1.6),
+                          )
+                        : const Icon(Icons.playlist_add, size: 17),
+                    label: const Text('开始添加'),
+                  ),
+                ],
+              ),
+              if (_status != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(_status!, style: const TextStyle(fontSize: 12)),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 一个勾选列表，做批量扫描 / 启用 / 停用 / 断开。
+class _BulkManageDialog extends StatefulWidget {
+  const _BulkManageDialog({required this.store});
+  final LibraryStore store;
+
+  @override
+  State<_BulkManageDialog> createState() => _BulkManageDialogState();
+}
+
+class _BulkManageDialogState extends State<_BulkManageDialog> {
+  final _selected = <String>{};
+  bool _busy = false;
+  String? _status;
+
+  List<MediaSource> get _picked =>
+      widget.store.sources.where((s) => _selected.contains(s.id)).toList();
+
+  Future<void> _apply(
+    Future<void> Function(List<MediaSource> picked) action,
+    String doneLabel,
+  ) async {
+    final picked = _picked;
+    if (picked.isEmpty) {
+      setState(() => _status = '先勾选来源');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _status = null;
+    });
+    try {
+      await action(picked);
+      if (!mounted) return;
+      setState(() {
+        _status = '$doneLabel：${picked.length} 个';
+        _selected.clear();
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+    backgroundColor: Colors.transparent,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 640, maxHeight: 680),
+      child: CinemaPanel(
+        child: ListenableBuilder(
+          listenable: widget.store,
+          builder: (context, _) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SectionTitle(
+                '批量管理',
+                subtitle:
+                    '${widget.store.sources.length} 个来源 · 已选 ${_selected.length} 个 · 断开只解除连接，不删文件',
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  TextButton(
+                    onPressed: () => setState(() {
+                      if (_selected.length == widget.store.sources.length) {
+                        _selected.clear();
+                      } else {
+                        _selected
+                          ..clear()
+                          ..addAll(widget.store.sources.map((s) => s.id));
+                      }
+                    }),
+                    child: Text(
+                      _selected.length == widget.store.sources.length
+                          ? '清空选择'
+                          : '全选',
+                    ),
+                  ),
+                  OutlinedButton(
+                    onPressed: _busy
+                        ? null
+                        : () => _apply(
+                            (picked) => widget.store.refreshMany(picked),
+                            '重新扫描完成',
+                          ),
+                    child: const Text('重新扫描'),
+                  ),
+                  OutlinedButton(
+                    onPressed: _busy
+                        ? null
+                        : () => _apply(
+                            (picked) => widget.store.setEnabledMany(
+                              picked,
+                              true,
+                            ),
+                            '已启用',
+                          ),
+                    child: const Text('启用'),
+                  ),
+                  OutlinedButton(
+                    onPressed: _busy
+                        ? null
+                        : () => _apply(
+                            (picked) => widget.store.setEnabledMany(
+                              picked,
+                              false,
+                            ),
+                            '已停用',
+                          ),
+                    child: const Text('停用'),
+                  ),
+                  OutlinedButton(
+                    onPressed: _busy
+                        ? null
+                        : () async {
+                            final picked = _picked;
+                            if (picked.isEmpty) {
+                              setState(() => _status = '先勾选来源');
+                              return;
+                            }
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: Text('断开 ${picked.length} 个来源？'),
+                                content: const Text('只解除连接，硬盘与 NAS 上的文件不会被删除。'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(false),
+                                    child: const Text('取消'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(true),
+                                    child: const Text('断开'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirmed != true) return;
+                            await _apply(
+                              (list) => widget.store.removeMany(list),
+                              '已断开',
+                            );
+                          },
+                    child: const Text('断开'),
+                  ),
+                ],
+              ),
+              if (_status != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(_status!, style: const TextStyle(fontSize: 12)),
+                ),
+              const SizedBox(height: 10),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final source in widget.store.sources)
+                      CheckboxListTile(
+                        dense: true,
+                        value: _selected.contains(source.id),
+                        onChanged: _busy
+                            ? null
+                            : (value) => setState(() {
+                                if (value == true) {
+                                  _selected.add(source.id);
+                                } else {
+                                  _selected.remove(source.id);
+                                }
+                              }),
+                        title: Text(source.name),
+                        subtitle: Text(
+                          '${providerById(source.providerId)?.name ?? sourceModeLabel(source.kind)} · '
+                          '${widget.store.countFor(source.id)} 个条目'
+                          '${source.enabled ? '' : ' · 已停用'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        secondary: widget.store.scanningIds.contains(source.id)
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.8,
+                                ),
+                              )
+                            : null,
+                      ),
+                  ],
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('关闭'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }

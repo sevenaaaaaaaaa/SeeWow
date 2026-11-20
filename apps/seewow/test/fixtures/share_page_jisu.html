@@ -1,0 +1,43 @@
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+    <script src="https://s2.pstatp.com/cdn/expire-1-M/hls.js/1.1.5/hls.min.js"></script>
+    <script src="https://s2.pstatp.com/cdn/expire-1-M/dplayer/1.25.1/DPlayer.min.js"></script>
+</head>
+<body>
+    <div id="dplayer"></div>
+<script>
+        const vid = 'https://vv.jisuzyv.com/play/epYwLMXa/index.m3u8';
+        
+        const videoConfig = {
+            url: vid,
+            type: 'hls'
+        };
+
+        function customHls(video) {
+        const url = vid;
+        const hls = new Hls({
+                fragLoadingTimeOut: 10000,
+                backBufferLength: 600,
+                maxBufferLength: 120,
+                maxMaxBufferLength: 360
+        });
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        window.hls = hls;
+    }
+
+        if (window.Hls && Hls.isSupported()) {
+            videoConfig.customType = {
+                hls: customHls
+            };
+        }
+
+        new DPlayer({
+            container: document.getElementById('dplayer'),
+            autoplay: true,
+            video: videoConfig
+        });
+</script>
+</body>
