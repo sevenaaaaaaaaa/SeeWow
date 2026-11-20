@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../data/library_store.dart';
 import '../domain/media_item.dart';
+import 'liquid_glass.dart';
 import 'artwork.dart';
 import 'tokens.dart';
 import 'skin.dart';
@@ -294,15 +296,85 @@ class FilmCard extends StatefulWidget {
     this.selectionMode = false,
     this.selected = false,
     this.onSelect,
+    this.onPlay,
   });
   final MediaItem item;
   final LibraryStore store;
   final VoidCallback onOpen;
+
+  /// One tap to play, without going through the detail page first.
+  ///
+  /// Opening a film used to be three taps (card, then the detail page, then
+  /// play) even for a title the user had already started. The secondary action
+  /// now lives on the card itself: on a pointer device it appears when the
+  /// card is hovered, on a phone it is always visible, because a phone has no
+  /// hover and a control that needs one does not exist there.
+  final VoidCallback? onPlay;
   final String? reason;
   final bool selectionMode, selected;
   final VoidCallback? onSelect;
   @override
   State<FilmCard> createState() => _FilmCardState();
+}
+
+/// The play affordance on a poster: glass, 44 px of hit area, 34 px of glass.
+class _CardPlayButton extends StatelessWidget {
+  const _CardPlayButton({
+    required this.onPlay,
+    required this.resume,
+    required this.reveal,
+  });
+
+  final VoidCallback onPlay;
+  final bool resume;
+  final bool reveal;
+
+  @override
+  Widget build(BuildContext context) {
+    final touch = defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android;
+    final shown = touch || reveal;
+    return AnimatedOpacity(
+      duration: MediaQuery.maybeDisableAnimationsOf(context) ?? false
+          ? Duration.zero
+          : const Duration(milliseconds: 160),
+      opacity: shown ? 1 : 0,
+      child: IgnorePointer(
+        ignoring: !shown,
+        child: SizedBox(
+          width: GlassTokens.touchTarget,
+          height: GlassTokens.touchTarget,
+          child: Center(
+            child: PressableLens(
+              radius: 18,
+              onTap: onPlay,
+              semanticLabel: resume ? '继续播放' : '播放',
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: LiquidGlass(
+                  radius: 18,
+                  tint: Colors.black,
+                  opacity: .42,
+                  blur: 18,
+                  edge: .40,
+                  refraction: .8,
+                  lifted: false,
+                  child: Icon(
+                    resume
+                        ? Icons.play_arrow_rounded
+                        : Icons.play_arrow_rounded,
+                    size: 20,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _FilmCardState extends State<FilmCard> {
@@ -421,6 +493,16 @@ class _FilmCardState extends State<FilmCard> {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                if (widget.onPlay != null && !widget.selectionMode)
+                  Positioned(
+                    right: 6,
+                    bottom: 8,
+                    child: _CardPlayButton(
+                      onPlay: widget.onPlay!,
+                      resume: i.progress > 0 && !i.watched,
+                      reveal: _hover,
                     ),
                   ),
                 if (i.progress > 0 && !i.watched)

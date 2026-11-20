@@ -80,6 +80,7 @@ class _LiquidTabBarState extends State<LiquidTabBar> {
                   tint: tint,
                   opacity: skin.isGlass ? .76 : .97,
                   edge: .34,
+                  refraction: .85,
                   lifted: false,
                   child: const SizedBox.expand(),
                 ),
@@ -144,32 +145,31 @@ class _SelectionPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final shape = BorderRadius.circular(22);
+    // The selection is the same material as the bar it sits in, tinted — not a
+    // separate painted pill. Concentric on purpose: the bar is 28, the inset is
+    // 6, so the pill is 22. Two panes that both pick their own radius look
+    // wrong at every size except one.
+    final radius = GlassTokens.concentric(28, 6);
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: shape,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            WowColors.accent.withValues(alpha: (strength * 1.12).clamp(0.0, 1.0)),
-            WowColors.accent.withValues(alpha: strength * .46),
-          ],
-        ),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: .22),
-          width: .9,
-        ),
+        borderRadius: BorderRadius.circular(radius),
         boxShadow: [
           BoxShadow(
-            color: WowColors.accent.withValues(alpha: .18),
+            color: WowColors.accent.withValues(alpha: .16),
             blurRadius: 16,
             spreadRadius: -2,
           ),
         ],
       ),
+      child: LiquidGlass(
+      radius: radius,
+      tint: WowColors.accent,
+      opacity: strength,
+      edge: .30,
+      refraction: .55,
+      lifted: false,
       child: ClipRRect(
-        borderRadius: shape,
+        borderRadius: BorderRadius.circular(radius),
         child: Stack(
           children: [
             // Specular band: the pill is lit from above, like a bead of glass.
@@ -185,7 +185,7 @@ class _SelectionPane extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.white.withValues(alpha: .30),
+                      Colors.white.withValues(alpha: .26),
                       Colors.white.withValues(alpha: 0),
                     ],
                   ),
@@ -194,6 +194,7 @@ class _SelectionPane extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -239,12 +240,18 @@ class _Seat extends StatelessWidget {
           AnimatedDefaultTextStyle(
             duration: dur,
             curve: WowMotion.page,
+            // The label follows the skin's voice instead of whatever the
+            // ambient DefaultTextStyle happens to be: a serif skin gets a
+            // serif label, a sans skin gets a sans one, and neither depends on
+            // a fallback the platform may not have.
             style: TextStyle(
               fontSize: 9.5,
               height: 1,
               letterSpacing: .1,
               fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
               color: color,
+              fontFamily: WowSkin.I.voice.display,
+              fontFamilyFallback: WowSkin.I.voice.fallback,
             ),
             child: Text(tab.label, maxLines: 1),
           ),
