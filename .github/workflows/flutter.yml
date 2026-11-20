@@ -43,16 +43,30 @@ jobs:
           set +e
           flutter analyze lib test > analyze.log 2>&1
           cat analyze.log
-          bad=$(grep -cE '^[[:space:]]+(error|warning) •' analyze.log || true)
+          # flutter analyze 把严重级别右对齐到 7 列（"warning" 正好 7 个字符）：
+          #    warning • ...   ← 0 个前导空格，从第 0 列开始
+          #      error • ...   ← 2 个前导空格
+          #       info • ...   ← 3 个前导空格
+          # 所以行首缩进必须写 [[:space:]]*，写成 [[:space:]]+ 会永远数不到 warning。
+          # 分隔符写成「非字母数字」，同时兼容 "error •" / "error -" / "error:" 三种格式。
+          SEV='^[[:space:]]*(info|warning|error)[[:space:]]*[^[:alnum:][:space:]]'
+          bad=$(grep -cE "^[[:space:]]*(error|warning)[[:space:]]*[^[:alnum:][:space:]]" analyze.log || true)
+          any=$(grep -cE "${SEV}" analyze.log || true)
+          # 注意 issues? —— 只有 1 条问题时 flutter 输出的是 "1 issue found."（单数）。
+          if ! grep -qE "issues? found|No issues found" analyze.log; then
+            echo "::error::analyze did not finish"
+            exit 1
+          fi
+          # 格式漂移保护：报了问题却一条级别行都认不出来 = 解析失配，不许静默变绿。
+          if grep -qE "[1-9][0-9]* issues? found" analyze.log && [ "${any:-0}" -eq 0 ]; then
+            echo "::error::analyze reported issues but no severity line was parsed — output format changed"
+            exit 1
+          fi
           if [ "${bad:-0}" -gt 0 ]; then
             echo "::error::flutter analyze found ${bad} error/warning issue(s)"
             exit 1
           fi
-          if ! grep -qE "issues found|No issues found" analyze.log; then
-            echo "::error::analyze did not finish"
-            exit 1
-          fi
-          echo "analyze: 0 error / 0 warning（历史 info 不计入阻塞）"
+          echo "analyze: 0 error / 0 warning（历史 info 不计入阻塞，共 ${any:-0} 条 info）"
       - name: Test (1.18 基线 319 通过 / 2 跳过)
         timeout-minutes: 25
         run: flutter test --concurrency=1

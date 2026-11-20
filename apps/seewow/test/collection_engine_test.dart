@@ -10,7 +10,6 @@ MediaItem _movie({
   double rating = 0,
   String quality = '',
   double duration = 0,
-  bool watched = false,
   double position = 0,
   DateTime? addedAt,
   List<MediaPerson> people = const [],

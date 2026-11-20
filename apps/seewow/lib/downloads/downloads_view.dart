@@ -55,8 +55,6 @@ class DownloadsPage extends StatelessWidget {
     ),
   );
 
-  Widget _storagePanel(BuildContext context) => _StoragePanel(manager: manager);
-
   Widget _taskCard(BuildContext context, DownloadTask task) {
     final failed = task.isFailed;
     // A "completed" row whose file was moved or deleted must not pretend the
