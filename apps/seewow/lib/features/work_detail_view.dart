@@ -45,7 +45,6 @@ class _WorkDetailViewState extends State<WorkDetailView> {
   late final WorkLauncher _launcher = widget.launcher ?? WorkLauncher();
   bool _busy = false;
   String? _notice;
-  MediaItem? _playable;
 
   Future<void> _start({WorkSource? prefer}) async {
     if (_busy) return;
@@ -64,7 +63,6 @@ class _WorkDetailViewState extends State<WorkDetailView> {
     if (!mounted) return;
     setState(() {
       _busy = false;
-      _playable = result.item;
       _notice = result.ok
           ? null
           : result.summary;

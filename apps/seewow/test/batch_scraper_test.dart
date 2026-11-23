@@ -10,7 +10,6 @@ class _FakeSource extends MetadataSource {
   _FakeSource({
     required this.catalog,
     this.failOn = const {},
-    this.provider = 'douban',
   });
 
   /// 片名 → 该源返回的候选。
@@ -18,7 +17,7 @@ class _FakeSource extends MetadataSource {
 
   /// 这些片名一查就抛错，用来验证「一条失败不拖垮整批」。
   final Set<String> failOn;
-  final String provider;
+  final String provider = 'douban';
 
   final searched = <String>[];
   int detailCalls = 0;

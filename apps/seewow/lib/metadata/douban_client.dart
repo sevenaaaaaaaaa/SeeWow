@@ -373,7 +373,7 @@ class DoubanClient implements MetadataSource {
       // 豆瓣的 star 是 5 分制；rate 是 10 分制，优先用 rate。
       rating: rate != null && rate > 0
           ? rate
-          : (star != null && star > 0 ? star! * 2 : fallback.rating),
+          : (star != null && star > 0 ? star * 2 : fallback.rating),
       posterUrl: fallback.posterUrl,
       backdropUrl: fallback.backdropUrl,
       duration: _minutes(subject['duration']) > 0

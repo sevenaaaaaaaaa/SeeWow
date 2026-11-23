@@ -7,7 +7,6 @@ import '../domain/media_review.dart';
 import '../metadata/anilist_client.dart';
 import '../metadata/douban_client.dart';
 import '../metadata/metadata_registry.dart';
-import '../metadata/metadata_source.dart';
 
 /// 详情页的「评论」区。
 ///

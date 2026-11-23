@@ -1,7 +1,6 @@
 import '../domain/media_item.dart';
 import '../domain/media_metadata.dart';
 import 'metadata_registry.dart';
-import 'metadata_source.dart';
 
 /// 一个条目的刮削结果。
 enum BatchScrapeStatus {
