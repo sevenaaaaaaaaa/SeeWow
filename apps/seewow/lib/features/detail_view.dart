@@ -11,6 +11,7 @@ import '../downloads/downloads_view.dart';
 import 'metadata_dialog.dart';
 import 'metadata_editor.dart';
 import 'metadata_facts.dart';
+import 'review_section.dart';
 import 'metadata_language_batch.dart';
 import 'custom_scraper_view.dart';
 import 'cover_generation_view.dart';
@@ -282,6 +283,7 @@ class DetailView extends StatelessWidget {
                             padding: const EdgeInsets.only(top: 16),
                             child: MetadataFacts(metadata: current.metadata!),
                           ),
+                        ReviewSection(item: current),
                         if (current.hasGeneratedCover)
                           Padding(
                             padding: const EdgeInsets.only(top: 12),

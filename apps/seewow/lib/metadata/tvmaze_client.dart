@@ -4,7 +4,7 @@ import 'metadata_transport.dart';
 
 /// TVmaze: free, no API key, and the most reliable open catalogue for series.
 /// Films are not covered, which is why [seriesOnly] is true.
-class TvMazeClient implements MetadataSource {
+class TvMazeClient extends MetadataSource {
   TvMazeClient({Uri? base, MetadataTransport? transport})
     : _base = base ?? Uri.parse('https://api.tvmaze.com'),
       _http =

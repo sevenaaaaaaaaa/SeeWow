@@ -1,4 +1,5 @@
 import '../domain/media_metadata.dart';
+import '../domain/media_review.dart';
 import 'metadata_source.dart';
 
 /// Field names used as keys in [MediaMetadata.fieldSources].
@@ -28,6 +29,10 @@ String providerLabel(String provider) {
       return 'TVmaze';
     case 'bangumi':
       return 'Bangumi';
+    case 'douban':
+      return '豆瓣';
+    case 'anilist':
+      return 'AniList';
     case 'jellyfin':
       return 'Jellyfin';
     case 'emby':
@@ -170,6 +175,20 @@ class MetadataSearchOutcome {
   }
 }
 
+/// 一次拉评论的结果：拿到的是哪个源、几条、失败原因。
+class MetadataReviewOutcome {
+  const MetadataReviewOutcome({
+    required this.reviews,
+    this.sourceId,
+    this.error,
+  });
+  final List<MediaReview> reviews;
+  final String? sourceId;
+  final String? error;
+  bool get isEmpty => reviews.isEmpty;
+  String get label => sourceId == null ? '未知' : providerLabel(sourceId!);
+}
+
 /// The catalogues this app can ask, in the order a fallback chain walks them.
 ///
 /// A catalogue that cannot answer for the current media type is skipped rather
@@ -182,6 +201,60 @@ class MetadataRegistry {
   final List<MetadataSource> sources;
 
   MetadataSource? byId(String id) => sources.where((s) => s.id == id).firstOrNull;
+
+  /// 拉评论：按链序问第一个「支持评论」的源，拿到非空就停。
+  ///
+  /// 评论和作品信息是两件事：作品信息要合并多源，评论只需要一个能说话的站。
+  /// 所以这里不做合并，只说清「这些是哪个站的」。
+  Future<MetadataReviewOutcome> reviews(
+    MediaMetadata candidate, {
+    int limit = 10,
+    String? preferred,
+  }) async {
+    final usable = [
+      for (final source in sources)
+        if (source.supportsReviews && (preferred == null || source.id == preferred))
+          source,
+    ];
+    if (usable.isEmpty) {
+      return const MetadataReviewOutcome(
+        reviews: [],
+        error: '没有支持评论的数据源',
+      );
+    }
+    final problems = <String>[];
+    for (final source in usable) {
+      try {
+        // 换了源就得换 id：豆瓣的 subject id 丢给 AniList 只会 404。
+        // 所以先在目标源上按片名搜一次，拿到它自己的条目再查评论。
+        var target = candidate;
+        if (source.id != candidate.provider) {
+          if (candidate.title.trim().isEmpty) {
+            problems.add('${source.label} 缺少片名，无法换源查询');
+            continue;
+          }
+          final found = await source.search(
+            candidate.title,
+            series: candidate.mediaType == 'tv',
+            year: candidate.year,
+          );
+          if (found.isEmpty) {
+            problems.add('${source.label} 没搜到「${candidate.title}」');
+            continue;
+          }
+          target = found.first;
+        }
+        final list = await source.reviews(target, limit: limit);
+        if (list.isNotEmpty) {
+          return MetadataReviewOutcome(reviews: list, sourceId: source.id);
+        }
+        problems.add('${source.label} 没有评论');
+      } catch (error) {
+        problems.add('${source.label} ${error is FormatException ? error.message : '失败'}');
+      }
+    }
+    return MetadataReviewOutcome(reviews: const [], error: problems.join(' · '));
+  }
 
   List<MetadataSource> applicable({required bool series}) =>
       [for (final source in sources) if (!source.seriesOnly || series) source];

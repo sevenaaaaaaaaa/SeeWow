@@ -1,4 +1,5 @@
 import '../domain/media_metadata.dart';
+import '../domain/media_review.dart';
 
 /// One metadata service the library can query.
 ///
@@ -19,6 +20,16 @@ abstract class MetadataSource {
   });
 
   Future<MediaMetadata> details(MediaMetadata candidate);
+
+  /// 这个源能不能给评论。
+  ///
+  /// 默认 false：TMDB 要额外参数、TVmaze 根本没有评论，让它们「支持评论」只会
+  /// 让界面多一次空请求。支持的源才实现 [reviews]。
+  bool get supportsReviews => false;
+
+  /// 拉这个条目的评论。不支持的源返回空表，而不是抛错或假装查过。
+  Future<List<MediaReview>> reviews(MediaMetadata candidate, {int limit = 10}) async =>
+      const [];
 
   void close();
 }

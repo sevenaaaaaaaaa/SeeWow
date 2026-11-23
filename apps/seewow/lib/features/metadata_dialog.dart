@@ -5,7 +5,9 @@ import '../design/artwork.dart';
 import '../design/tokens.dart';
 import '../domain/media_item.dart';
 import '../domain/media_metadata.dart';
+import '../metadata/anilist_client.dart';
 import '../metadata/bangumi_client.dart';
+import '../metadata/douban_client.dart';
 import '../metadata/emby_metadata_client.dart';
 import '../metadata/metadata_registry.dart';
 import '../metadata/metadata_source.dart';
@@ -425,7 +427,11 @@ class _MetadataDialogState extends State<_MetadataDialog> {
     } catch (error) {
       _tmdbUnavailable = 'TMDB 未配置（${_short(error)}）';
     }
+    // 顺序就是「自动」模式下的回退链：中文影视先问豆瓣（覆盖电影/剧集/动漫/
+    // 短剧，且带评论），动漫再问 AniList，剧集问 TVmaze，动漫兜底 Bangumi。
     sources
+      ..add(DoubanClient())
+      ..add(AniListClient())
       ..add(TvMazeClient())
       ..add(BangumiClient());
     for (final source in widget.library.sources) {

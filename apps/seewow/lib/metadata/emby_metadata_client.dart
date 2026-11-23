@@ -6,7 +6,7 @@ import 'metadata_transport.dart';
 ///
 /// This is the catalogue the server itself curated, including its own artwork,
 /// so it wins over a public lookup for titles that live on that server.
-class EmbyMetadataSource implements MetadataSource {
+class EmbyMetadataSource extends MetadataSource {
   EmbyMetadataSource({
     required this.base,
     required this.token,

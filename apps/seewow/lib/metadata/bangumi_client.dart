@@ -9,7 +9,7 @@ import 'metadata_transport.dart';
 /// was written against the documented protocol — the machine this was built on
 /// could not reach api.bgm.tv (TCP connect timed out), so it is not yet
 /// verified against live responses.
-class BangumiClient implements MetadataSource {
+class BangumiClient extends MetadataSource {
   BangumiClient({Uri? base, MetadataTransport? transport})
     : _base = base ?? Uri.parse('https://api.bgm.tv'),
       _http =

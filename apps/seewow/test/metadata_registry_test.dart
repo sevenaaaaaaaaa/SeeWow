@@ -5,7 +5,7 @@ import 'package:seewow/metadata/metadata_source.dart';
 
 /// A catalogue that answers from memory, so the chain can be tested without
 /// the network.
-class _FakeSource implements MetadataSource {
+class _FakeSource extends MetadataSource {
   _FakeSource({
     required this.id,
     this.seriesOnlyValue = false,

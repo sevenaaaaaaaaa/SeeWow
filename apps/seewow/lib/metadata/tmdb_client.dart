@@ -48,7 +48,7 @@ class MetadataLocale {
   );
 }
 
-class TmdbClient implements MetadataSource {
+class TmdbClient extends MetadataSource {
   @override
   String get id => 'tmdb';
 
