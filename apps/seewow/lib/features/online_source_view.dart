@@ -374,12 +374,18 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                _mode == _Mode.drama ? 'SHORT DRAMA ONLINE' : 'ONLINE SOURCES',
-                style: WowType.monoLabel(
-                  8.5,
-                  color: Colors.white.withValues(alpha: 0.34),
-                  spacing: 2.4,
+              Flexible(
+                child: Text(
+                  _mode == _Mode.drama
+                      ? 'SHORT DRAMA ONLINE'
+                      : 'ONLINE SOURCES',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: WowType.monoLabel(
+                    8.5,
+                    color: Colors.white.withValues(alpha: 0.34),
+                    spacing: 2.4,
+                  ),
                 ),
               ),
               const Spacer(),
@@ -630,6 +636,8 @@ class _EmptyState extends StatelessWidget {
         Text(
           drama
               ? '点「短剧」读一遍各站的短剧分类'
+              : sites == 0
+              ? '还没有站点：点右上「站点与导入」手动加一条采集站接口'
               : '输入片名，问一遍已启用的 $sites 个采集站',
           style: WowType.body(13, color: Colors.white.withValues(alpha: 0.42)),
         ),
@@ -1006,8 +1014,11 @@ class _SitesDialogState extends State<_SitesDialog> {
               Text('站点', style: WowType.display(22, FontWeight.w500)),
               const SizedBox(height: 4),
               Text(
-                '内置 ${dedupeSites(seedOnlineSites).length} 个直连采集站 · '
-                '粘一条 TVBox 配置可再导入；直播源导入后进「直播」页',
+                store.noBuiltinSources
+                    ? '本版不随包内置站点 · 点「添加」填一条采集站接口，'
+                          '或粘 TVBox 配置导入；直播源导入后进「直播」页'
+                    : '内置 ${dedupeSites(seedOnlineSites).length} 个直连采集站 · '
+                          '粘一条 TVBox 配置可再导入；直播源导入后进「直播」页',
                 style: WowType.monoLabel(
                   9,
                   color: Colors.white.withValues(alpha: 0.34),

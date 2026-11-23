@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:seewow/data/iptv_store.dart';
 import 'package:seewow/data/online_source_store.dart';
 import 'package:seewow/design/skin.dart';
+import 'package:seewow/domain/online_source.dart';
 import 'package:seewow/features/online_source_view.dart';
 
 void main() {
@@ -36,9 +37,15 @@ void main() {
     );
     await tester.pump();
     expect(find.text('在线源'), findsOneWidget);
-    expect(find.textContaining('14  SITES'), findsOneWidget);
+    expect(
+      find.textContaining('${seedOnlineSites.length}  SITES'),
+      findsOneWidget,
+    );
     expect(find.textContaining('只走纯 HTTP 接口'), findsOneWidget);
-    expect(find.textContaining('问一遍已启用的 14 个采集站'), findsOneWidget);
+    expect(
+      find.textContaining('问一遍已启用的 ${seedOnlineSites.length} 个采集站'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('空关键词不发请求，也不会崩', (tester) async {

@@ -17,6 +17,8 @@ class HomeView extends StatefulWidget {
     required this.onPlay,
     this.onAgent,
     this.onSources,
+    this.onOnline,
+    this.onlineSites = 0,
     this.onLibrary,
     this.onLongPull,
     this.onInteract,
@@ -26,6 +28,10 @@ class HomeView extends StatefulWidget {
   final ValueChanged<MediaItem> onOpen, onPlay;
   final ValueChanged<String>? onAgent;
   final VoidCallback? onSources, onLibrary;
+
+  /// 打开「在线源」。`onlineSites` 是随包内置站点数，0 表示不显示这条入口。
+  final VoidCallback? onOnline;
+  final int onlineSites;
   final VoidCallback? onLongPull;
 
   /// Fired on any pointer-down: a shake right after a tap is never intended.
@@ -179,6 +185,14 @@ class _HomeViewState extends State<HomeView> {
                       child: Text(
                         '摇一摇刷新片库 · 继续下拉进入解耦空间',
                         style: TextStyle(fontSize: 10, color: WowColors.muted),
+                      ),
+                    ),
+                  if (widget.onOnline != null && widget.onlineSites > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: _OnlineSourcesBand(
+                        count: widget.onlineSites,
+                        onTap: widget.onOnline!,
                       ),
                     ),
                   const SizedBox(height: 24),
@@ -660,6 +674,69 @@ class _HomeViewState extends State<HomeView> {
           child: const Text('完成'),
         ),
       ],
+    ),
+  );
+}
+
+/// 首页顶部的「在线采集站」直达条。
+///
+/// 内置源包随包发之后，入口原本只挂在底部第五席的「更多」弹层里，用户点两次
+/// 才挖得到，界面看上去和一个空应用没有区别。这条把它摆到首屏。
+class _OnlineSourcesBand extends StatelessWidget {
+  const _OnlineSourcesBand({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: WowColors.panel,
+    borderRadius: BorderRadius.circular(16),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: WowColors.accent.withValues(alpha: 0.14),
+              ),
+              child: Icon(
+                Icons.travel_explore_rounded,
+                size: 19,
+                color: WowColors.accent,
+              ),
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '在线采集站',
+                    style: WowType.body(14, color: WowColors.text),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '内置 $count 个直连站点 · 搜片名直接播，不用先配地址',
+                    style: TextStyle(fontSize: 11, color: WowColors.muted),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: WowColors.muted,
+            ),
+          ],
+        ),
+      ),
     ),
   );
 }

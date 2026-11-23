@@ -295,10 +295,16 @@ class SourcesView extends StatefulWidget {
     required this.store,
     required this.iptv,
     required this.onAgent,
+    this.onOnline,
+    this.onlineSites = 0,
   });
   final LibraryStore store;
   final IPTVStore iptv;
   final ValueChanged<String> onAgent;
+
+  /// 打开「在线源」；`onlineSites` 是随包内置站点数，0 表示不显示这条入口。
+  final VoidCallback? onOnline;
+  final int onlineSites;
   @override
   State<SourcesView> createState() => _SourcesViewState();
 }
@@ -382,6 +388,14 @@ class _SourcesViewState extends State<SourcesView> {
               spacing: 14,
               runSpacing: 14,
               children: [
+                if (widget.onOnline != null && widget.onlineSites > 0)
+                  _entry(
+                    box,
+                    Icons.travel_explore_rounded,
+                    '在线采集站',
+                    '内置 ${widget.onlineSites} 个直连站点，搜片名即播',
+                    widget.onOnline,
+                  ),
                 _entry(
                   box,
                   Icons.folder_outlined,

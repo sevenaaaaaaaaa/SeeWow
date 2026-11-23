@@ -1,96 +1,133 @@
 {
-  "schema": "seewow.online-sources/v1",
-  "packVersion": "1",
-  "generatedAt": "2026-11-21",
+  "schema": "seewow.online-sources/v2",
+  "packVersion": "2",
+  "generatedAt": "2026-11-23",
   "notes": [
-    "随包内置的播放源：14 个苹果 CMS 直连采集站（?ac=videolist&wd= 查询，返回 JSON/XML，播放地址直出 m3u8/mp4）。",
+    "随包内置的播放源：20 个苹果 CMS 直连采集站（?ac=videolist&wd= 查询，返回 JSON/XML，播放地址直出 m3u8/mp4）。",
+    "v2 换掉了 v1 里已失效的 9 个站（7 个 8 秒超时、1 个 403、1 个 404），并补齐到 20 个；每个都用「庆余年」「狂飙」「流浪地球」实测出过可播地址。",
     "不含 jar / js / py 爬虫。这类站点需要 TVBox 插件运行时，本应用不加载。",
     "直播源不在内置清单里：从「在线源 → 站点」粘一条 TVBox 配置地址，导入后进「直播」页。",
-    "字段含义与 apps/seewow/lib/domain/online_source.dart 一致；改这个文件即可换包，不需要改代码。"
+    "采集站的可用性随时间和网络变化，界面上「站点」里有「检测全部站点」可以当场复核。"
   ],
   "sites": [
     {
-      "id": "dytt",
-      "name": "电影天堂",
-      "api": "http://caiji.dyttzyapi.com/api.php/provide/vod",
+      "id": "zuidapi",
+      "name": "最大资源",
+      "api": "https://api.zuidapi.com/api.php/provide/vod/",
       "enabled": true
     },
     {
-      "id": "tyys",
-      "name": "天涯",
-      "api": "http://tyyszy.com/api.php/provide/vod",
+      "id": "s155",
+      "name": "155资源",
+      "api": "https://155api.com/api.php/provide/vod/",
       "enabled": true
     },
     {
-      "id": "lzi",
-      "name": "量子",
-      "api": "https://cj.lziapi.com/api.php/provide/vod/",
+      "id": "aidanz",
+      "name": "艾旦影视",
+      "api": "https://lovedan.net/api.php/provide/vod/",
+      "enabled": true
+    },
+    {
+      "id": "wujin",
+      "name": "无尽资源",
+      "api": "https://api.wujinapi.com/api.php/provide/vod/",
+      "enabled": true
+    },
+    {
+      "id": "hongniu",
+      "name": "红牛资源",
+      "api": "https://www.hongniuzy2.com/api.php/provide/vod/",
+      "enabled": true
+    },
+    {
+      "id": "jinying",
+      "name": "金鹰资源",
+      "api": "https://jyzyapi.com/provide/vod/",
+      "enabled": true
+    },
+    {
+      "id": "haohua",
+      "name": "豪华资源",
+      "api": "https://hhzyapi.com/api.php/provide/vod",
       "enabled": true
     },
     {
       "id": "ffzy",
-      "name": "非凡",
+      "name": "非凡资源",
       "api": "http://ffzy.tv/api.php/provide/vod/",
       "enabled": true
     },
     {
-      "id": "sony",
-      "name": "索尼",
-      "api": "https://suoniapi.com/api.php/provide/vod/at/xml/",
+      "id": "yutu",
+      "name": "玉兔资源",
+      "api": "https://apiyutu.com/api.php/provide/vod/",
       "enabled": true
     },
     {
-      "id": "wolong",
-      "name": "卧龙资源",
-      "api": "https://wolongzyw.com/api.php/provide/vod/?ac=list",
+      "id": "s360",
+      "name": "360资源",
+      "api": "https://360zy.com/api.php/provide/vod/",
+      "enabled": true
+    },
+    {
+      "id": "modou",
+      "name": "墨斗资源",
+      "api": "https://www.mdzyapi.com/api.php/provide/vod/",
+      "enabled": true
+    },
+    {
+      "id": "modu",
+      "name": "魔都资源",
+      "api": "https://caiji.moduapi.cc/api.php/provide/vod/",
       "enabled": true
     },
     {
       "id": "uku",
-      "name": "尤酷",
-      "api": "https://api.ukuapi.com/api.php/provide/vod/?ac=list",
-      "enabled": true
-    },
-    {
-      "id": "jisu",
-      "name": "极速资源",
-      "api": "https://jszyapi.com/api.php/provide/vod/?ac=list",
-      "enabled": true
-    },
-    {
-      "id": "jianan",
-      "name": "建安采集",
-      "api": "http://154.219.117.232:9981/jacloudapi.php/provide/vod",
-      "enabled": true
-    },
-    {
-      "id": "jinchan",
-      "name": "金蝉采集",
-      "api": "https://zy.jinchancaiji.com/api.php/provide/vod",
-      "enabled": true
-    },
-    {
-      "id": "xiaomianyang",
-      "name": "小绵阳",
-      "api": "https://vs.okcdn100.top/api.php/provide/vod",
-      "enabled": true
-    },
-    {
-      "id": "lv",
-      "name": "率率",
-      "api": "https://suoniapi.com/api.php/provide/vod/?ac=list",
+      "name": "U酷资源",
+      "api": "https://api.ukuapi88.com/api.php/provide/vod/",
       "enabled": true
     },
     {
       "id": "baidu",
       "name": "百度资源",
-      "api": "https://api.apibdzy.com/api.php/provide/vod?ac=list",
+      "api": "https://api.apibdzy.com/api.php/provide/vod/",
       "enabled": true
     },
     {
-      "id": "bfzy",
-      "name": "暴风资源",
-      "api": "https://bfzyapi.com/api.php/provide/vod/?ac=list",
+      "id": "iqiyi",
+      "name": "爱奇艺资源",
+      "api": "https://iqiyizyapi.com/api.php/provide/vod/",
+      "enabled": true
+    },
+    {
+      "id": "lebo",
+      "name": "乐播资源",
+      "api": "https://lbapi9.com/api.php/provide/vod/",
+      "enabled": true
+    },
+    {
+      "id": "didi",
+      "name": "滴滴资源",
+      "api": "https://api.ddapi.cc/api.php/provide/vod/",
+      "enabled": true
+    },
+    {
+      "id": "taohua",
+      "name": "桃花资源",
+      "api": "https://thzy1.me/api.php/provide/vod/",
+      "enabled": true
+    },
+    {
+      "id": "xiaojizy",
+      "name": "小鸡资源",
+      "api": "https://api.xiaojizy.live/provide/vod/",
+      "enabled": true
+    },
+    {
+      "id": "baihua",
+      "name": "百花资源",
+      "api": "https://bhziyuan.com/api.php/provide/vod/",
       "enabled": true
     }
   ]

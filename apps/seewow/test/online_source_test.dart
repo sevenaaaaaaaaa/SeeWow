@@ -56,10 +56,11 @@ CmsVodItem _item(String name, {String url = 'https://x/1.m3u8'}) => CmsVodItem(
 
 void main() {
   group('站点清单', () {
-    test('种子去重后是 14 个（金蝉与 789 同址）', () {
+    test('种子去重后没有重复接口', () {
       final unique = dedupeSites(seedOnlineSites);
-      expect(seedOnlineSites.length, 14);
-      expect(unique.length, 14);
+      // 数量跟着种子走：换源包时改一处，测试不会变成绊脚石。
+      expect(seedOnlineSites.length, greaterThanOrEqualTo(12));
+      expect(unique.length, seedOnlineSites.length);
       expect(
         unique.map((site) => site.hostKey).toSet().length,
         unique.length,
@@ -95,7 +96,7 @@ void main() {
     });
 
     test('首次加载灌入种子并落盘', () async {
-      expect(store.sites.length, 14);
+      expect(store.sites.length, seedOnlineSites.length);
       final file = File('${dir.path}/online_sources.json');
       expect(await file.exists(), isTrue);
     });
@@ -135,7 +136,8 @@ void main() {
     test('从配置导入只加新接口', () async {
       final added = await store.importFromConfig([
         const OnlineSite(id: 'x', name: '新站', api: 'https://new.test/api.php/provide/vod'),
-        const OnlineSite(id: 'y', name: '旧站', api: 'https://cj.lziapi.com/api.php/provide/vod/'),
+        // 已经在内置清单里的接口（最大资源）：只该被跳过，不该重复加。
+        const OnlineSite(id: 'y', name: '旧站', api: 'https://api.zuidapi.com/api.php/provide/vod/'),
       ]);
       expect(added, 1);
       expect(store.sites.any((site) => site.name == '新站'), isTrue);

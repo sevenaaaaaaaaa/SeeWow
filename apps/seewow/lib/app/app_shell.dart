@@ -676,7 +676,13 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([widget.store, _spaceStore, _agent]),
+    // `online` 也要听：首页与「片源」页上的「内置 N 个站点」是异步铺完才有数的。
+    listenable: Listenable.merge([
+      widget.store,
+      _spaceStore,
+      _agent,
+      widget.online,
+    ]),
     builder: (context, _) {
       final width = MediaQuery.sizeOf(context).width;
       final sidebar = width >= 1180;
@@ -957,7 +963,11 @@ class _AppShellState extends State<AppShell> {
   /// still tells the user nothing about where they lead. Remembering the last
   /// one costs nothing, shows the destination in the bar, and keeps the seat's
   /// icon and label meaningful while the user is standing on it.
-  Section _overflowSeat = Section.shortDramas;
+  /// 第五席默认站「在线源」。
+  ///
+  /// 内置源包随包发，但入口原本落在「更多」弹层里：只要用户不点两次，界面
+  /// 和一个空应用没有区别——这正是「装了却看不到内置源」的原因。
+  Section _overflowSeat = Section.online;
 
   bool _isOverflow(Section s) => _overflowMeta.containsKey(s);
 
@@ -1219,6 +1229,8 @@ class _AppShellState extends State<AppShell> {
       onPlay: _play,
       onAgent: _run,
       onSources: () => _select(Section.sources),
+      onOnline: () => _select(Section.online),
+      onlineSites: widget.online.enabledSites.length,
       onLibrary: () => _library(),
       onLongPull: _inSpace ? null : _enterSpace,
       onInteract: _shakeGate.markInteraction,
@@ -1247,6 +1259,8 @@ class _AppShellState extends State<AppShell> {
       store: _store,
       iptv: widget.iptv,
       onAgent: _run,
+      onOnline: () => _select(Section.online),
+      onlineSites: widget.online.enabledSites.length,
     ),
     Section.agent => AgentView(agent: _agent, iptv: widget.iptv, onOpen: _open),
     Section.live => LiveView(store: widget.iptv, onPlay: _playLive),
