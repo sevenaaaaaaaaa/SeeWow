@@ -10,6 +10,7 @@ import '../design/skin.dart';
 import '../domain/library_intelligence.dart';
 import '../domain/catalog_category.dart';
 import '../domain/media_item.dart';
+import 'batch_scrape_view.dart';
 import 'metadata_language_batch.dart';
 
 class LibraryView extends StatefulWidget {
@@ -185,6 +186,15 @@ class _LibraryViewState extends State<LibraryView> {
                               onPressed: () => _save(items),
                               icon: const Icon(Icons.playlist_add, size: 20),
                             ),
+                          IconButton(
+                            tooltip: '批量刮削',
+                            onPressed: () => runBatchScrape(
+                              context,
+                              widget.store,
+                              items,
+                            ),
+                            icon: const Icon(Icons.auto_awesome_motion, size: 20),
+                          ),
                           IconButton(
                             tooltip: '批量选择',
                             isSelected: _selecting,
