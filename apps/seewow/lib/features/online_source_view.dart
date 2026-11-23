@@ -8,6 +8,10 @@ import '../domain/media_item.dart';
 import '../domain/online_source.dart';
 import '../sources/cms_vod_client.dart';
 import '../sources/online_vod_service.dart';
+import '../metadata/douban_client.dart';
+import '../sources/work_aggregator.dart';
+import '../sources/work_enricher.dart';
+import 'work_detail_view.dart';
 import '../sources/page_stream_resolver.dart';
 import '../sources/parse_component.dart';
 import '../sources/subscription_reader.dart';
@@ -25,11 +29,15 @@ class OnlineSourceView extends StatefulWidget {
     required this.store,
     required this.iptv,
     required this.onPlay,
+    this.localItems = const [],
   });
 
   final OnlineSourceStore store;
   final IPTVStore iptv;
   final void Function(MediaItem item, {bool live}) onPlay;
+
+  /// 本地片库条目，用来在作品行上标「本地已有 N 集」。
+  final List<MediaItem> localItems;
 
   @override
   State<OnlineSourceView> createState() => _OnlineSourceViewState();
@@ -42,6 +50,8 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
   final _service = OnlineVodService();
   OnlineSearchOutcome? _outcome;
   OnlineSearchOutcome? _dramaOutcome;
+  List<Work> _works = const [];
+  WorkEnricher? _enricher;
   _Mode _mode = _Mode.search;
   bool _busy = false;
   bool _dramaBusy = false;
@@ -53,6 +63,7 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
   @override
   void dispose() {
     _search.dispose();
+    _enricher?.source.close();
     super.dispose();
   }
 
@@ -67,6 +78,7 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
       final result = await _service.search(widget.store.enabledSites, word);
       if (!mounted) return;
       setState(() => _outcome = result);
+      await _rebuildWorks(result);
       if (result.isEmpty) {
         setState(
           () => _error = result.failures.isEmpty
@@ -101,6 +113,31 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
       if (mounted) setState(() => _error = '读取短剧分类失败');
     } finally {
       if (mounted) setState(() => _dramaBusy = false);
+    }
+  }
+
+  /// 聚合与豆瓣补全分开：先把作品行立刻显示出来，再去慢慢补评分，
+  /// 不让用户盯着一个空白列表等外部接口。
+  Future<void> _rebuildWorks(OnlineSearchOutcome outcome) async {
+    final works = WorkAggregator().group(
+      outcome.hits,
+      local: widget.localItems,
+    );
+    setState(() => _works = works);
+    if (works.isEmpty || !mounted) return;
+    final enricher = _enricher ??= WorkEnricher(source: DoubanClient());
+    setState(() => _working = '正在补豆瓣评分…');
+    try {
+      final enriched = await enricher.enrich(
+        works,
+        onProgress: (done, total) {
+          if (mounted) setState(() => _working = '正在补豆瓣评分 $done/$total…');
+        },
+      );
+      if (!mounted) return;
+      setState(() => _works = enriched);
+    } finally {
+      if (mounted) setState(() => _working = null);
     }
   }
 
@@ -150,6 +187,29 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
         'User-Agent': 'okhttp/3.15',
         if (api != null) 'Referer': api.origin,
       },
+    );
+  }
+
+  /// 打开作品详情（纵向流），不是再弹一层「选源」。
+  Future<void> _openWork(Work work) async {
+    if (work.sources.isEmpty) {
+      setState(() => _error = '「${work.title}」暂时没有可用的在线源');
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => WorkDetailView(
+        work: work,
+        onPlay: (item) {
+          Navigator.of(context).pop();
+          widget.onPlay(item, live: false);
+        },
+        onOpenEpisodes: (hit) {
+          Navigator.of(context).pop();
+          _open(hit);
+        },
+      ),
     );
   }
 
@@ -482,22 +542,18 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
               ),
             ),
           Expanded(
-            child: outcome == null || outcome.hits.isEmpty
+            child: outcome == null || _works.isEmpty
                 ? _EmptyState(
                     sites: store.enabledSites.length,
                     drama: _mode == _Mode.drama,
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.only(bottom: 24),
-                    itemCount: outcome.hits.length,
+                    itemCount: _works.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
-                      final hit = outcome.hits[index];
-                      return _ResultRow(
-                        hit: hit,
-                        category: hit.category,
-                        onTap: () => _open(hit),
-                      );
+                      final work = _works[index];
+                      return _WorkRow(work: work, onTap: () => _openWork(work));
                     },
                   ),
           ),
@@ -1153,3 +1209,109 @@ class _SitesDialogState extends State<_SitesDialog> {
     ),
   );
 }
+
+
+/// 一行 = 一部作品。副标题直接回答「能不能看、从哪看」。
+class _WorkRow extends StatelessWidget {
+  const _WorkRow({required this.work, required this.onTap});
+
+  final Work work;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Pressable(
+    onTap: onTap,
+    focusRadius: 14,
+    child: Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.white.withValues(alpha: 0.03),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 46,
+              height: 66,
+              child: work.posterUrl == null
+                  ? ColoredBox(color: Colors.white.withValues(alpha: 0.05))
+                  : Image.network(
+                      work.posterUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => ColoredBox(
+                        color: Colors.white.withValues(alpha: 0.05),
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        work.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: WowType.body(13.5, color: WowColors.text),
+                      ),
+                    ),
+                    if (work.year != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Text(
+                          '${work.year}',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            color: WowColors.muted,
+                          ),
+                        ),
+                      ),
+                    if (work.rating != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Text(
+                          '★ ${work.rating!.toStringAsFixed(1)}',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            color: WowColors.accent,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  work.headline,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: work.playableNow ? WowColors.accent : WowColors.muted,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  work.sources.map((s) => s.siteName).take(4).join(' · ') +
+                      (work.sources.length > 4 ? ' …' : ''),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 10, color: WowColors.muted),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 18, color: WowColors.muted),
+        ],
+      ),
+    ),
+  );
+}
+

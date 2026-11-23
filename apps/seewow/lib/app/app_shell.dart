@@ -1267,6 +1267,7 @@ class _AppShellState extends State<AppShell> {
     Section.online => OnlineSourceView(
       store: widget.online,
       iptv: widget.iptv,
+      localItems: _store.items,
       onPlay: (item, {live = false}) => _playLive(item, live: live),
     ),
     Section.settings => SettingsView(
