@@ -14,7 +14,7 @@
 
 ## 下载 1.21.4（macOS，公开包不带内置源）
 
-> 本版上 **GitHub Release**（`v1.21.4`）。按分发规则，上 GitHub 的公开包**不带任何内置播放源**：装好后在「在线源 → 站点」里自己填采集站接口，或粘一条 TVBox 配置导入。本地预览包（`dist/SeeWow-macos-1.21.4-preview.zip`）带 20 个实测可播站，只在本机用。iOS / Android / Windows / Linux 本版都没出包，下载仍指向旧版。
+> 本版上 **GitHub Release**（`v1.21.4`）。按分发规则，上 GitHub 的公开包**不带任何内置播放源**：装好后在「在线源 → 站点」里自己填采集站接口，或粘一条 TVBox 配置导入。本地预览包（`dist/SeeWow-macos-1.21.4-preview.zip`）带 20 个实测可播站，只在本机用。iOS 出了本地未签名包（带 20 个内置站，不上 Release）；Android / Windows / Linux 本版没出包，下载仍指向旧版。
 
 完整更新记录见 [1.21.4 发布说明](docs/releases/1.21.4.md)，校验值见 Release 里的 `SHA256SUMS.txt`。
 
@@ -23,12 +23,12 @@
 | 平台 | 安装包 | 安装与签名状态 |
 | --- | --- | --- |
 | macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.4/SeeWow-macos-1.21.4-public-nosources.zip)（公开包 1.21.4 (31)，**不含任何站点**） | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证 |
-| iOS / iPadOS ARM64 | `dist/SeeWow-iOS-1.21.2-arm64-unsigned.ipa`（**上一版，14 个站里 9 个已失效**） | iOS 15+；**未签名**，需使用自己的证书与描述文件重签；1.21.4 未出 iOS 包 |
+| iOS / iPadOS ARM64 | `dist/SeeWow-iOS-1.21.4-arm64-unsigned.ipa`（本地未签名包，1.21.4 (30)，带 20 个站，未上传） | iOS 15+；**未签名**，需使用自己的证书与描述文件重签；不在 Release 里 |
 | Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.1/SeeWow-Android-1.20.1-preview.apk) | **1.21.4 未出包，仍是 1.20.1，且没有在线源功能**；Android 7.0+；开发签名预览包 |
 | Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-windows-1.17.0.zip) | **1.21.4 未出包，仍是 1.17.0**；解压后运行 `seewow.exe` |
 | Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-linux-1.17.0.zip) | **1.21.4 未出包，仍是 1.17.0**；解压后运行 `seewow`，需要系统 libmpv |
 
-macOS 为 1.21.4（公开包不带源 / 本地预览包带 20 站）；iOS 停在 1.21.2；Android 停在 1.20.1；Windows / Linux 停在 1.17.0。
+macOS 与 iOS 都到 1.21.4（本地带源；Release 上只有 macOS 零源公开包）；Android 停在 1.20.1；Windows / Linux 停在 1.17.0。
 
 AI 功能默认关闭，需要用户自行配置 API；自动解说依赖系统语音（macOS / Windows / Linux 各自内置）。使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
 
