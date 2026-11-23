@@ -39,7 +39,18 @@ void main() {
   tearDown(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(pathProvider, null);
-    await dir.delete(recursive: true);
+    // 这个用例里 store 的写入是 fire-and-forget：可能正好撞上清理，
+    // 删到一半又落一个文件，于是 rmdir 拿到 ENOTEMPTY。CI 上偶发过一次
+    // （517 通过 / 1 失败），本机跑不出来——慢一点的机器才中。
+    // 重试几次；仍然删不掉也不让一条真测试因此变红。
+    for (var attempt = 0; attempt < 6; attempt++) {
+      try {
+        await dir.delete(recursive: true);
+        return;
+      } on FileSystemException {
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+      }
+    }
   });
 
   testWidgets('RM-04 编辑 Plex 来源可直接改选资料库，不重登录', (tester) async {
