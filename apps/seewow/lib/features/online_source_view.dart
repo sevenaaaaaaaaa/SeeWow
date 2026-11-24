@@ -12,6 +12,8 @@ import '../metadata/douban_client.dart';
 import '../sources/work_aggregator.dart';
 import '../sources/work_enricher.dart';
 import 'work_detail_view.dart';
+import '../playback/line_quality.dart';
+import '../playback/work_launcher.dart';
 import '../sources/page_stream_resolver.dart';
 import '../sources/parse_component.dart';
 import '../sources/subscription_reader.dart';
@@ -67,16 +69,59 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
     super.dispose();
   }
 
+  /// 最近搜过的词：5 分钟内再搜同一个词，先把上次的结果直接摆出来，
+  /// 同时后台再问一遍。采集站回话慢，重搜一次不该又从空屏开始。
+  final Map<String, ({DateTime at, OnlineSearchOutcome outcome})> _cache = {};
+
+  String _cacheKey(String word) =>
+      '${widget.store.enabledSites.map((site) => site.id).join(',')}|$word';
+
   Future<void> _run(String keyword) async {
     final word = keyword.trim();
     if (word.isEmpty) return;
+    final sites = widget.store.enabledSites;
+    final key = _cacheKey(word);
+    final cached = _cache[key];
+    final fresh =
+        cached != null &&
+        DateTime.now().difference(cached.at) < const Duration(minutes: 5);
+    if (fresh) {
+      setState(() {
+        _mode = _Mode.search;
+        _outcome = cached.outcome;
+        _error = null;
+      });
+      _showWorks(cached.outcome);
+    }
+    FocusScope.of(context).unfocus();
     setState(() {
+      _mode = _Mode.search;
       _busy = true;
       _error = null;
+      // 换了词就先清屏；旧词的结果挂在下面会让人以为新词已经搜到了。
+      if (!fresh) {
+        _outcome = null;
+        _works = const [];
+      }
+      _working = '正在问 ${sites.length} 个站点…';
     });
     try {
-      final result = await _service.search(widget.store.enabledSites, word);
+      final result = await _service.search(
+        sites,
+        word,
+        onPartial: (partial) {
+          if (!mounted) return;
+          // 先出结果，再补评分：等 20 个站全回话才画第一行是上一版最慢的地方。
+          _showWorks(partial);
+          setState(() {
+            _outcome = partial;
+            _working =
+                '已回 ${partial.answered}/${sites.length} 站 · ${_works.length} 部';
+          });
+        },
+      );
       if (!mounted) return;
+      _cache[key] = (at: DateTime.now(), outcome: result);
       setState(() => _outcome = result);
       await _rebuildWorks(result);
       if (result.isEmpty) {
@@ -91,6 +136,15 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// 只做聚合，不补豆瓣评分；渐进结果用它，毫秒级。
+  void _showWorks(OnlineSearchOutcome outcome) {
+    final works = WorkAggregator().group(
+      outcome.hits,
+      local: widget.localItems,
+    );
+    setState(() => _works = works);
   }
 
   Future<void> _browseDramas() async {
@@ -147,7 +201,9 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
   }
 
   void _open(OnlineSearchHit hit) {
-    final sources = hit.item.sources.where((source) => source.playable).toList();
+    final sources = hit.item.sources
+        .where((source) => source.playable)
+        .toList();
     if (sources.isEmpty) {
       _resolveSharePage(hit);
       return;
@@ -159,10 +215,8 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
       builder: (_) => _EpisodeSheet(
         hit: hit,
         sources: sources,
-        onPick: (episode) => widget.onPlay(
-          _itemFrom(hit, episode),
-          live: false,
-        ),
+        onPick: (episode) =>
+            widget.onPlay(_itemFrom(hit, episode), live: false),
       ),
     );
   }
@@ -201,6 +255,11 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
       barrierDismissible: true,
       builder: (_) => WorkDetailView(
         work: work,
+        // 起播前测一次线路，并把结果记住：在线源的慢，一半慢在选错线路。
+        launcher: WorkLauncher(
+          probe: const HttpLineProbe(),
+          memory: LineMemory.shared,
+        ),
         onPlay: (item) {
           Navigator.of(context).pop();
           widget.onPlay(item, live: false);
@@ -267,10 +326,7 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
     }
     final component = parseComponent('webview');
     if (component == null || !component.runsHere) {
-      setState(
-        () => _error =
-            '「${hit.item.name}」只有分享页地址；网页解析只在手机端可用',
-      );
+      setState(() => _error = '「${hit.item.name}」只有分享页地址；网页解析只在手机端可用');
       return;
     }
     showModalBottomSheet<void>(
@@ -281,7 +337,7 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
         decoration: BoxDecoration(
           color: WowColors.panel,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          border: Border.all(color: WowColors.fade(0.08)),
         ),
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
         child: Column(
@@ -299,7 +355,7 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
                   : '源码里没找到直链（$staticReason），可以用网页解析试一次',
               style: WowType.monoLabel(
                 9,
-                color: Colors.white.withValues(alpha: 0.4),
+                color: WowColors.fade(0.4),
                 spacing: 0.8,
               ),
             ),
@@ -324,10 +380,8 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
                       ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
-                        color: Colors.white.withValues(alpha: 0.05),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.08),
-                        ),
+                        color: WowColors.fade(0.05),
+                        border: Border.all(color: WowColors.fade(0.08)),
                       ),
                       child: Row(
                         children: [
@@ -338,7 +392,7 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
                               overflow: TextOverflow.ellipsis,
                               style: WowType.body(
                                 12.5,
-                                color: Colors.white.withValues(alpha: 0.86),
+                                color: WowColors.fade(0.86),
                                 height: 1.2,
                               ),
                             ),
@@ -348,7 +402,7 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
                             host,
                             style: WowType.monoLabel(
                               8.5,
-                              color: Colors.white.withValues(alpha: 0.3),
+                              color: WowColors.fade(0.3),
                               spacing: 0.6,
                             ),
                           ),
@@ -371,10 +425,7 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
     );
   }
 
-  Future<void> _confirmParse(
-    OnlineSearchHit hit,
-    CmsVodEpisode episode,
-  ) async {
+  Future<void> _confirmParse(OnlineSearchHit hit, CmsVodEpisode episode) async {
     final component = parseComponent('webview')!;
     final agreed = await showDialog<bool>(
       context: context,
@@ -414,12 +465,14 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
 
   @override
   Widget build(BuildContext context) {
-    final gutter = WowSpace.gutter(MediaQuery.sizeOf(context).width);
+    final width = MediaQuery.sizeOf(context).width;
+    final wide = width >= 620;
+    final gutter = WowSpace.gutter(width);
     final store = widget.store;
     final outcome = _mode == _Mode.drama ? _dramaOutcome : _outcome;
     final busy = _mode == _Mode.drama ? _dramaBusy : _busy;
     return Padding(
-      padding: EdgeInsets.fromLTRB(gutter, 22, gutter, 0),
+      padding: EdgeInsets.fromLTRB(gutter, wide ? 22 : 14, gutter, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -443,69 +496,97 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
                   overflow: TextOverflow.ellipsis,
                   style: WowType.monoLabel(
                     8.5,
-                    color: Colors.white.withValues(alpha: 0.34),
+                    color: WowColors.fade(0.34),
                     spacing: 2.4,
                   ),
                 ),
               ),
               const Spacer(),
-              _SearchField(
-                controller: _search,
-                onSubmit: _run,
-                busy: _busy,
-              ),
-              const SizedBox(width: 10),
+              // 手机上顶栏已经写着「在线源」，页面里再放一个 34px 的同名
+              // 大标题就是重复：占掉 60px，还把搜索框挤到键盘后面。
+              if (!wide)
+                Text(
+                  '${store.enabledSites.length.toString().padLeft(2, '0')}  SITES',
+                  style: WowType.monoLabel(
+                    9,
+                    color: WowColors.fade(0.42),
+                    spacing: 1.8,
+                  ),
+                ),
+              if (!wide) const SizedBox(width: 10),
+              if (wide) ...[
+                _SearchField(controller: _search, onSubmit: _run, busy: _busy),
+                const SizedBox(width: 10),
+              ],
               _iconButton(Icons.tune_rounded, _openSites, tip: '站点与导入'),
             ],
           ),
-          const SizedBox(height: 18),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '在线源',
-                style: WowType.display(
-                  46,
-                  FontWeight.w400,
-                  spacing: -1.2,
-                  height: 1.0,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 7),
-                child: Text(
-                  '${store.enabledSites.length.toString().padLeft(2, '0')}  SITES',
-                  style: WowType.monoLabel(
-                    8.5,
-                    color: Colors.white.withValues(alpha: 0.3),
-                    spacing: 2.2,
+          if (wide) ...[
+            const SizedBox(height: 18),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '在线源',
+                  style: WowType.display(
+                    46,
+                    FontWeight.w400,
+                    spacing: -1.2,
+                    height: 1.0,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Container(height: 1, color: Colors.white.withValues(alpha: 0.07)),
-          const SizedBox(height: 12),
-          Row(
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      '${store.enabledSites.length.toString().padLeft(2, '0')}  SITES',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: WowType.monoLabel(
+                        8.5,
+                        color: WowColors.fade(0.3),
+                        spacing: 2.2,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          SizedBox(height: wide ? 18 : 12),
+          // 手机上搜索框单独占一行、按 44 的高度给足点击面积；挤在标题右边
+          // 只能塞下 168px，提示语被截掉，看上去就像一个空胶囊。
+          if (!wide) ...[
+            _SearchField(
+              controller: _search,
+              onSubmit: _run,
+              busy: _busy,
+              expanded: true,
+            ),
+            const SizedBox(height: 12),
+          ],
+          Container(height: 1, color: WowColors.fade(0.07)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              _modeChip('搜索', _Mode.search),
-              const SizedBox(width: 8),
+              _modeChip('片名搜索', _Mode.search),
               _modeChip('短剧', _Mode.drama),
-              const SizedBox(width: 12),
               if (_mode == _Mode.drama)
                 Text(
                   '采集站自带的短剧分类',
                   style: WowType.monoLabel(
                     8.5,
-                    color: Colors.white.withValues(alpha: 0.3),
+                    color: WowColors.fade(0.3),
                     spacing: 1,
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           if (busy)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -516,7 +597,7 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
                         : '正在问 ${store.enabledSites.length} 个站点…'),
                 style: WowType.monoLabel(
                   9,
-                  color: Colors.white.withValues(alpha: 0.45),
+                  color: WowColors.fade(0.45),
                   spacing: 1.4,
                 ),
               ),
@@ -572,20 +653,18 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
           borderRadius: BorderRadius.circular(9),
           color: active
               ? WowColors.accent.withValues(alpha: 0.16)
-              : Colors.white.withValues(alpha: 0.05),
+              : WowColors.fade(0.05),
           border: Border.all(
             color: active
                 ? WowColors.accent.withValues(alpha: 0.45)
-                : Colors.white.withValues(alpha: 0.08),
+                : WowColors.fade(0.08),
           ),
         ),
         child: Text(
           label,
           style: WowType.monoLabel(
             9,
-            color: active
-                ? WowColors.accent
-                : Colors.white.withValues(alpha: 0.6),
+            color: active ? WowColors.accent : WowColors.fade(0.6),
             spacing: 1,
           ),
         ),
@@ -603,10 +682,10 @@ class _OnlineSourceViewState extends State<OnlineSourceView> {
             height: 38,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.06),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              color: WowColors.fade(0.06),
+              border: Border.all(color: WowColors.fade(0.1)),
             ),
-            child: Icon(icon, size: 17, color: Colors.white.withValues(alpha: 0.72)),
+            child: Icon(icon, size: 17, color: WowColors.fade(0.72)),
           ),
         ),
       );
@@ -622,54 +701,120 @@ class _SearchField extends StatelessWidget {
     required this.controller,
     required this.onSubmit,
     this.busy = false,
+    this.expanded = false,
   });
   final TextEditingController controller;
   final ValueChanged<String> onSubmit;
   final bool busy;
 
+  /// 手机上占满一行：搜索是在线源页面的主操作，不该挤在标题右边当装饰。
+  final bool expanded;
+
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: MediaQuery.sizeOf(context).width < 760 ? 168 : 260,
-    height: 38,
-    child: TextField(
-      controller: controller,
-      textInputAction: TextInputAction.search,
-      onSubmitted: onSubmit,
-      style: WowType.body(12.5, color: Colors.white.withValues(alpha: 0.9)),
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: '搜索片名',
-        hintStyle: WowType.body(12, color: Colors.white.withValues(alpha: 0.32)),
-        prefixIcon: Icon(
-          Icons.search_rounded,
-          size: 16,
-          color: Colors.white.withValues(alpha: 0.4),
-        ),
-        suffixIcon: busy
-            ? const Padding(
-                padding: EdgeInsets.all(12),
-                child: SizedBox(
-                  width: 12,
-                  height: 12,
-                  child: CircularProgressIndicator(strokeWidth: 1.4),
-                ),
-              )
-            : IconButton(
-                onPressed: () => onSubmit(controller.text),
-                icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(expanded ? 23 : 19);
+    final side = BorderSide(color: WowColors.fade(0.1));
+    return SizedBox(
+      width: expanded
+          ? double.infinity
+          : (MediaQuery.sizeOf(context).width < 760 ? 240 : 260),
+      height: expanded ? 46 : 38,
+      child: ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) {
+          final hasText = controller.text.trim().isNotEmpty;
+          return TextField(
+            controller: controller,
+            textInputAction: TextInputAction.search,
+            onSubmitted: onSubmit,
+            style: WowType.body(
+              expanded ? 14 : 12.5,
+              color: WowColors.fade(0.9),
+            ),
+            decoration: InputDecoration(
+              isDense: !expanded,
+              contentPadding: expanded
+                  ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12)
+                  : null,
+              hintText: expanded ? '输入片名，回车搜索' : '搜索片名',
+              hintStyle: WowType.body(
+                expanded ? 13 : 12,
+                color: WowColors.fade(0.42),
               ),
-        filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.05),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(19),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(19),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-        ),
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                size: expanded ? 18 : 16,
+                color: WowColors.fade(0.45),
+              ),
+              suffixIconConstraints: BoxConstraints(
+                minWidth: expanded ? 44 : 38,
+                maxHeight: expanded ? 44 : 38,
+              ),
+              suffixIcon: busy
+                  ? const Padding(
+                      padding: EdgeInsets.all(13),
+                      child: SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 1.4),
+                      ),
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (hasText)
+                          _fieldIcon(
+                            tooltip: '清空',
+                            icon: Icons.close_rounded,
+                            onTap: () {
+                              controller.clear();
+                              onSubmit('');
+                            },
+                          ),
+                        _fieldIcon(
+                          tooltip: '搜索',
+                          icon: Icons.arrow_forward_rounded,
+                          onTap: () => onSubmit(controller.text),
+                        ),
+                      ],
+                    ),
+              filled: true,
+              fillColor: WowColors.fade(0.05),
+              border: OutlineInputBorder(
+                borderRadius: radius,
+                borderSide: side,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: radius,
+                borderSide: side,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: radius,
+                borderSide: BorderSide(
+                  color: WowColors.accent.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+          );
+        },
       ),
+    );
+  }
+
+  Widget _fieldIcon({
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) => IconButton(
+    tooltip: tooltip,
+    padding: EdgeInsets.zero,
+    visualDensity: VisualDensity.compact,
+    constraints: BoxConstraints.tightFor(
+      width: expanded ? 44 : 38,
+      height: expanded ? 44 : 38,
     ),
+    onPressed: onTap,
+    icon: Icon(icon, size: expanded ? 18 : 17, color: WowColors.fade(0.72)),
   );
 }
 
@@ -686,7 +831,7 @@ class _EmptyState extends StatelessWidget {
         Icon(
           Icons.travel_explore_rounded,
           size: 40,
-          color: Colors.white.withValues(alpha: 0.14),
+          color: WowColors.fade(0.14),
         ),
         const SizedBox(height: 12),
         Text(
@@ -695,14 +840,14 @@ class _EmptyState extends StatelessWidget {
               : sites == 0
               ? '还没有站点：点右上「站点与导入」手动加一条采集站接口'
               : '输入片名，问一遍已启用的 $sites 个采集站',
-          style: WowType.body(13, color: Colors.white.withValues(alpha: 0.42)),
+          style: WowType.body(13, color: WowColors.fade(0.42)),
         ),
         const SizedBox(height: 6),
         Text(
           '只走纯 HTTP 接口；爬虫插件不会被加载',
           style: WowType.monoLabel(
             9,
-            color: Colors.white.withValues(alpha: 0.26),
+            color: WowColors.fade(0.26),
             spacing: 1.2,
           ),
         ),
@@ -741,7 +886,7 @@ class _EpisodeSheetState extends State<_EpisodeSheet> {
         decoration: BoxDecoration(
           color: WowColors.panel,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          border: Border.all(color: WowColors.fade(0.08)),
         ),
         child: ListView(
           controller: controller,
@@ -756,7 +901,7 @@ class _EpisodeSheetState extends State<_EpisodeSheet> {
               '${widget.hit.site.name} · ${source.episodes.length} 集',
               style: WowType.monoLabel(
                 9,
-                color: Colors.white.withValues(alpha: 0.36),
+                color: WowColors.fade(0.36),
                 spacing: 1.2,
               ),
             ),
@@ -778,11 +923,11 @@ class _EpisodeSheetState extends State<_EpisodeSheet> {
                           borderRadius: BorderRadius.circular(10),
                           color: i == _line
                               ? WowColors.accent.withValues(alpha: 0.18)
-                              : Colors.white.withValues(alpha: 0.05),
+                              : WowColors.fade(0.05),
                           border: Border.all(
                             color: i == _line
                                 ? WowColors.accent.withValues(alpha: 0.5)
-                                : Colors.white.withValues(alpha: 0.08),
+                                : WowColors.fade(0.08),
                           ),
                         ),
                         child: Text(
@@ -791,7 +936,7 @@ class _EpisodeSheetState extends State<_EpisodeSheet> {
                             9,
                             color: i == _line
                                 ? WowColors.accent
-                                : Colors.white.withValues(alpha: 0.6),
+                                : WowColors.fade(0.6),
                             spacing: 0.8,
                           ),
                         ),
@@ -818,16 +963,14 @@ class _EpisodeSheetState extends State<_EpisodeSheet> {
                       ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
-                        color: Colors.white.withValues(alpha: 0.055),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.08),
-                        ),
+                        color: WowColors.fade(0.055),
+                        border: Border.all(color: WowColors.fade(0.08)),
                       ),
                       child: Text(
                         episode.name,
                         style: WowType.body(
                           12.5,
-                          color: Colors.white.withValues(alpha: 0.86),
+                          color: WowColors.fade(0.86),
                           height: 1.2,
                         ),
                       ),
@@ -934,7 +1077,7 @@ class _SitesDialogState extends State<_SitesDialog> {
           decoration: BoxDecoration(
             color: WowColors.panel,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            border: Border.all(color: WowColors.fade(0.08)),
           ),
           padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
           child: Column(
@@ -950,7 +1093,7 @@ class _SitesDialogState extends State<_SitesDialog> {
                           '粘一条 TVBox 配置可再导入；直播源导入后进「直播」页',
                 style: WowType.monoLabel(
                   9,
-                  color: Colors.white.withValues(alpha: 0.34),
+                  color: WowColors.fade(0.34),
                   spacing: 1,
                 ),
               ),
@@ -970,7 +1113,7 @@ class _SitesDialogState extends State<_SitesDialog> {
                     '启用 ${store.enabledSites.length} / ${store.sites.length}',
                     style: WowType.monoLabel(
                       8.5,
-                      color: Colors.white.withValues(alpha: 0.34),
+                      color: WowColors.fade(0.34),
                       spacing: 1,
                     ),
                   ),
@@ -984,14 +1127,13 @@ class _SitesDialogState extends State<_SitesDialog> {
                         dense: true,
                         contentPadding: EdgeInsets.zero,
                         value: site.enabled,
-                        onChanged: (value) => setState(
-                          () => store.toggle(site, value),
-                        ),
+                        onChanged: (value) =>
+                            setState(() => store.toggle(site, value)),
                         title: Text(
                           site.name,
                           style: WowType.body(
                             12.5,
-                            color: Colors.white.withValues(alpha: 0.88),
+                            color: WowColors.fade(0.88),
                           ),
                         ),
                         secondary: IconButton(
@@ -1006,7 +1148,7 @@ class _SitesDialogState extends State<_SitesDialog> {
                           overflow: TextOverflow.ellipsis,
                           style: WowType.monoLabel(
                             8.5,
-                            color: Colors.white.withValues(alpha: 0.3),
+                            color: WowColors.fade(0.3),
                             spacing: 0.4,
                           ),
                         ),
@@ -1017,17 +1159,17 @@ class _SitesDialogState extends State<_SitesDialog> {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(
-                    flex: 2,
-                    child: _field(_name, '名称（可留空）'),
-                  ),
+                  Expanded(flex: 2, child: _field(_name, '名称（可留空）')),
                   const SizedBox(width: 8),
                   Expanded(
                     flex: 4,
                     child: _field(_api, '接口地址，如 https://x/api.php/provide/vod'),
                   ),
                   const SizedBox(width: 8),
-                  TextButton(onPressed: _busy ? null : _add, child: const Text('添加')),
+                  TextButton(
+                    onPressed: _busy ? null : _add,
+                    child: const Text('添加'),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1046,10 +1188,7 @@ class _SitesDialogState extends State<_SitesDialog> {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     _status!,
-                    style: WowType.body(
-                      11.5,
-                      color: Colors.white.withValues(alpha: 0.6),
-                    ),
+                    style: WowType.body(11.5, color: WowColors.fade(0.6)),
                   ),
                 ),
               Align(
@@ -1068,21 +1207,20 @@ class _SitesDialogState extends State<_SitesDialog> {
 
   Widget _field(TextEditingController controller, String hint) => TextField(
     controller: controller,
-    style: WowType.body(12, color: Colors.white.withValues(alpha: 0.9)),
+    style: WowType.body(12, color: WowColors.fade(0.9)),
     decoration: InputDecoration(
       isDense: true,
       hintText: hint,
-      hintStyle: WowType.body(11.5, color: Colors.white.withValues(alpha: 0.3)),
+      hintStyle: WowType.body(11.5, color: WowColors.fade(0.3)),
       filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.04),
+      fillColor: WowColors.fade(0.04),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(9),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+        borderSide: BorderSide(color: WowColors.fade(0.1)),
       ),
     ),
   );
 }
-
 
 /// 一行 = 一部作品。副标题直接回答「能不能看、从哪看」。
 class _WorkRow extends StatelessWidget {
@@ -1099,8 +1237,8 @@ class _WorkRow extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
-        color: Colors.white.withValues(alpha: 0.03),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        color: WowColors.fade(0.03),
+        border: Border.all(color: WowColors.fade(0.06)),
       ),
       child: Row(
         children: [
@@ -1110,13 +1248,12 @@ class _WorkRow extends StatelessWidget {
               width: 46,
               height: 66,
               child: work.posterUrl == null
-                  ? ColoredBox(color: Colors.white.withValues(alpha: 0.05))
+                  ? ColoredBox(color: WowColors.fade(0.05))
                   : Image.network(
                       work.posterUrl!,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => ColoredBox(
-                        color: Colors.white.withValues(alpha: 0.05),
-                      ),
+                      errorBuilder: (_, _, _) =>
+                          ColoredBox(color: WowColors.fade(0.05)),
                     ),
             ),
           ),
@@ -1167,7 +1304,9 @@ class _WorkRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 11,
-                    color: work.playableNow ? WowColors.accent : WowColors.muted,
+                    color: work.playableNow
+                        ? WowColors.accent
+                        : WowColors.muted,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -1187,4 +1326,3 @@ class _WorkRow extends StatelessWidget {
     ),
   );
 }
-

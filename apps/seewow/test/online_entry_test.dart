@@ -56,7 +56,7 @@ void main() {
       findsOneWidget,
       reason: '标题下要写清楚内置了几个站',
     );
-    expect(find.text('搜索'), findsOneWidget);
+    expect(find.text('片名搜索'), findsOneWidget);
     expect(find.textContaining('问一遍已启用的'), findsOneWidget);
   });
 }

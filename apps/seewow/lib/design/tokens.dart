@@ -9,6 +9,30 @@ import 'skin.dart';
 class WowColors {
   static WowPalette get _p => WowSkin.I.palette;
 
+  /// 当前皮肤是不是浅色。浅色皮肤下「叠白」等于把内容擦掉，凡是半透明的
+  /// 文字、图标、描边都必须走 [fade] / [wash]，不能直接写 Colors.white。
+  static bool get isLight => WowSkin.I.isLight;
+
+  /// 半透明的文字与图标：深色皮肤叠白，浅色皮肤叠黑。
+  ///
+  /// 浅色分支把浓度乘 2.2，因为同样的透明度在亮底上看上去淡得多：深色皮肤里
+  /// 0.30 的白是「次要信息」，换成白底后 0.30 的黑只有 1.1:1，等于消失。
+  /// 2.2 是让 0.26 的 9px 标签也能过 4.5:1 的最小倍数。
+  static Color fade(double alpha) {
+    final a = alpha.clamp(0.0, 1.0);
+    if (isLight) {
+      return const Color(0xFF000000)
+          .withValues(alpha: (a * 2.2).clamp(0.0, 0.94));
+    }
+    return const Color(0xFFFFFFFF).withValues(alpha: a);
+  }
+
+  /// 半透明的面与描边：深色皮肤叠白，浅色皮肤叠黑。透明度保持原设计。
+  static Color wash(double alpha) =>
+      (isLight ? const Color(0xFF000000) : const Color(0xFFFFFFFF)).withValues(
+        alpha: alpha.clamp(0.0, 1.0),
+      );
+
   static Color get ink => _p.ink;
   static Color get shell => _p.shell;
   static Color get panel => _p.panel;

@@ -785,6 +785,18 @@ class _AppShellState extends State<AppShell> {
                                   onPressed: _search,
                                   icon: const Icon(Icons.search, size: 19),
                                 ),
+                              // 窄屏「设置」原本只藏在第五席的「更多」弹层里：
+                              // 要先站到某个溢出分区，再点一次同一个座位。用户找不到，
+                              // 就是没有。760 以下没有侧栏，这里给它一个常驻入口。
+                              if (width < 760)
+                                IconButton(
+                                  tooltip: '设置',
+                                  onPressed: () => _select(Section.settings),
+                                  icon: const Icon(
+                                    Icons.settings_outlined,
+                                    size: 19,
+                                  ),
+                                ),
                               const SizedBox(width: 10),
                               if (width >= 620)
                                 ActionChip(

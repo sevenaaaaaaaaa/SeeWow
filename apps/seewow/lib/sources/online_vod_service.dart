@@ -48,6 +48,7 @@ class OnlineSearchOutcome {
     required this.hits,
     required this.failures,
     required this.skipped,
+    this.answered = 0,
   });
 
   final List<OnlineSearchHit> hits;
@@ -58,6 +59,10 @@ class OnlineSearchOutcome {
   /// 返回了结果但没有可播地址的条目数。
   final int skipped;
 
+  /// 已经回话的站点数（成功 + 失败）。搜索是渐进的：每回一个站就报一次，
+  /// 界面不用等最慢的那个站才显示第一个结果。
+  final int answered;
+
   bool get isEmpty => hits.isEmpty;
   int get siteCount => hits.map((hit) => hit.site.id).toSet().length;
 }
@@ -65,8 +70,8 @@ class OnlineSearchOutcome {
 class OnlineVodService {
   OnlineVodService({
     OnlineCmsClient Function(String api)? clientFor,
-    this.concurrency = 6,
-    this.perSiteTimeout = const Duration(seconds: 18),
+    this.concurrency = 8,
+    this.perSiteTimeout = const Duration(seconds: 10),
   }) : _clientFor = clientFor ?? HttpOnlineCmsClient.new;
 
   final OnlineCmsClient Function(String api) _clientFor;
@@ -146,10 +151,14 @@ class OnlineVodService {
   }
 
   /// 并发搜多个站点；单站失败只记进 failures，不影响其它站的结果。
+  ///
+  /// [onPartial] 每有一个站点回话就回调一次（成功或失败都算）。界面因此可以
+  /// 边搜边显示，而不是盯着空白等最慢的那个站。
   Future<OnlineSearchOutcome> search(
     List<OnlineSite> sites,
-    String keyword,
-  ) async {
+    String keyword, {
+    void Function(OnlineSearchOutcome partial)? onPartial,
+  }) async {
     final word = keyword.trim();
     if (word.isEmpty || sites.isEmpty) {
       return const OnlineSearchOutcome(hits: [], failures: {}, skipped: 0);
@@ -157,7 +166,15 @@ class OnlineVodService {
     final hits = <OnlineSearchHit>[];
     final failures = <String, String>{};
     var skipped = 0;
+    var answered = 0;
     var cursor = 0;
+
+    OnlineSearchOutcome snapshot() => OnlineSearchOutcome(
+      hits: List.of(hits),
+      failures: Map.of(failures),
+      skipped: skipped,
+      answered: answered,
+    );
 
     Future<void> worker() async {
       while (true) {
@@ -182,6 +199,8 @@ class OnlineVodService {
           failures[site.name] = '无法连接';
         } finally {
           client.close();
+          answered++;
+          onPartial?.call(snapshot());
         }
       }
     }
@@ -196,6 +215,7 @@ class OnlineVodService {
       hits: hits,
       failures: failures,
       skipped: skipped,
+      answered: answered,
     );
   }
 }

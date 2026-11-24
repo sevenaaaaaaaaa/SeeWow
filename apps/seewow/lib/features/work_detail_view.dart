@@ -82,7 +82,7 @@ class _WorkDetailViewState extends State<WorkDetailView> {
           decoration: BoxDecoration(
             color: WowColors.panel,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            border: Border.all(color: WowColors.fade(0.08)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -162,12 +162,12 @@ class _WorkDetailViewState extends State<WorkDetailView> {
           width: 86,
           height: 124,
           child: (work.posterUrl ?? '').isEmpty
-              ? ColoredBox(color: Colors.white.withValues(alpha: 0.05))
+              ? ColoredBox(color: WowColors.fade(0.05))
               : Image.network(
                   work.posterUrl!,
                   fit: BoxFit.cover,
                   errorBuilder: (_, _, _) => ColoredBox(
-                    color: Colors.white.withValues(alpha: 0.05),
+                    color: WowColors.fade(0.05),
                   ),
                 ),
         ),
@@ -213,8 +213,8 @@ class _WorkDetailViewState extends State<WorkDetailView> {
     padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(14),
-      color: Colors.white.withValues(alpha: 0.035),
-      border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+      color: WowColors.fade(0.035),
+      border: Border.all(color: WowColors.fade(0.07)),
     ),
     child: Row(
       children: [
@@ -274,9 +274,7 @@ class _WorkDetailViewState extends State<WorkDetailView> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                color: Colors.white.withValues(
-                  alpha: source.directPlay ? 0.045 : 0.02,
-                ),
+                color: WowColors.wash(source.directPlay ? 0.045 : 0.02),
               ),
               child: Row(
                 children: [
