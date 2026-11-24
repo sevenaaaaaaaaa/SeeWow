@@ -13,6 +13,7 @@ import '../watch_ai/watch_frame.dart';
 import '../features/frame_bookmarks_view.dart';
 import '../features/playback_settings_view.dart';
 import 'playback_preferences.dart';
+import 'stream_cache.dart';
 import 'cinema_entrance.dart';
 import 'playback_window.dart';
 import 'local_stream_proxy.dart';
@@ -997,7 +998,14 @@ class _PlayerScreenState extends State<PlayerScreen>
     // PlayerConfiguration.muted closes the startup window; gain zero now keeps
     // silence even when the dubbing engine releases its own native mute flag.
     if (_player.platform is NativePlayer) {
-      await (_player.platform as NativePlayer).setProperty('mute', 'no');
+      final native = _player.platform as NativePlayer;
+      await native.setProperty('mute', 'no');
+      // 在线播放：分片落盘 + 30 秒前向缓冲。本地文件与直播也走同一条路径，
+      // 但只有 http(s) 才打开磁盘缓存，免得本地播放也去写一份副本。
+      await StreamCache.apply(
+        network: StreamCache.isNetwork(target.locator),
+        set: native.setProperty,
+      );
     }
     if (!mounted) return;
     await _player.open(
