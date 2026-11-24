@@ -3,6 +3,7 @@ name: build
 on:
   push:
     branches: [main]
+    tags: ['v*']          # 打 tag = 走发布：五个平台构建完成后自动建 Release 并传资产
   pull_request:
   workflow_dispatch:
 
@@ -147,3 +148,68 @@ jobs:
         with:
           name: SeeWow-ios
           path: apps/seewow/build/ios/iphoneos/Runner.app
+
+  # ---- tag 发布：五个平台的产物打成 Release 资产 ----
+  # 为什么搬进 CI：本机到 GitHub 的上行实测只有 10–20 KB/s，一次 40 MB 的安装包要传 40 分钟以上，
+  # 中途断一次就白跑；runner 传资产走 GitHub 内网，几秒完成。本地只剩 git push v* 这一下。
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos, windows, linux, android, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 版本号必须与 tag 一致
+        run: |
+          set -euo pipefail
+          V="${GITHUB_REF_NAME#v}"
+          FOUND=$(grep -m1 '^version:' apps/seewow/pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          echo "pubspec=$FOUND tag=$V"
+          if [ "$FOUND" != "$V" ]; then
+            echo "::error::pubspec 里是 ${FOUND}，tag 是 ${GITHUB_REF_NAME} —— 先 bump apps/seewow/pubspec.yaml 再打 tag"
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 打包 + 校验和
+        run: |
+          set -euo pipefail
+          V="${GITHUB_REF_NAME#v}"
+          mkdir -p out
+          ls -R artifacts | head -60
+
+          if [ -d artifacts/SeeWow-macos ]; then
+            ( cd artifacts/SeeWow-macos && zip -qry "../../out/SeeWow-macos-${V}.zip" . )
+          fi
+          if [ -d artifacts/SeeWow-windows ]; then
+            ( cd artifacts/SeeWow-windows && zip -qry "../../out/SeeWow-windows-${V}.zip" . )
+          fi
+          if [ -d artifacts/SeeWow-linux ]; then
+            ( cd artifacts/SeeWow-linux && tar -czf "../../out/SeeWow-linux-${V}.tar.gz" . )
+          fi
+          if [ -f artifacts/SeeWow-android/app-release.apk ]; then
+            cp artifacts/SeeWow-android/app-release.apk "out/SeeWow-Android-${V}.apk"
+          fi
+          if [ -d artifacts/SeeWow-ios ]; then
+            ( cd artifacts/SeeWow-ios && zip -qry "../../out/SeeWow-iOS-${V}-unsigned.zip" . )
+          fi
+
+          cd out
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          du -sh ./*
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: SeeWow ${{ github.ref_name }}
+          files: out/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
