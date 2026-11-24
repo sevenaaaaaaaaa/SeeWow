@@ -72,7 +72,8 @@ jobs:
         timeout-minutes: 25
         run: flutter test --concurrency=1
 
-      - run: flutter build macos --release
+      # 公开包按分发规则不带任何内置播放源：站点由用户自己填或导入。
+      - run: flutter build macos --release --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true
       - uses: actions/upload-artifact@v4
         with:
           name: SeeWow-macos
@@ -89,7 +90,7 @@ jobs:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
       - run: flutter pub get
-      - run: flutter build windows --release
+      - run: flutter build windows --release --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true
       - uses: actions/upload-artifact@v4
         with:
           name: SeeWow-windows
@@ -107,7 +108,7 @@ jobs:
           cache: true
       - run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libmpv-dev mpv liblzma-dev
       - run: flutter pub get
-      - run: flutter build linux --release
+      - run: flutter build linux --release --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true
       - uses: actions/upload-artifact@v4
         with:
           name: SeeWow-linux
@@ -126,7 +127,7 @@ jobs:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
       - run: flutter pub get
-      - run: flutter build apk --release
+      - run: flutter build apk --release --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true
       - uses: actions/upload-artifact@v4
         with:
           name: SeeWow-android
@@ -143,7 +144,7 @@ jobs:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
       - run: flutter pub get
-      - run: flutter build ios --release --no-codesign
+      - run: flutter build ios --release --no-codesign --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true
       - uses: actions/upload-artifact@v4
         with:
           name: SeeWow-ios
@@ -185,20 +186,19 @@ jobs:
           mkdir -p out
           ls -R artifacts | head -60
 
+          # 只发公开可分发的包：桌面三端 + Android。iOS 是未签名产物，装不上，
+          # 也不该出现在公开下载里；它留在 Actions artifacts 供自签使用。
           if [ -d artifacts/SeeWow-macos ]; then
-            ( cd artifacts/SeeWow-macos && zip -qry "../../out/SeeWow-macos-${V}.zip" . )
+            ( cd artifacts/SeeWow-macos && zip -qry "../../out/SeeWow-macos-${V}-public-nosources.zip" . )
           fi
           if [ -d artifacts/SeeWow-windows ]; then
-            ( cd artifacts/SeeWow-windows && zip -qry "../../out/SeeWow-windows-${V}.zip" . )
+            ( cd artifacts/SeeWow-windows && zip -qry "../../out/SeeWow-windows-${V}-public-nosources.zip" . )
           fi
           if [ -d artifacts/SeeWow-linux ]; then
-            ( cd artifacts/SeeWow-linux && tar -czf "../../out/SeeWow-linux-${V}.tar.gz" . )
+            ( cd artifacts/SeeWow-linux && tar -czf "../../out/SeeWow-linux-${V}-public-nosources.tar.gz" . )
           fi
           if [ -f artifacts/SeeWow-android/app-release.apk ]; then
             cp artifacts/SeeWow-android/app-release.apk "out/SeeWow-Android-${V}.apk"
-          fi
-          if [ -d artifacts/SeeWow-ios ]; then
-            ( cd artifacts/SeeWow-ios && zip -qry "../../out/SeeWow-iOS-${V}-unsigned.zip" . )
           fi
 
           cd out
