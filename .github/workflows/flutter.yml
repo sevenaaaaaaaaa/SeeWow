@@ -73,11 +73,27 @@ jobs:
         run: flutter test --concurrency=1
 
       # 公开包按分发规则不带任何内置播放源：站点由用户自己填或导入。
-      - run: flutter build macos --release --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true
+      # 只传 --dart-define 不够（1.21.5 的 APK 里还躺着 3718 字节的源包文件，
+      # 站点地址也在 AOT 二进制里）：构建前移走源包与代码种子，构建后验产物。
+      - name: Prepare public assets (no built-in sources)
+        run: bash tool/ci_public_build.sh prep
+      - run: flutter build macos --release --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true --dart-define-from-file=build/public_defines.json
+      - name: Verify the artifact carries no sources
+        run: bash tool/ci_public_build.sh verify "$(ls -d build/macos/Build/Products/Release/*.app | head -1)"
+      # 不能把 .app 直接交给 upload-artifact：它不保留符号链接，往返一次会把
+      # X.framework/{X, Versions/Current/X} 变成三份真文件 —— 1.21.5 的 macOS 包
+      # 因此是 318 MB 解压 / 124 MB 下载（正常 108 MB / 42 MB）。先打成 zip 再传，
+      # 上传的就是用户最终拿到的那一份，发版时原样复制。
+      - name: Package (symlinks preserved)
+        run: |
+          set -euo pipefail
+          app="$(ls -d build/macos/Build/Products/Release/*.app | head -1)"
+          ditto -c -k --norsrc --keepParent "$app" build/SeeWow-macos.zip
+          python3 tool/check_macos_zip.py build/SeeWow-macos.zip
       - uses: actions/upload-artifact@v4
         with:
           name: SeeWow-macos
-          path: apps/seewow/build/macos/Build/Products/Release/*.app
+          path: apps/seewow/build/SeeWow-macos.zip
 
   windows:
     runs-on: windows-latest
@@ -90,7 +106,13 @@ jobs:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
       - run: flutter pub get
-      - run: flutter build windows --release --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true
+      - name: Prepare public assets (no built-in sources)
+        shell: bash
+        run: bash tool/ci_public_build.sh prep
+      - run: flutter build windows --release --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true --dart-define-from-file=build/public_defines.json
+      - name: Verify the artifact carries no sources
+        shell: bash
+        run: bash tool/ci_public_build.sh verify build/windows/x64/runner/Release
       - uses: actions/upload-artifact@v4
         with:
           name: SeeWow-windows
@@ -108,7 +130,11 @@ jobs:
           cache: true
       - run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libmpv-dev mpv liblzma-dev
       - run: flutter pub get
-      - run: flutter build linux --release --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true
+      - name: Prepare public assets (no built-in sources)
+        run: bash tool/ci_public_build.sh prep
+      - run: flutter build linux --release --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true --dart-define-from-file=build/public_defines.json
+      - name: Verify the artifact carries no sources
+        run: bash tool/ci_public_build.sh verify build/linux/x64/release/bundle
       - uses: actions/upload-artifact@v4
         with:
           name: SeeWow-linux
@@ -127,7 +153,11 @@ jobs:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
       - run: flutter pub get
-      - run: flutter build apk --release --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true
+      - name: Prepare public assets (no built-in sources)
+        run: bash tool/ci_public_build.sh prep
+      - run: flutter build apk --release --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true --dart-define-from-file=build/public_defines.json
+      - name: Verify the artifact carries no sources
+        run: bash tool/ci_public_build.sh verify build/app/outputs/flutter-apk/app-release.apk
       - uses: actions/upload-artifact@v4
         with:
           name: SeeWow-android
@@ -144,7 +174,11 @@ jobs:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
       - run: flutter pub get
-      - run: flutter build ios --release --no-codesign --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true
+      - name: Prepare public assets (no built-in sources)
+        run: bash tool/ci_public_build.sh prep
+      - run: flutter build ios --release --no-codesign --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true --dart-define-from-file=build/public_defines.json
+      - name: Verify the artifact carries no sources
+        run: bash tool/ci_public_build.sh verify build/ios/iphoneos/Runner.app
       - uses: actions/upload-artifact@v4
         with:
           name: SeeWow-ios
@@ -190,8 +224,10 @@ jobs:
 
           # 只发公开可分发的包：桌面三端 + Android。iOS 是未签名产物，装不上，
           # 也不该出现在公开下载里；它留在 Actions artifacts 供自签使用。
-          if [ -d artifacts/SeeWow-macos ]; then
-            ( cd artifacts/SeeWow-macos && zip -qry "../../out/SeeWow-macos-${V}-public-nosources.zip" . )
+          if [ -f artifacts/SeeWow-macos/SeeWow-macos.zip ]; then
+            cp artifacts/SeeWow-macos/SeeWow-macos.zip "out/SeeWow-macos-${V}-public-nosources.zip"
+            # 复核一次：资产必须仍是「符号链接在、体积正常」的那一份
+            python3 apps/seewow/tool/check_macos_zip.py "out/SeeWow-macos-${V}-public-nosources.zip"
           fi
           if [ -d artifacts/SeeWow-windows ]; then
             ( cd artifacts/SeeWow-windows && zip -qry "../../out/SeeWow-windows-${V}-public-nosources.zip" . )

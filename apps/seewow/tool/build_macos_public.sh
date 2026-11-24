@@ -59,17 +59,11 @@ flutter build macos --release \
   --dart-define=SEEWOW_NO_BUILTIN_SOURCES=true \
   "$@"
 
-app="$project_root/build/macos/Build/Products/Release/SeeWow.app"
-if find "$app" -name 'builtin_sources.json' | grep -q .; then
-  echo '公开包里仍能找到 builtin_sources.json，拒绝打包' >&2
-  exit 1
-fi
-# 二进制里也不能留下站点地址：抓一个内置站点的域名当取样。
-app_bin="$app/Contents/Frameworks/App.framework/Versions/A/App"
-if grep -aq 'zuidapi\.com' "$app_bin"; then
-  echo '公开包的二进制里仍能找到内置站点地址，拒绝打包' >&2
-  exit 1
-fi
+# 不写死 App 名：真名是 seewow.app，靠大小写不敏感卷才让 SeeWow.app 能打开，
+# 换到大小写敏感卷就找不到。判据与 CI 共用 tool/ci_public_build.sh verify 一处实现。
+app="$(ls -d "$project_root"/build/macos/Build/Products/Release/*.app 2>/dev/null | head -1)"
+[[ -n "$app" ]] || { echo '找不到构建产物 .app' >&2; exit 1; }
+bash "$project_root/tool/ci_public_build.sh" verify "$app"
 built_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
 built_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")"
 echo "产物版本：$built_version ($built_number)"
@@ -77,5 +71,7 @@ echo "产物版本：$built_version ($built_number)"
 out="$repo_root/dist/SeeWow-macos-$version-public-nosources.zip"
 rm -f "$out" "$out.sha256"
 ditto -c -k --norsrc --keepParent "$app" "$out"
+# 同一道闸门也查符号链接：ditto 之后 X.framework/X 仍是链接，包才不会被撑成三倍。
+python3 "$project_root/tool/check_macos_zip.py" "$out"
 shasum -a 256 "$out" > "$out.sha256"
 echo "$out"

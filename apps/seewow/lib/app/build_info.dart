@@ -17,7 +17,7 @@ class BuildInfo {
   /// 语义版本号，不带 build number。来源是构建参数，默认值与 pubspec 同步。
   static const String version = String.fromEnvironment(
     'SEEWOW_VERSION',
-    defaultValue: '1.21.5',
+    defaultValue: '1.21.6',
   );
 
   /// 构建戳：`<git commit 短哈希> <构建时间>`。
