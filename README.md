@@ -2,7 +2,9 @@
 
 **Cinema, made personal.** 一个以私人媒体库为中心的跨平台播放器，使用 Flutter + media_kit / libmpv。
 
-当前工作区为 **1.21.4 免费元数据与批量刮削版**：封面、作品信息与评论全部走免密钥接口（豆瓣 + AniList），加了批量刮削（只补空白、跳过人工确认过的条目、片名与年份不过门槛就不写）；搜索结果也从「站点 × 条目」变成「作品」，点进去是一条纵向流——能不能看 / 从哪看 / 大家怎么说，主按钮一点起播，地址拿不到自动换源。**本版已发 GitHub Release（`v1.21.4`）**：公开包不带任何内置播放源（按分发规则），本地预览包带当天实测可播的 20 个站。逐条见 [1.21.4 发布说明](docs/releases/1.21.4.md)。
+当前工作区为 **1.21.5 在线源可用性版**：三个 iPhone 上报回来的回归在这一版修掉——素白皮肤下「在线源」的文字对比度只有 1.05:1（等于看不见），改成按皮肤取色令牌；搜索从「等 20 个站全回再画」改成边回边画（并发 8、单站 10s、5 分钟内重复查询直接复用上次结果）；起播从「拿第一个有直链的源就播」改成最多 4 条线并行测速再选，赢家记 6 小时；设置入口在手机宽度下从溢出层挪到顶栏齿轮。播放内核接了 libmpv 磁盘缓存：下过的分片落盘，拖动、回看、断线重连不再从头拉。**本版已发 GitHub Release（`v1.21.5`），第一次五端在同一个 tag 上全部构建通过**：公开资产四份（macOS / Windows / Linux / Android），iOS 未签名包装不上，只留本机。公开包运行时不启用任何内置播放源（站点自己填或导 TVBox），但站点清单文件仍随包分发（见发布说明 §3）。另外，`v1.21.5` 这个 tag 曾被删掉重打过一次，经过与代价写在发布说明 §2。逐条见 [1.21.5 发布说明](docs/releases/1.21.5.md)。
+
+上一版 **1.21.4 免费元数据与批量刮削版**：封面、作品信息与评论全部走免密钥接口（豆瓣 + AniList），加了批量刮削（只补空白、跳过人工确认过的条目、片名与年份不过门槛就不写）；搜索结果也从「站点 × 条目」变成「作品」，点进去是一条纵向流——能不能看 / 从哪看 / 大家怎么说，主按钮一点起播，地址拿不到自动换源。那一版也发过 Release（[`v1.21.4`](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.21.4)），但只有 macOS 一份公开包。逐条见 [1.21.4 发布说明](docs/releases/1.21.4.md)。
 
 上一版 **1.21.3 内置源可播版**：1.21.2 把源包塞进了包里，却把入口留在「更多」弹层里——底部第 5 席默认写「短剧」，要点两次才到「在线源」，首页一个字没提，所以装了等于没装；而且包里那 14 个站点有 9 个已经连不上（7 个超时、1 个 403、1 个 404）。1.21.3 把入口摆到首屏（第 5 席直接叫「在线源」＋首页直达条＋「片源」页首个卡片），把源包换成 20 个当天实测能出 m3u8/mp4 直链的站点，并让装过旧版的机器自动换包（用户自己加的站点不动）。那一版也发过 Release（[`v1.21.3`](https://github.com/sevenaaaaaaaaa/SeeWow/releases/tag/v1.21.3)，macOS + iOS 两份公开包都不带源），逐条见 [1.21.3 发布说明](docs/releases/1.21.3.md)。
 
@@ -12,23 +14,23 @@
 
 **质量与计划。** 当前版本的质检结论、缺陷清单与后续计划见 [路线图](docs/roadmap.md)；想确认"哪一版有什么、哪个平台现在能装什么"，见 [版本汇总](docs/release-index.md)；跨端对齐状态见 [对齐说明](docs/parity.md)。资源管理（本地目录 / Plex）的缺陷编号为 RM-01…RM-09，1.19.0 起已全部修复，对应 issue #2–#12。
 
-## 下载 1.21.4（macOS，公开包不带内置源）
+## 下载 1.21.5（macOS / Windows / Linux / Android；公开包不启用内置源）
 
-> 本版上 **GitHub Release**（`v1.21.4`）。按分发规则，上 GitHub 的公开包**不带任何内置播放源**：装好后在「在线源 → 站点」里自己填采集站接口，或粘一条 TVBox 配置导入。本地预览包（`dist/SeeWow-macos-1.21.4-preview.zip`）带 20 个实测可播站，只在本机用。iOS 出了本地未签名包（带 20 个内置站，不上 Release）；Android / Windows / Linux 本版没出包，下载仍指向旧版。
+> 本版上 **GitHub Release**（`v1.21.5`）。这是第一次由 CI 在打 tag 时把五端构建完并自动建 Release（以前每一版的包都是本机打好再传）；公开资产四份——macOS / Windows / Linux / Android，iOS 未签名包装不上，按规则不发。按分发规则，公开包**运行时不启用任何内置播放源**：装好后在「在线源 → 站点」里自己填采集站接口，或粘一条 TVBox 配置导入。**如实说明**：那份站点清单文件（`assets/sources/builtin_sources.json`，20 个站）目前仍随包分发，只是不加载——解压能读到，详见 [发布说明 §3](docs/releases/1.21.5.md)。本机预览包（`dist/SeeWow-Android-1.21.5-preview.apk`）带 20 个实测可播站，只在本机用。iOS 出了本地未签名包（带 20 个内置站，不上 Release）。
 
-完整更新记录见 [1.21.4 发布说明](docs/releases/1.21.4.md)，校验值见 Release 里的 `SHA256SUMS.txt`。
+完整更新记录见 [1.21.5 发布说明](docs/releases/1.21.5.md)，校验值见 Release 里的 `SHA256SUMS.txt`。
 
-这一版做两件事：**封面 / 作品 / 评论全部走免密钥接口**，以及**批量刮削**；并把搜索结果从站点行聚成作品，作品点进去就是详情流与一键起播。
+这一版做三件事：**在线源在浅色皮肤下可读**、**搜索结果边回边画**、**起播前并行测速选线**；顺手把在线播放的卡顿交给磁盘缓存，并把发版流水线配齐（`v*` tag → 五端构建 → 自动 Release）。
 
 | 平台 | 安装包 | 安装与签名状态 |
 | --- | --- | --- |
-| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.4/SeeWow-macos-1.21.4-public-nosources.zip)（公开包 1.21.4 (31)，**不含任何站点**） | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证 |
-| iOS / iPadOS ARM64 | `dist/SeeWow-iOS-1.21.4-arm64-unsigned.ipa`（本地未签名包，1.21.4 (30)，带 20 个站，未上传） | iOS 15+；**未签名**，需使用自己的证书与描述文件重签；不在 Release 里 |
-| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.20.1/SeeWow-Android-1.20.1-preview.apk) | **1.21.4 未出包，仍是 1.20.1，且没有在线源功能**；Android 7.0+；开发签名预览包 |
-| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-windows-1.17.0.zip) | **1.21.4 未出包，仍是 1.17.0**；解压后运行 `seewow.exe` |
-| Linux x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.17.0/SeeWow-linux-1.17.0.zip) | **1.21.4 未出包，仍是 1.17.0**；解压后运行 `seewow`，需要系统 libmpv |
+| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.5/SeeWow-macos-1.21.5-public-nosources.zip)（公开包 1.21.5 (31)，124 MB，**运行时不启用站点**） | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证 |
+| iOS / iPadOS ARM64 | `dist/SeeWow-iOS-1.21.5-arm64-unsigned.ipa`（本地未签名包，1.21.5 (31)，带 20 个站，未上传） | iOS 15+；**未签名**，需使用自己的证书与描述文件重签；不在 Release 里 |
+| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.5/SeeWow-Android-1.21.5.apk)（公开包 1.21.5 (31)，107 MB） | Android 7.0+；开发签名；**第一个带「在线源」入口的公开 Android 包**，但里面没有内置站——第一次打开自己填采集站接口或导 TVBox |
+| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.5/SeeWow-windows-1.21.5-public-nosources.zip)（公开包 1.21.5 (31)，36 MB） | 解压后运行 `seewow.exe`；上次有包是 1.17.0 |
+| Linux x64 | [下载 tar.gz](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.5/SeeWow-linux-1.21.5-public-nosources.tar.gz)（公开包 1.21.5 (31)，14 MB） | 解压后运行 `seewow`，需要系统 libmpv；上次有包是 1.17.0 |
 
-macOS 与 iOS 都到 1.21.4（本地带源；Release 上只有 macOS 零源公开包）；Android 停在 1.20.1；Windows / Linux 停在 1.17.0。
+四端公开包都到 1.21.5（macOS / Windows / Linux / Android）；iOS 只有本机未签名包（带源，不上 Release）。上一版 1.21.4 只有 macOS 公开包，此前 Android 停在 1.20.1、Windows / Linux 停在 1.17.0。
 
 AI 功能默认关闭，需要用户自行配置 API；自动解说依赖系统语音（macOS / Windows / Linux 各自内置）。使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
 
