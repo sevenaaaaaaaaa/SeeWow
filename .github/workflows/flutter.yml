@@ -184,7 +184,9 @@ jobs:
           set -euo pipefail
           V="${GITHUB_REF_NAME#v}"
           mkdir -p out
-          ls -R artifacts | head -60
+          # 不要把 ls | head 放进 set -o pipefail：head 提前关闭管道会让 ls 以
+          # SIGPIPE 收场，整步直接失败（v1.21.5 第一次打 tag 就栽在这里）。
+          find artifacts -maxdepth 2 -type d | sort
 
           # 只发公开可分发的包：桌面三端 + Android。iOS 是未签名产物，装不上，
           # 也不该出现在公开下载里；它留在 Actions artifacts 供自签使用。
