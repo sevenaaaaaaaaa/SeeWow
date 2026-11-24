@@ -2,6 +2,8 @@ import org.gradle.kotlin.dsl.withGroovyBuilder
 
 allprojects {
     repositories {
+        // 同 settings.gradle.kts：先走阿里云镜像，官方源保留为回落。
+        maven("https://maven.aliyun.com/repository/google")
         google()
         mavenCentral()
     }
