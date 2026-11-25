@@ -37,6 +37,7 @@ final class IOSPlaybackBridge: NSObject, AVPictureInPictureControllerDelegate {
   private var possibility: NSKeyValueObservation?
   private var pending: FlutterResult?
   private var wantedPlaying = false
+  private var pipVolume: Float = 1
   private var backgroundEnabled = false
   private var routeObserver: NSObjectProtocol?
   private var requestID = 0
@@ -119,8 +120,23 @@ final class IOSPlaybackBridge: NSObject, AVPictureInPictureControllerDelegate {
     }
   }
   private func clearCommands() { for (command, token) in commands { command.removeTarget(token) }; commands.removeAll() }
+  /// 画面要真的贴在一个已上屏的窗口上，PiP 才可能成立。scene 架构下
+  /// registrar.viewController 有时不在窗口层级里，所以再退一步找 key window。
+  private var hostView: UIView? {
+    if let view = presenter?.view, view.window != nil { return view }
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    for scene in scenes {
+      if let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first,
+        let view = window.rootViewController?.view {
+        return view
+      }
+    }
+    return presenter?.view
+  }
+
   private func startPip(_ args: [String: Any], _ result: @escaping FlutterResult) {
-    guard AVPictureInPictureController.isPictureInPictureSupported(), let view = presenter?.view else {
+    guard AVPictureInPictureController.isPictureInPictureSupported(), let view = hostView else {
+      NSLog("[SeeWow] pip unsupported: supported=\(AVPictureInPictureController.isPictureInPictureSupported()) host=\(hostView != nil)")
       result(FlutterError(code: "pip", message: "当前设备不支持系统画中画", details: nil)); return
     }
     guard (args["headers"] as? [String: String] ?? [:]).isEmpty else {
@@ -131,11 +147,17 @@ final class IOSPlaybackBridge: NSObject, AVPictureInPictureControllerDelegate {
     guard let url, ["file", "http", "https"].contains(url.scheme ?? ""), url.user == nil, url.password == nil else { result(false); return }
     if pending != nil || pip?.isPictureInPictureActive == true { result(false); return }
     cleanup()
+    // PiP 属于后台音频场景：会话没立起来时，PiP 里会没声音甚至起不来。
+    do {
+      try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+      try AVAudioSession.sharedInstance().setActive(true)
+    } catch { NSLog("[SeeWow] pip audio session failed: \(error)") }
     requestID += 1; let ticket = requestID
     pending = result; wantedPlaying = args["playing"] as? Bool == true
     let item = AVPlayerItem(url: url)
     let newPlayer = AVPlayer(playerItem: item)
-    newPlayer.volume = approvedVolume(args)
+    pipVolume = approvedVolume(args)
+    newPlayer.volume = pipVolume
     player = newPlayer
     let holder = UIView(frame: CGRect(x: max(0, view.bounds.width - 180), y: max(0, view.bounds.height - 120), width: 176, height: 99))
     holder.backgroundColor = .black; holder.isUserInteractionEnabled = false
@@ -154,6 +176,10 @@ final class IOSPlaybackBridge: NSObject, AVPictureInPictureControllerDelegate {
           newPlayer.seek(to: CMTime(seconds: seconds, preferredTimescale: 1000), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             DispatchQueue.main.async {
               guard let self, self.requestID == ticket else { return }
+              // 先静音播起来：PiP 只能从正在播的画面起，声音等主播放器
+              // 让出来之后（didStart 里）再放开，避免两路同时响。
+              newPlayer.isMuted = true
+              newPlayer.play()
               self.possibility = controller.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] controller, _ in
                 DispatchQueue.main.async {
                   guard let self, self.requestID == ticket, self.pending != nil else { return }
@@ -167,6 +193,7 @@ final class IOSPlaybackBridge: NSObject, AVPictureInPictureControllerDelegate {
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
       guard let self, self.requestID == ticket, self.pending != nil else { return }
+      NSLog("[SeeWow] pip timeout: status=\(String(describing: item.status.rawValue)) possible=\(controller.isPictureInPicturePossible)")
       self.fail("画中画准备超时，请检查系统权限或媒体格式")
     }
   }
@@ -181,7 +208,10 @@ final class IOSPlaybackBridge: NSObject, AVPictureInPictureControllerDelegate {
   }
   func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
     host?.alpha = 0
-    if wantedPlaying { player?.play() }
+    // 主播放器在收到 pip.mode 后会自己停，这里再放开声音。
+    player?.isMuted = false
+    player?.volume = pipVolume
+    if wantedPlaying { player?.play() } else { player?.pause() }
     pending?(true); pending = nil
     installCommands()
     channel.invokeMethod("pip.mode", arguments: ["active": true])
