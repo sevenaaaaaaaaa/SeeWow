@@ -50,6 +50,9 @@
 | 4 | 2026-11-25 | 「播放界面里最想直接用的 agent 不行；陪伴的宠物应该做成浮窗」 | P1 | 点开后影片不暂停；浮窗可拖动、可收成头像球；收起不掐断会话；测试绿 | 不改 AI 协议 / 密钥 / 提示词；不做跨页面全局浮层 | blocked（等用户定形态） | 侦查见 §4；player_screen.dart:827、:849 |
 | 5 | 2026-11-25 | 「播放和暂停按键应该放在播放界面，而不是播放控件上」 | P1 | 画面中央就有播放/暂停键；播放中淡至 0.26、暂停满不透明；点击回调 _togglePlay；测试能被改坏 | 不删控件条里那个按钮；不改单击手势（仍是切控件条）；不动播放内核 | done | lib/playback/play_pause_orb.dart；538 passed / 2 skipped |
 | 6 | 2026-11-25 | 「最希望有音频频谱和进度条结合的功能，一直做不出来」 | P1 | 进度条游标显示真分频能量（1024 点 FFT、16 段对数）；拿不到频段退回白点；测试能被改坏；analyze 0 error / 0 warning；全量绿 | 不改播放内核；不动 console 里的旧电平表；不引入第三方 FFT；不做整条时间轴频谱图 | done | spectrum-2026-11-25-scrubber.png；9 tests；547 passed / 2 skipped |
+| 7 | 2026-11-25 | 「上滑调节音量和明亮度没有做」 | P1 | 左半边上滑调亮度、右半边调音量（上滑为加）；竖向滑动不跳进度；HUD 显示百分比；锁定不响应；测试能被改坏；analyze 0 error / 0 warning；全量绿 | 不改系统亮度、不引入亮度插件；不改音量的敏感内容与耳机规则；不动横向 seek / 长按倍速 / 双击静音 | done | 4 条手势测试；551 passed / 2 skipped |
+| 8 | 2026-11-25 | 「怎么实现画中画和后台播放，现在我测试 iOS 端没办法实现」 | P1 | 真机上点 PiP 能起小窗；失败时 Console 有可定位日志；模拟器构建通过 | 不改 Android/桌面实现；不改 Dart 侧交接协议；不引入新依赖 | doing（待真机确认） | `AppDelegate.swift:125/154/181/213`；`flutter build ios --simulator` EXIT=0 |
+| 9 | 2026-11-25 | 「lut 中增加冷白、粉白、国漫风、日漫风、美漫风、今敏风」 | P1 | 六款画风出现在画风条里；矩阵合法、互不重复、各自行为符合定义；测试能被改坏；全量绿 | 不改既有八款；不引入 3D LUT 文件或新依赖 | done | look-2026-11-25-sheet.png；7 tests；559 passed / 2 skipped |
 
 ## 逐条记录
 
@@ -181,3 +184,61 @@
   - 改坏证明：分析恒 0 → 2 条红；重采样恒 0 → 2 条红；两次都还原（restored: true）。
   - flutter test：547 passed / 2 skipped / 0 failed，EXIT=0（3 分 32 秒）。
 - **未做**：只有「此刻」的频谱，没有整条时间轴；译配中走的是译音电平，这条线没接 FFT（退回白点）；暂停没有音频所以也没有频谱；截图只画了进度条本身（播放器是平台视图，整屏截不到）。
+
+### 7. 上滑调音量与亮度（P1，done）
+
+- **复述**：播放器里「上滑调节音量和明亮度」没有做。
+- **判据**：左半边上滑调亮度、右半边调音量，上滑为加；竖向滑动不跳进度；有 HUD 显示百分比；锁定时完全不响应；测试能被改坏；analyze 0 error / 0 warning；全量绿。
+- **不做清单**：不改系统亮度、不引入亮度插件；不改音量的敏感内容与耳机规则；不动横向 seek、长按倍速、双击静音。
+- **定级理由**：新增手势与一层渲染，可回退，用户点名 → P1。
+- **侦查（A 级）**：
+  1. playback_gestures.dart 的 _move 里竖直方向被显式丢弃（原注释「Vertical gestures never turn into an unexpected seek」，dx.abs() <= dy.abs() 就 return）——所以从来没有竖向手势，不是坏了，是没写。
+  2. 全库 grep brightness / 亮度 零命中，pubspec 也没有屏幕亮度插件 → 系统亮度这条路在 Flutter 里本来就改不了。
+  3. 音量不是裸字段：_volume = _privacy.effectiveVolume，_changeVolume 里带敏感内容外放保护、耳机确认与落盘。手势必须走它，不能直给播放器。
+- **方案**：
+  - A. 左亮度 / 右音量（行业惯例）+ 应用内压黑 + 拖动 HUD —— 选它（不新增依赖、不动系统权限）。
+  - B. 只做音量 —— 用户点名要亮度，等于只做一半。
+  - C. 装 screen_brightness 类插件改真机亮度 —— 新依赖 + 平台权限 + 桌面/移动行为不一，属发布风险，不做。
+- **执行**：
+  - PlaybackGestures：新增 onVerticalBegin / onVerticalUpdate / onVerticalEnd 与纯函数 verticalValue；16px 阈值后按主轴定边（竖向才开始走竖分支），定了不再改，避免「调音量顺手跳进度」。
+  - player_screen：_brightness 压黑层（最多 80%，在画面与控件之间）、HUD 700ms 后收起、音量只在整百分点变化时提交（避免每个 move 事件写盘）、敏感内容屏蔽时不动音量。
+- **验证（实跑）**：
+  - flutter analyze：467 issues / 0 error / 0 warning（与改动前同数）。
+  - test/playback_gestures_test.dart 增 4 条：左半边上滑报亮度（fraction 0.2）、右半边下滑报音量（-0.2）、横向拖动不被抢、锁定不给回调；连同原有的 6 条共 10 passed。原有「vertical swipe rejects seeking」仍绿，竖向依旧不跳进度。
+  - 改坏证明：把竖分支写成 `_vertical = false` → 左半边那条当场红；已还原。
+  - flutter test：551 passed / 2 skipped / 0 failed，EXIT=0（3 分 27 秒）。
+- **未做**：亮度不持久（离开播放器复位 1.0）；没有整屏截图（播放器是平台视图，截不到）；没有真机手感验证（拖动灵敏度 1 屏幕高 = 100%，可能需要按手感再调）。
+
+### 8. iOS 画中画起不来（P1，doing，待真机确认）
+
+- **复述**：画中画与后台播放「怎么实现」——三平台其实都实现了，但用户在 iOS 上试不出来。
+- **判据**：真机上点「系统画中画」能起小窗；失败时 Console 有三条定位日志之一；模拟器构建通过。
+- **不做清单**：不改 Android 与桌面的实现；不改 Dart 侧的 `pip/background/update` 交接协议；不引入新依赖。
+- **定级理由**：平台功能不可用、改动集中在原生一个文件、可回退 → P1。
+- **侦查（A 级）——找到的真原因**：
+  1. `startPip` 建好 AVPlayer、seek 完就只等 `isPictureInPicturePossible`，**从头到尾没有 `play()`**。AVKit 只从正在播的画面起 PiP，这个标志因此永远不翻转，10 秒后走「画中画准备超时」。而 Dart 在请求前还主动 `pause()` 了主播放器——两边都不在播。
+  2. `presenter?.view` 在 scene 架构（Info.plist 有 UISceneManifest + SceneDelegate）下可能不在窗口层级，AVPlayerLayer 没上屏 → 同样等不到 possible。
+  3. 请求 PiP 时不立音频会话：只有开「后台播放」才 `setCategory/setActive`，其余情况 PiP 可能没声或起不来。
+- **执行**：`hostView` 退化到 key window（:125）；`startPip` 里立音频会话（:154）；seek 完后 `isMuted = true` + `play()` 再观察 possible（:181）；`didStart` 放开声音并回到用户原本的播放/暂停（:213）；补三条 NSLog 供真机排查。
+- **验证**：`swiftc -parse` 通过；`flutter build ios --simulator --debug` 成功（96.5s，EXIT=0）。**PiP 本身在模拟器上不可能验**，真机确认待用户。
+- **未做**：iOS PiP 仍只接受本机文件或可代理的地址（认证头那条限制没动）；PiP 里依旧没有 AI 字幕/译配。
+
+### 9. 画风：冷白、粉白、国漫、日漫、美漫、今敏（P1，done）
+
+- **复述**：在 LUT（画风）里增加冷白（白皙）、粉白（粉里透红、白皙）、国漫风、日漫风、美漫风、今敏风。
+- **判据**：六款出现在画风条里；每张矩阵合法；互不重复（取样板上最大通道差 > 14）；冷白更亮更冷、粉白更亮更红、美漫压黑；中灰不被染彩；测试能被改坏；全量绿；出一张对照图。
+- **不做清单**：不改既有八款；不引入 3D LUT 文件、不新增依赖；不动播放器里的画风切换动效。
+- **定级理由**：纯矩阵数据 + 一个可选参数，可回退、用户直接看得见 → P1。
+- **侦查（A 级）**：画风 = 4x5 颜色矩阵 + 可选叠层（`video_look.dart:19`）；`grade(contrast, sat, tint, lift)` 只能做全局对比/饱和/染色/偏置（`:148`）；`LookChipBar` 直接遍历 `VideoLook.presets`（`player_console.dart:289`），所以加进 presets 就出现在条上。
+- **方案**：
+  - A. 给 `grade` 加可选 3x3 通道串扰（mix），用它把三种动画分开 —— **选它**（仍然是纯矩阵，不破坏既有八款）。
+  - B. 只调对比/饱和 —— 三款动画会变成换皮：实测「国漫 vs 日漫」最大通道差只有 8.6。
+  - C. 引 3D LUT 贴图 —— 要新依赖 + 贴图管线，收益不等于成本。
+- **执行**：`grade` 增 `mix`（先串扰、再对比/饱和/染色）；新增六款：冷白 `coolwhite`、粉白 `pinkwhite`、国漫 `guoman`（奶白黑位 + 青玉阴影）、日漫 `riiman`（饱和 + 冷高光）、美漫 `meiman`（压死黑 + 凶原色 + 晕影）、今敏 `kon`（洋红影子 + 高对比 + 轻颗粒）。
+- **调参依据（不是拍脑袋）**：国漫最初 sat 1.30 与日漫太像（8.6），改成 sat 1.14 + lift .045（奶白）后差异升到 30.8；全体最差一对（冷白 vs 国漫）15.2，刚好过线。
+- **验证（实跑）**：
+  - flutter analyze：467 issues / 0 error / 0 warning（与改动前同数）。
+  - 新增 `test/video_look_grade_test.dart` 7 passed（矩阵合法/原色恒等/取样板互不重复/冷白冷暖/中灰不染彩/美漫压黑/未知 id 退回原色）；`test/look_sheet_test.dart` 1 passed，出 `look-2026-11-25-sheet.png`（1800×840，32846 bytes）。
+  - 既有 `test/video_look_test.dart` 的「八款」断言改成 14 —— 这次真的加了六款，属行为变更，不是放宽断言。
+  - 全量：一次整跑在 +558 处并发卡死（日志 100 秒零增长，第 2 次撞到同一个点），分两批得 537 passed / 2 skipped / 0 failed（其余文件，3 分 29 秒）+ 22 passed（`custom_metadata*` 两个文件单独跑，14 秒）= **559 passed / 2 skipped / 0 failed**。
+- **未做**：国漫/日漫/美漫/今敏是「颜色 + 叠层」的分级，做不出真动画的描边与色块化；今敏那款取的是他常见的洋红/高对比色彩气质，不是对某一部片的逐帧匹配。
