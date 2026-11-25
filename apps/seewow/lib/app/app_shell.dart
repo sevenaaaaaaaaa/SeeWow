@@ -78,10 +78,10 @@ class _SheetLabel extends StatelessWidget {
 /// What the fifth seat shows while it stands for a section.
 const _overflowMeta =
     <Section, ({String label, IconData icon, IconData active})>{
-      Section.online: (
-        label: '在线源',
-        icon: Icons.travel_explore_outlined,
-        active: Icons.travel_explore_rounded,
+      Section.sources: (
+        label: '片源',
+        icon: Icons.hub_outlined,
+        active: Icons.hub_rounded,
       ),
       Section.shortDramas: (
         label: '短剧',
@@ -785,6 +785,22 @@ class _AppShellState extends State<AppShell> {
                                   onPressed: _search,
                                   icon: const Icon(Icons.search, size: 19),
                                 ),
+                              // 片源与订阅是配置，不是内容，不再占一个导航席。
+                              // 窄屏在这里给常驻入口；宽屏右侧本来就有「连接片源」。
+                              // 站在片源页时这个入口就是「再点一次同一个地方」，
+                              // 于是它自己收起来。
+                              if (width < 760 && _section != Section.sources)
+                                IconButton(
+                                  tooltip: '片源与订阅',
+                                  onPressed: () => _select(Section.sources),
+                                  // 375 px 宽上顶栏一行只剩 2 px：新入口自己收窄，
+                                  // 不去挤标题，也不去动别的按钮。
+                                  visualDensity: VisualDensity.compact,
+                                  icon: const Icon(
+                                    Icons.hub_outlined,
+                                    size: 19,
+                                  ),
+                                ),
                               // 窄屏「设置」原本只藏在第五席的「更多」弹层里：
                               // 要先站到某个溢出分区，再点一次同一个座位。用户找不到，
                               // 就是没有。760 以下没有侧栏，这里给它一个常驻入口。
@@ -965,7 +981,7 @@ class _AppShellState extends State<AppShell> {
     Section.home => 0,
     Section.library => 1,
     Section.agent => 2,
-    Section.sources => 3,
+    Section.online => 3,
     _ => 4,
   };
 
@@ -975,11 +991,13 @@ class _AppShellState extends State<AppShell> {
   /// still tells the user nothing about where they lead. Remembering the last
   /// one costs nothing, shows the destination in the bar, and keeps the seat's
   /// icon and label meaningful while the user is standing on it.
-  /// 第五席默认站「在线源」。
+  /// 第五席默认站「短剧」。
   ///
   /// 内置源包随包发，但入口原本落在「更多」弹层里：只要用户不点两次，界面
-  /// 和一个空应用没有区别——这正是「装了却看不到内置源」的原因。
-  Section _overflowSeat = Section.online;
+  /// 和一个空应用没有区别——这就是「在线源」现在占第 4 席常驻的原因。
+  /// 片源与订阅是配置而不是内容，已从导航撤出，改由顶栏进入；它仍记在
+  /// 溢出表里，好让站在该页时第五席显示「片源」而不是一个无关的分区。
+  Section _overflowSeat = Section.shortDramas;
 
   bool _isOverflow(Section s) => _overflowMeta.containsKey(s);
 
@@ -993,7 +1011,7 @@ class _AppShellState extends State<AppShell> {
       return;
     }
     _select(
-      const [Section.home, Section.library, Section.agent, Section.sources][n],
+      const [Section.home, Section.library, Section.agent, Section.online][n],
     );
   }
 
@@ -1019,14 +1037,20 @@ class _AppShellState extends State<AppShell> {
           activeIcon: Icons.auto_awesome,
         ),
         LiquidTab(
-          label: '片源',
-          icon: Icons.hub_outlined,
-          activeIcon: Icons.hub_rounded,
+          label: '在线源',
+          icon: Icons.travel_explore_outlined,
+          activeIcon: Icons.travel_explore_rounded,
         ),
+        // 第五席站着谁：站在一个溢出分区上就写它自己的名字，否则写上次
+        // 记住的那个。这样从顶栏进片源时，座位显示「片源」而不是「短剧」。
         LiquidTab(
-          label: _overflowMeta[_overflowSeat]!.label,
-          icon: _overflowMeta[_overflowSeat]!.icon,
-          activeIcon: _overflowMeta[_overflowSeat]!.active,
+          label:
+              _overflowMeta[_section]?.label ?? _overflowMeta[_overflowSeat]!.label,
+          icon:
+              _overflowMeta[_section]?.icon ?? _overflowMeta[_overflowSeat]!.icon,
+          activeIcon:
+              _overflowMeta[_section]?.active ??
+              _overflowMeta[_overflowSeat]!.active,
         ),
       ],
       index: _navIndex,

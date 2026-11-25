@@ -51,9 +51,6 @@ class _AgentViewState extends State<AgentView> {
           padding: EdgeInsets.all(box.maxWidth < 700 ? 20 : 32),
           children: [
             PageIntro(
-              eyebrow: 'YOUR CINEMA COMPANION',
-              title: '说出想法，剩下的交给我。',
-              description: '挑片、找片、检查片库、同步来源。每一步都看得见，每个结果都能继续操作。',
               action: OutlinedButton.icon(
                 onPressed: agent.busy
                     ? null

@@ -169,24 +169,28 @@ class _HomeViewState extends State<HomeView> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.fromLTRB(pad, 24, pad, 48),
                 children: [
-                  PageIntro(
-                    eyebrow: 'YOUR PERSONAL CINEMA',
-                    title: '把今晚，留给好电影。',
-                    description: '你的收藏、观看记录和每一次偏好，都让下一部更合心意。',
-                    action: OutlinedButton.icon(
-                      onPressed: () => _preferences(context),
-                      icon: const Icon(Icons.tune_rounded, size: 16),
-                      label: const Text('调整我的口味'),
-                    ),
-                  ),
-                  if (widget.onLongPull != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        '摇一摇刷新片库 · 继续下拉进入解耦空间',
-                        style: TextStyle(fontSize: 10, color: WowColors.muted),
+                  Row(
+                    children: [
+                      if (widget.onLongPull != null)
+                        Expanded(
+                          child: Text(
+                            '摇一摇刷新 · 下拉解耦',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: WowColors.muted,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        )
+                      else
+                        const Spacer(),
+                      TextButton.icon(
+                        onPressed: () => _preferences(context),
+                        icon: const Icon(Icons.tune_rounded, size: 15),
+                        label: const Text('调整我的口味'),
                       ),
-                    ),
+                    ],
+                  ),
                   if (widget.onOnline != null && widget.onlineSites > 0)
                     Padding(
                       padding: const EdgeInsets.only(top: 16),

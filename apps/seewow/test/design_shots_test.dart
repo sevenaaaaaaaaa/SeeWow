@@ -204,12 +204,19 @@ void main() {
       await tester.pumpAndSettle();
       await shoot('phone-agent');
     }
-    if (find.text('片源').evaluate().isNotEmpty) {
-      await tester.tap(find.text('片源').last);
+    // 片源与订阅不再占导航席：手机顶栏的图标就是入口。
+    final sourcesEntry = find.byTooltip('片源与订阅');
+    if (sourcesEntry.evaluate().isNotEmpty) {
+      await tester.tap(sourcesEntry.first);
       await tester.pumpAndSettle();
       await shoot('phone-sources');
     }
-    // The fifth seat: tap twice — once to stand on it, once to open the shelf.
+    // The fifth seat: back to home first (it names the page you stand on),
+    // then tap twice — once to stand on it, once to open the shelf.
+    if (find.text('放映').evaluate().isNotEmpty) {
+      await tester.tap(find.text('放映').last);
+      await tester.pumpAndSettle();
+    }
     Finder seat() => find.descendant(
       of: find.byType(LiquidTabBar),
       matching: find.text('短剧'),

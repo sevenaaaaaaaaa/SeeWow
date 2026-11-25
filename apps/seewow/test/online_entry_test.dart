@@ -10,8 +10,12 @@ import 'package:seewow/domain/online_source.dart';
 /// 1.21.2 把源包塞进了包里，入口却留在「更多」弹层：底部第 5 席写着「短剧」，
 /// 要点两次才到「在线源」，首页一个字没提。这条测试钉住入口本身——源包再好，
 /// 找不到就等于没有。
+///
+/// 1.21.7：「片源与订阅」是配置而不是内容，撤出导航改由顶栏进入，空出的
+/// 第 4 席交给「在线源」。断言从「第五席」挪到「常驻席」，要钉的意图没变：
+/// 手机上一眼看得见、一点就进去。
 void main() {
-  testWidgets('手机宽度下，底部第五席默认就是「在线源」，一点直达', (tester) async {
+  testWidgets('手机宽度下，「在线源」常驻导航，一点直达', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -35,16 +39,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1200));
     await tester.pumpAndSettle();
 
-    // 第五席的标签就是入口：里面写的是「在线源」，不是「短剧」也不是「更多」。
+    // 「在线源」是常驻席，不是藏在「更多」弹层里的东西。
     final seat = find.descendant(
       of: find.byType(LiquidTabBar),
       matching: find.text('在线源'),
     );
-    expect(seat, findsOneWidget, reason: '第五席要直接写「在线源」');
+    expect(seat, findsOneWidget, reason: '导航里要常驻「在线源」');
+    // 片源与订阅撤出导航后，座位上不该再出现「片源」。
     expect(
-      find.descendant(of: find.byType(LiquidTabBar), matching: find.text('短剧')),
+      find.descendant(of: find.byType(LiquidTabBar), matching: find.text('片源')),
       findsNothing,
-      reason: '第五席不该再默认顶着「短剧」',
+      reason: '「片源与订阅」不再占导航席',
     );
 
     await tester.tap(seat);

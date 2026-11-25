@@ -45,9 +45,6 @@ class ShortDramaView extends StatelessWidget {
       ),
       children: [
         PageIntro(
-          eyebrow: 'SHORT DRAMA',
-          title: '竖屏短剧。',
-          description: '单集 20 分钟以内，播完自动接下一集。上下滑动挑剧，点开就连着看。',
           action: OutlinedButton.icon(
             onPressed: seasons.isEmpty
                 ? null

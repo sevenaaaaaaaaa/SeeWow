@@ -94,12 +94,7 @@ class SettingsView extends StatelessWidget {
       builder: (context, box) => ListView(
         padding: EdgeInsets.all(box.maxWidth < 700 ? 20 : 32),
         children: [
-          const PageIntro(
-            eyebrow: 'SETTINGS',
-            title: '设置',
-            description: '按类别管理外观、AI、播放、字幕、存储与片源；密钥只保存在本机。',
-          ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 4),
           _SettingsGroup(
             icon: Icons.auto_awesome_mosaic_outlined,
             title: '外观与氛围',

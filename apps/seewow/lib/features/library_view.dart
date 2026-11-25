@@ -130,9 +130,6 @@ class _LibraryViewState extends State<LibraryView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       PageIntro(
-                        eyebrow: widget.collection == null
-                            ? 'THE COLLECTION'
-                            : 'SAVED PLAYLIST',
                         title:
                             widget.collection?.name ??
                             (widget.initialKind == MediaKind.audio
@@ -786,9 +783,6 @@ class CollectionsView extends StatelessWidget {
         padding: EdgeInsets.all(box.maxWidth < 700 ? 20 : 32),
         children: [
           PageIntro(
-            eyebrow: 'MADE FOR YOUR MOMENTS',
-            title: '我的片单',
-            description: '把一次灵感，变成可以随时回来的电影之夜。',
             action: FilledButton.icon(
               onPressed: onAgent,
               icon: const Icon(Icons.auto_awesome, size: 17),

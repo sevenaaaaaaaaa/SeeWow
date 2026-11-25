@@ -378,12 +378,7 @@ class _SourcesViewState extends State<SourcesView> {
         return ListView(
           padding: EdgeInsets.all(box.maxWidth < 700 ? 20 : 32),
           children: [
-            const PageIntro(
-              eyebrow: 'ONE LIBRARY. EVERYWHERE.',
-              title: '让片源，汇聚于此。',
-              description: '本地、NAS、网盘和直播订阅，各有入口，最终回到同一个影院。',
-            ),
-            const SizedBox(height: 26),
+            const SizedBox(height: 4),
             Wrap(
               spacing: 14,
               runSpacing: 14,

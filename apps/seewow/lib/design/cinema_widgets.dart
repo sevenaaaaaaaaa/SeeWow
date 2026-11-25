@@ -43,42 +43,47 @@ class Eyebrow extends StatelessWidget {
   );
 }
 
+/// A compact page header.
+///
+/// The app bar already names the page, so this carries only what the bar
+/// cannot: an in-page title that is real content (a saved playlist's own name,
+/// a library summary) and one action. No eyebrow, no slogan, no explainer.
 class PageIntro extends StatelessWidget {
-  const PageIntro({
-    super.key,
-    required this.eyebrow,
-    required this.title,
-    required this.description,
-    this.action,
-  });
-  final String eyebrow, title, description;
+  const PageIntro({super.key, this.title, this.description, this.action});
+  final String? title, description;
   final Widget? action;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Eyebrow(eyebrow),
-        const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -1,
+            if (title != null)
+              Expanded(
+                child: Text(
+                  title!,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.5,
+                  ),
                 ),
-              ),
-            ),
-            if (action != null && box.maxWidth > 620) action!,
+              )
+            else
+              const Spacer(),
+            if (action != null && box.maxWidth > 620) ...[
+              const SizedBox(width: 16),
+              action!,
+            ],
           ],
         ),
-        const SizedBox(height: 8),
-        Text(description, style: WowType.body(13, color: WowColors.muted)),
+        if (description != null) ...[
+          const SizedBox(height: 6),
+          Text(description!, style: WowType.body(12.5, color: WowColors.muted)),
+        ],
         if (action != null && box.maxWidth <= 620)
-          Padding(padding: const EdgeInsets.only(top: 16), child: action!),
+          Padding(padding: const EdgeInsets.only(top: 10), child: action!),
       ],
     ),
   );
