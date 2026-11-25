@@ -2,7 +2,7 @@
 
 **Cinema, made personal.** 一个以私人媒体库为中心的跨平台播放器，使用 Flutter + media_kit / libmpv。
 
-当前工作区为 **1.21.6 打包与分发修正版**：两件旧账一起结掉——公开包里的站点清单文件（`assets/sources/builtin_sources.json`，20 个站）从「运行时不加载」改成「根本不在包里」：构建前移走源包、把代码种子换成空表，构建后扫产物（文件名 + 两个取样域名），命中即失败，五个平台的 job 都挂上。macOS 包从 124 MB 回到 42.7 MB，根因是 `actions/upload-artifact` 往返时把 `.app` 里的符号链接写成了真文件，框架二进制各存三份（证据与复现见 [1.21.6 发布说明](docs/releases/1.21.6.md) §1）。顺带修掉关于页印旧版本号——CI 从来没传 `SEEWOW_VERSION`，公开包一直显示 `1.21.5 (dev)`。
+当前工作区为 **1.21.8 重新出包版**：代码与 1.21.7 相同，只把版本号推到 1.21.8 (34)——本机 `/Applications` 的应用、iCloud 的 iOS 未签名包、GitHub Release 的四端公开包终于对齐到同一个号（此前分别停在 1.21.6 / 1.21.6 / 1.21.7）。这一版不加功能、不修 bug，完整交代见 [1.21.8 发布说明](docs/releases/1.21.8.md)。上一版 **1.21.7 播放器一次性补齐版**把「最想要但一直做不出来」的四件事一起落地：真频谱长在进度条上、播放/暂停键在画面上、上滑调亮度与音量、小映变成浮窗；外加六款画风与 iOS 画中画的一处真 bug（真机仍未验），逐条见 [1.21.7 发布说明](docs/releases/1.21.7.md)。
 
 上一版 **1.21.5 在线源可用性版**：浅色皮肤下「在线源」的文字只有 1.05:1 对比度、搜索要等 20 个站全回才画第一行、起播拿到第一个源就播——分别改成按皮肤取色令牌、边回边画（并发 8、单站 10s）、最多 4 条线并行测速再选；在线播放接 libmpv 磁盘缓存。`v*` tag 自动五端构建并建 Release 也是那一版配齐的，见 [1.21.5 发布说明](docs/releases/1.21.5.md)。
 
@@ -16,19 +16,19 @@
 
 **质量与计划。** 当前版本的质检结论、缺陷清单与后续计划见 [路线图](docs/roadmap.md)；想确认"哪一版有什么、哪个平台现在能装什么"，见 [版本汇总](docs/release-index.md)；跨端对齐状态见 [对齐说明](docs/parity.md)。资源管理（本地目录 / Plex）的缺陷编号为 RM-01…RM-09，1.19.0 起已全部修复，对应 issue #2–#12。
 
-## 下载 1.21.6（macOS / Windows / Linux / Android；公开包不带任何内置源）
+## 下载 1.21.8（macOS / Windows / Linux / Android；公开包不带任何内置源）
 
-> 本版上 **GitHub Release**（`v1.21.6`），公开资产四份：macOS / Windows / Linux / Android；iOS 未签名包装不上，按规则不发，只在本机自签。两件事：公开包**真的**不再带内置播放源（1.21.5 只是运行时不加载，文件还躺在包里），macOS 包体积从 124 MB 回到 42.7 MB。完整记录见 [1.21.6 发布说明](docs/releases/1.21.6.md)，校验值见 Release 里的 `SHA256SUMS.txt`。
+> 本版上 **GitHub Release**（`v1.21.8`），公开资产四份：macOS / Windows / Linux / Android；iOS 未签名包装不上，按规则不发，只在本机自签与 iCloud 分发。这一版**没有行为变更**：代码与上一版相同，只把版本号推到 1.21.8 (34)，让本机 app、iCloud 的 iOS 包与 Release 资产对齐到同一个号。逐条见 [1.21.8 发布说明](docs/releases/1.21.8.md)，校验值见 Release 里的 `SHA256SUMS.txt`。
 
 | 平台 | 安装包 | 安装与签名状态 |
 | --- | --- | --- |
-| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.6/SeeWow-macos-1.21.6-public-nosources.zip)（42.7 MB） | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证；包里没有源包文件 |
-| iOS / iPadOS ARM64 | `dist/SeeWow-iOS-1.21.6-arm64-unsigned.ipa`（19.2 MB，本地未签名包，带 20 个站，未上传；同一份已复制到 iCloud 的 SeeWow 文件夹） | iOS 15+；**未签名**，需用自己的证书与描述文件重签；不在 Release 里 |
-| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.6/SeeWow-Android-1.21.6.apk)（107.7 MB） | Android 7.0+；开发签名；运行时不启用站点，包里也没有源包文件 |
-| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.6/SeeWow-windows-1.21.6-public-nosources.zip)（36.4 MB） | 解压后运行 `seewow.exe` |
-| Linux x64 | [下载 tar.gz](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.6/SeeWow-linux-1.21.6-public-nosources.tar.gz)（14.1 MB） | 解压后运行 `seewow`，需要系统 libmpv |
+| macOS Universal | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.8/SeeWow-macos-1.21.8-public-nosources.zip)（42.7 MB） | macOS 13+；解压后将应用移到「应用程序」；ad-hoc 签名、未公证；包里没有源包文件 |
+| iOS / iPadOS ARM64 | `dist/SeeWow-iOS-1.21.8-arm64-unsigned.ipa`（19.2 MB，本地未签名包，带 20 个站，未上传；同一份已复制到 iCloud 的 SeeWow 文件夹） | iOS 15+；**未签名**，需用自己的证书与描述文件重签；不在 Release 里 |
+| Android | [下载 APK](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.8/SeeWow-Android-1.21.8.apk)（107.7 MB） | Android 7.0+；开发签名；运行时不启用站点，包里也没有源包文件 |
+| Windows x64 | [下载 ZIP](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.8/SeeWow-windows-1.21.8-public-nosources.zip)（36.4 MB） | 解压后运行 `seewow.exe` |
+| Linux x64 | [下载 tar.gz](https://github.com/sevenaaaaaaaaa/SeeWow/releases/download/v1.21.8/SeeWow-linux-1.21.8-public-nosources.tar.gz)（14.1 MB） | 解压后运行 `seewow`，需要系统 libmpv |
 
-四端公开包都到 1.21.6（macOS / Windows / Linux / Android）；iOS 只有本机未签名包（带源，不上 Release）。上一版 1.21.5 也是五端在同一个 tag 上全部构建通过。
+四端公开包都到 1.21.8（macOS / Windows / Linux / Android）；iOS 只有本机未签名包（带源，不上 Release）。本机 `/Applications/SeeWow.app` 同样是 1.21.8 (34)，它与公开包的唯一区别是带 20 个内置站。
 
 AI 功能默认关闭，需要用户自行配置 API；自动解说依赖系统语音（macOS / Windows / Linux 各自内置）。使用前请阅读 [功能与数据说明](docs/ai-watch.md)。
 
