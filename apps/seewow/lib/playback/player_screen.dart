@@ -28,6 +28,11 @@ import 'speech_synthesizer.dart';
 import 'sensitive_content.dart';
 import 'voice_translation.dart';
 import 'dubbing_controller.dart';
+import 'chapters.dart';
+import 'chapters_sources.dart';
+import 'film_rail.dart';
+import 'trickplay.dart';
+import 'trickplay_media_kit.dart';
 import 'companion_dock.dart';
 import 'player_console.dart';
 import 'video_look.dart';
@@ -135,6 +140,11 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   double _position = 0;
   double _duration = 0;
+  List<RailMark> _railMarks = const [];
+  List<Chapter> _chapters = const [];
+  Uint8List? _previewBytes;
+  int _previewSeq = 0;
+  List<FrameBookmark> _frames = const [];
   bool _playing = false;
   bool _controls = true;
   bool get _muted => _privacy.effectiveVolume == 0;
@@ -151,6 +161,17 @@ class _PlayerScreenState extends State<PlayerScreen>
       title: widget.item.displayTitle,
       contentAllowed: widget.item.aiAllowed,
     )..addListener(_aiChanged);
+    unawaited(_loadRailMarks());
+    // 首开排队建缩略图条。三条闸：点播、时长已知、本地文件。
+    // 远端流每 10 秒一次 seek 会把整部片拖下来，这一刀先不碰。
+    if (!widget.isLive &&
+        widget.item.duration > 0 &&
+        widget.item.kind != MediaKind.audio &&
+        _isLocalLocator(widget.item.locator)) {
+      unawaited(
+        TrickplayQueue.I.start(widget.item, () => MediaKitTrickplaySource()),
+      );
+    }
     _player = Player(
       configuration: const PlayerConfiguration(
         title: 'SeeWow',
@@ -509,6 +530,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       );
       if (confirm == true) {
         await FrameBookmarks.I.add(widget.item, at, image, note: note.text);
+        unawaited(_loadRailMarks());
         // 收藏完就说清楚它在哪：一条能点的提示，比让人事后去设置里翻省事。
         _message(
           '精彩帧已收藏至本机',
@@ -1036,6 +1058,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     await _applyAudioPrivacy();
     _ready = true;
     _configureSensitiveScan();
+    unawaited(_loadChapters());
     await _level.enable(_prefs.meter);
     if (_introDone && (_foreground || _backgroundAllowed)) await _player.play();
   }
@@ -2167,83 +2190,91 @@ class _PlayerScreenState extends State<PlayerScreen>
     _reveal();
   }
 
+  /// 本地文件才建 trickplay：http(s) 流走 Range 请求，代价不可控。
+  static bool _isLocalLocator(String locator) {
+    final uri = Uri.tryParse(locator);
+    return uri == null || !(uri.scheme == 'http' || uri.scheme == 'https');
+  }
+
+  /// 精彩帧是异步的，而且多数片子一条都没有：读失败就当没有，绝不让播放页起不来。
+  Future<void> _loadRailMarks() async {
+    try {
+      final frames = await FrameBookmarks.I.list(itemId: widget.item.id);
+      if (!mounted) return;
+      _frames = frames;
+      _rebuildRailMarks();
+    } catch (_) {}
+  }
+
+  /// 章节只有文件打开之后才拿得到（mpv 的 chapter-list 要等容器解析完），
+  /// 所以它挂在 open 之后，不跟 initState 一起跑。
+  Future<void> _loadChapters() async {
+    try {
+      final load = await loadChapters(widget.item, player: _player);
+      if (!mounted || load.isEmpty) return;
+      _chapters = load.chapters;
+      _rebuildRailMarks();
+    } catch (_) {}
+  }
+
+  /// 一条轨上两层：章节是灰色长线（在轨下方），精彩帧是琥珀短刻度（跨在轨上）。
+  /// 200 条是绘制预算，不是产品上限——轨上同时出现 5000 根刻度只是噪声。
+  void _rebuildRailMarks() {
+    if (!mounted) return;
+    setState(() {
+      _railMarks = [
+        ...chapterMarks(_chapters),
+        for (final f in _frames.take(200))
+          RailMark(seconds: f.seconds, label: f.title),
+      ];
+    });
+  }
+
+  /// 拖动时向 trickplay 缓存要这一桶的图。
+  ///
+  /// 读盘是异步的：用序号丢掉过期回包，否则快速拖动时旧帧会盖掉新帧。
+  /// 缓存里没有这一桶就传 null——轨上宁可不显示，也不显示错的那一秒。
+  Future<void> _previewAt(double seconds) async {
+    final seq = ++_previewSeq;
+    final bytes = await TrickplayReader.I.at(widget.item, seconds);
+    if (!mounted || seq != _previewSeq) return;
+    if (identical(bytes, _previewBytes)) return;
+    setState(() => _previewBytes = bytes);
+  }
+
+  /// 胶片轨。这一层只递状态：取帧、缓存、章节、译配断点都不在播放器里。
   Widget _scrubber() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final w = constraints.maxWidth;
-        final ratio = _duration <= 0
-            ? 0.0
-            : (_position / _duration).clamp(0.0, 1.0);
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (d) {
-            _seekTo(d.localPosition.dx / w * _duration);
-          },
-          onHorizontalDragUpdate: (d) {
-            _seekTo(d.localPosition.dx / w * _duration);
-          },
-          child: SizedBox(
-            // 28px 的频谱游标要求栈高一点：原来 16px 会把竖条上下裁掉。
-            height: 32,
-            child: Stack(
-              alignment: Alignment.centerLeft,
-              children: [
-                Container(
-                  height: 3,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(2),
-                    color: Colors.white.withValues(alpha: 0.16),
-                  ),
-                ),
-                FractionallySizedBox(
-                  widthFactor: ratio,
-                  child: Container(
-                    height: 3,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(2),
-                      gradient: LinearGradient(
-                        colors: [WowColors.accent2, WowColors.accent],
-                      ),
-                    ),
-                  ),
-                ),
-                if (_ab.a != null && _duration > 0)
-                  Positioned(
-                    left: ((w * (_ab.a! / _duration)).clamp(0.0, 1.0) * w - 1)
-                        .clamp(0.0, w - 2),
-                    child: Container(
-                      width: 2,
-                      height: 16,
-                      color: WowColors.accent.withValues(alpha: .85),
-                    ),
-                  ),
-                if (_ab.b != null && _duration > 0)
-                  Positioned(
-                    left: ((w * (_ab.b! / _duration)).clamp(0.0, 1.0) * w - 1)
-                        .clamp(0.0, w - 2),
-                    child: Container(
-                      width: 2,
-                      height: 16,
-                      color: WowColors.accent.withValues(alpha: .85),
-                    ),
-                  ),
-                // 频谱就长在游标上：进度条不再只是一根白点，它同时显示此刻的
-                // 分频能量。拿不到频段（暂停、译配、采样失败）时退回白点，
-                // 拖动手感因此永远不变。
-                Positioned(
-                  left: (w * ratio - SpectrumThumb.width / 2).clamp(
-                    0.0,
-                    (w - SpectrumThumb.width).clamp(0.0, w),
-                  ),
-                  child: SpectrumThumb(
-                    bands: _voice?.active == true ? const [] : _level.bands,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
+    return FilmRail(
+      duration: _duration,
+      position: _position,
+      abStart: _ab.a,
+      abEnd: _ab.b,
+      marks: _railMarks,
+      onSeek: (s) => _seekTo(s),
+      onScrubStart: () {
+        _hideTimer?.cancel();
+        if (!_hoverBar) setState(() => _hoverBar = true);
       },
+      onScrubEnd: () {
+        // 让在途的读盘回包作废，再把预览收掉：松手之后轨上不该还挂着一张图。
+        _previewSeq++;
+        if (_previewBytes != null) setState(() => _previewBytes = null);
+        if (mounted) _reveal();
+      },
+      onPreview: _previewAt,
+      preview: _previewBytes == null
+          ? null
+          : ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.memory(
+                _previewBytes!,
+                gaplessPlayback: true,
+                fit: BoxFit.cover,
+              ),
+            ),
+      cursorChild: SpectrumThumb(
+        bands: _voice?.active == true ? const [] : _level.bands,
+      ),
     );
   }
 
