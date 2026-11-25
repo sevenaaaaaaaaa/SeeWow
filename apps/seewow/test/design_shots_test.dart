@@ -231,6 +231,22 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    // 暗房皮肤（本轮新默认）：同一个壳、同一个片库，只换皮肤，用来对比。
+    WowSkin.I.use(builtInSkins[0]);
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1.0;
+    await pumpShell();
+    await shoot('desktop-home-darkroom');
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    await pumpShell();
+    await shoot('phone-home-darkroom');
+    if (find.text('片库').evaluate().isNotEmpty) {
+      await tester.tap(find.text('片库').last);
+      await tester.pumpAndSettle();
+      await shoot('phone-library-darkroom');
+    }
+
     expect(tester.takeException(), isNull);
   });
 }

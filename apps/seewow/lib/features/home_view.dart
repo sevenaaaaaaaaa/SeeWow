@@ -169,27 +169,15 @@ class _HomeViewState extends State<HomeView> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.fromLTRB(pad, 24, pad, 48),
                 children: [
-                  Row(
-                    children: [
-                      if (widget.onLongPull != null)
-                        Expanded(
-                          child: Text(
-                            '摇一摇刷新 · 下拉解耦',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: WowColors.muted,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        )
-                      else
-                        const Spacer(),
-                      TextButton.icon(
-                        onPressed: () => _preferences(context),
-                        icon: const Icon(Icons.tune_rounded, size: 15),
-                        label: const Text('调整我的口味'),
-                      ),
-                    ],
+                  // 手势不写说明书：摇一摇与下拉照旧生效，但首页不再用一行教学
+                  // 文字占掉首屏的注意力。口味入口留在同一个位置。
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () => _preferences(context),
+                      icon: const Icon(Icons.tune_rounded, size: 15),
+                      label: const Text('调整我的口味'),
+                    ),
                   ),
                   if (widget.onOnline != null && widget.onlineSites > 0)
                     Padding(
@@ -249,11 +237,13 @@ class _HomeViewState extends State<HomeView> {
                                 gradient: LinearGradient(
                                   begin: Alignment.centerLeft,
                                   end: Alignment.centerRight,
-                                  stops: [0, .5, 1],
+                                  stops: [0, .55, 1],
                                   colors: [
-                                    Color(0xF5101314),
-                                    Color(0xBB101314),
-                                    Color(0x11101314),
+                                    // 96% 不透明的遮罩等于把封面擦掉：左侧压到 78%
+                                    // 保住标题可读，右侧彻底放开，让画面自己说话。
+                                    Color(0xC8101314),
+                                    Color(0x86101314),
+                                    Color(0x00101314),
                                   ],
                                 ),
                               ),
@@ -455,10 +445,11 @@ class _HomeViewState extends State<HomeView> {
                           spacing: 8,
                           runSpacing: 8,
                           children: [
+                            // 三个并列的按钮在首屏等于没有主次。片库体检这类
+                            // 低频动作交给 Agent 自己说，首页只留两个最常见的开口。
                             for (final prompt in [
                               '按我的口味生成片单',
                               '找一部轻松的电影',
-                              '检查片库重复与缺失信息',
                             ])
                               ActionChip(
                                 label: Text(

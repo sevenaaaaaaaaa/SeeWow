@@ -139,10 +139,12 @@ class _LibraryViewState extends State<LibraryView> {
                             (widget.initialKind == MediaKind.audio
                                 ? '你的音乐库'
                                 : '你的媒体库'),
+                        // 一行「N 部电影 · N 部剧集 · …」读起来像日志。数量已经
+                        // 由下面的筛选条与网格回答；这里只在用户自建片单时保留说明。
                         description:
                             widget.collection?.description.isNotEmpty == true
                             ? widget.collection!.description
-                            : '${store.movies.length} 部电影 · ${store.series.length} 部剧集 · ${store.items.where((i) => i.kind == MediaKind.audio).length} 首音乐 · ${store.sources.length} 个来源，统一管理。',
+                            : '',
                         action: OutlinedButton.icon(
                           onPressed: widget.onSources,
                           icon: const Icon(Icons.add, size: 16),

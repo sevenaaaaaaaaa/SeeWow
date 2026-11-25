@@ -185,7 +185,9 @@ class FilmArtwork extends StatelessWidget {
             end: Alignment.bottomRight,
             colors: [
               Color.alphaBlend(
-                WowColors.ambient.withValues(alpha: .16),
+                // 没有封面的影片也要有「画面」：横版首屏用更强的环境光撑起
+                // 构图（否则整块卡片是空的），竖向海报维持低噪。
+                WowColors.ambient.withValues(alpha: landscape ? .30 : .10),
                 WowColors.panel,
               ),
               WowColors.panel,
