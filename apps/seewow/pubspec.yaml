@@ -1,7 +1,7 @@
 name: seewow
 description: "SeeWow — Cinema for every screen. A cross-platform personal cinema player."
 publish_to: 'none'
-version: 1.21.8+34
+version: 1.22.0+35
 
 environment:
   sdk: ^3.13.7
