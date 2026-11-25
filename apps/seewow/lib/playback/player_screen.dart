@@ -108,6 +108,15 @@ class _PlayerScreenState extends State<PlayerScreen>
       _voice?.active == true ? !_voice!.paused : _playing;
   double? get _audioLevelValue =>
       _voice?.active == true ? _voice!.level : _level.level;
+
+  /// 画面亮度 0–1：1 是不压黑，0 压到 80% 黑。Flutter 改不了系统亮度，
+  /// 也不想为它引一个插件，所以亮度就是压在画面上的那一层黑。
+  double _brightness = 1;
+  bool _verticalLeft = false;
+  double _verticalBase = 0, _verticalValue = 0;
+  bool _verticalHud = false;
+  int? _verticalVolumeStep;
+  Timer? _verticalHudTimer;
   final _focus = FocusNode();
   final _videoKey = GlobalKey<VideoState>();
   double _lastReported = 0;
@@ -1057,6 +1066,41 @@ class _PlayerScreenState extends State<PlayerScreen>
     _scheduleHide();
   }
 
+  /// 竖向滑动起手：记住起点值，之后只加比例，手抖不会累积漂移。
+  void _verticalBegin(bool left) {
+    _verticalLeft = left;
+    _verticalBase = left ? _brightness : _volume / 100;
+    _verticalVolumeStep = null;
+    _verticalHudTimer?.cancel();
+    setState(() {
+      _verticalValue = _verticalBase;
+      _verticalHud = true;
+    });
+  }
+
+  void _verticalMove(bool left, double fraction) {
+    final v = PlaybackGestures.verticalValue(_verticalBase, fraction);
+    if (left) {
+      setState(() => _brightness = v);
+    } else if (!_privacy.blocked) {
+      // 走 _changeVolume 而不是直给播放器：敏感内容与耳机规则都在那里。
+      // 只在整百分点变了才提交：每个 move 事件都写一次盘会把拖动拖成卡顿。
+      final step = (v * 100).round();
+      if (step != _verticalVolumeStep) {
+        _verticalVolumeStep = step;
+        _changeVolume(step.toDouble());
+      }
+    }
+    if (mounted) setState(() => _verticalValue = v);
+  }
+
+  void _verticalEnd() {
+    _verticalHudTimer?.cancel();
+    _verticalHudTimer = Timer(const Duration(milliseconds: 700), () {
+      if (mounted) setState(() => _verticalHud = false);
+    });
+  }
+
   void _togglePlay() {
     if (_systemPip && Platform.isIOS) {
       PlaybackWindow.channel.invokeMethod('pip.stop');
@@ -1261,6 +1305,9 @@ class _PlayerScreenState extends State<PlayerScreen>
                   },
                   onToggleLock: _toggleScreenLock,
                   onUnmute: _unmute,
+                  onVerticalBegin: _verticalBegin,
+                  onVerticalUpdate: _verticalMove,
+                  onVerticalEnd: _verticalEnd,
                   onTap: () {
                     if (_locked) return;
                     if (_controls) {
@@ -1274,7 +1321,8 @@ class _PlayerScreenState extends State<PlayerScreen>
                   // must stay legible whatever grade is on the screen.
                   child: VideoLookView(
                     look: _look,
-                    enabled: !widget.isLive || _prefs.look != VideoLook.native.id,
+                    enabled:
+                        !widget.isLive || _prefs.look != VideoLook.native.id,
                     child: Video(
                       key: _videoKey,
                       controller: _controller,
@@ -1291,6 +1339,16 @@ class _PlayerScreenState extends State<PlayerScreen>
                     ),
                   ),
                 ),
+                if (_brightness < 1)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: ColoredBox(
+                        color: Colors.black.withValues(
+                          alpha: (1 - _brightness) * .8,
+                        ),
+                      ),
+                    ),
+                  ),
                 if (widget.item.kind == MediaKind.audio)
                   IgnorePointer(
                     child: Center(
@@ -1466,6 +1524,20 @@ class _PlayerScreenState extends State<PlayerScreen>
                       child: _gestureBadge(
                         '${playbackTime(_seekPreview!)}  /  ${playbackTime(_duration)}\n'
                         '${_seekPreview! >= _position ? '+' : ''}${(_seekPreview! - _position).round()} 秒 · 松手跳转',
+                      ),
+                    ),
+                  ),
+                if (_verticalHud)
+                  Positioned(
+                    top: 48 + MediaQuery.paddingOf(context).top,
+                    left: 0,
+                    right: 0,
+                    child: IgnorePointer(
+                      child: Center(
+                        child: _gestureBadge(
+                          '${_verticalLeft ? '亮度' : '音量'} '
+                          '${(_verticalValue * 100).round()}%',
+                        ),
                       ),
                     ),
                   ),
@@ -1976,7 +2048,11 @@ class _PlayerScreenState extends State<PlayerScreen>
                   const SizedBox(width: 2),
                   PopupMenuButton<double>(
                     tooltip: '播放速度',
-                    icon: const Icon(Icons.speed, color: Colors.white, size: 20),
+                    icon: const Icon(
+                      Icons.speed,
+                      color: Colors.white,
+                      size: 20,
+                    ),
                     onSelected: (v) async {
                       if (_voice?.active == true) await _stopDubbing();
                       await _player.setRate(v);

@@ -18,6 +18,9 @@ class PlaybackGestures extends StatefulWidget {
     required this.onToggleLock,
     required this.onPreview,
     this.seekEnabled = true,
+    this.onVerticalBegin,
+    this.onVerticalUpdate,
+    this.onVerticalEnd,
   });
   final Widget child;
   final bool locked, seekEnabled;
@@ -25,6 +28,15 @@ class PlaybackGestures extends StatefulWidget {
   final ValueChanged<double> onSeek;
   final ValueChanged<double?> onPreview;
   final VoidCallback onTap, onUnmute, onToggleLock;
+
+  /// 竖向滑动：左半边调亮度、右半边调音量，上滑为加。
+  /// 起手先说要调哪一边，之后给的是「相对起点、按屏高归一化」的比例。
+  final ValueChanged<bool>? onVerticalBegin;
+  final void Function(bool left, double fraction)? onVerticalUpdate;
+  final VoidCallback? onVerticalEnd;
+  /// 竖向滑动换算：起点值 + 位移比例，夹在 0–1。上滑为加。
+  static double verticalValue(double base, double fraction) =>
+      (base + fraction).clamp(0.0, 1.0);
   @override
   State<PlaybackGestures> createState() => _PlaybackGesturesState();
 }
@@ -33,12 +45,14 @@ class _PlaybackGesturesState extends State<PlaybackGestures> {
   final _pointers = <int, Offset>{};
   final _origins = <int, Offset>{};
   Timer? _hold, _repeat, _tap;
-  bool _multi = false, _lockFired = false, _seeking = false;
+  bool _multi = false, _lockFired = false, _seeking = false, _vertical = false;
+  bool _side = false;
   Offset? _start;
-  double _base = 0, _preview = 0, _width = 1;
+  double _base = 0, _preview = 0, _width = 1, _height = 1;
   int _ticks = 0;
   DateTime? _lastTap;
   Offset? _lastTapPosition;
+
   void _cancelHold() {
     _hold?.cancel();
     _repeat?.cancel();
@@ -113,18 +127,26 @@ class _PlaybackGesturesState extends State<PlaybackGestures> {
     }
     if (widget.locked || _start == null) return;
     final delta = e.localPosition - _start!;
-    if (!_seeking && delta.distance > 16) {
+    if (!_seeking && !_vertical && delta.distance > 16) {
       _cancelHold();
-      // Vertical gestures never turn into an unexpected seek.
-      if (delta.dx.abs() <= delta.dy.abs() ||
-          !widget.seekEnabled ||
-          widget.duration <= 0) {
-        _start = null;
-        return;
-      }
-      _seeking = true;
       _tap?.cancel();
       _lastTap = null;
+      if (delta.dy.abs() > delta.dx.abs()) {
+        // 竖直方向先定边：左半边亮度，右半边音量。定了就不再改，
+        // 否则手一斜就变成「调音量顺便跳进度」。
+        _vertical = true;
+        _side = _start!.dx < _width / 2;
+        widget.onVerticalBegin?.call(_side);
+      } else if (!widget.seekEnabled || widget.duration <= 0) {
+        _start = null;
+        return;
+      } else {
+        _seeking = true;
+      }
+    }
+    if (_vertical) {
+      widget.onVerticalUpdate?.call(_side, -delta.dy / _height);
+      return;
     }
     if (_seeking && _repeat?.isActive != true) {
       final span = (widget.duration * .2).clamp(30.0, 600.0);
@@ -138,7 +160,9 @@ class _PlaybackGesturesState extends State<PlaybackGestures> {
     _origins.remove(e.pointer);
     if (!_multi || _pointers.length < 2 || cancelled) _cancelHold();
     if (!_multi && !cancelled) {
-      if (_seeking && !widget.locked) {
+      if (_vertical) {
+        widget.onVerticalEnd?.call();
+      } else if (_seeking && !widget.locked) {
         widget.onSeek(_preview);
       } else if (_start != null && (e.localPosition - _start!).distance < 16) {
         if (widget.locked) {
@@ -164,6 +188,7 @@ class _PlaybackGesturesState extends State<PlaybackGestures> {
       }
     }
     _seeking = false;
+    _vertical = false;
     widget.onPreview(null);
     if (_pointers.isEmpty) {
       _multi = false;
@@ -193,6 +218,9 @@ class _PlaybackGesturesState extends State<PlaybackGestures> {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (_, constraints) {
       _width = constraints.maxWidth.isFinite ? constraints.maxWidth : 1;
+      _height = constraints.maxHeight.isFinite && constraints.maxHeight > 0
+          ? constraints.maxHeight
+          : 1;
       return SizedBox.expand(
         child: Listener(
           behavior: HitTestBehavior.opaque,
