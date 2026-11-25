@@ -22,6 +22,7 @@ import 'audio_level.dart';
 import 'audio_privacy.dart';
 import 'commentary_controller.dart';
 import 'playback_gestures.dart';
+import 'play_pause_orb.dart';
 import 'speech_synthesizer.dart';
 import 'sensitive_content.dart';
 import 'voice_translation.dart';
@@ -1584,30 +1585,12 @@ class _PlayerScreenState extends State<PlayerScreen>
           right: 16 + MediaQuery.paddingOf(context).right,
           child: _topBar(),
         ),
+        // 播放／暂停长在画面上：不必先调出控件条，再去底边找那个小图标。
+        // 控件条里那一个保留，给习惯底边的人；两处调的是同一个 _togglePlay。
         Center(
-          child: AnimatedScale(
-            scale: _playbackRunning ? 0.001 : 1,
-            duration: const Duration(milliseconds: 220),
-            curve: WowMotion.snappy,
-            child: Pressable(
-              onTap: _togglePlay,
-              child: Container(
-                width: 76,
-                height: 76,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.black.withValues(alpha: 0.44),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.22),
-                  ),
-                ),
-                child: const Icon(
-                  Icons.play_arrow_rounded,
-                  size: 40,
-                  color: Colors.white,
-                ),
-              ),
-            ),
+          child: PlayPauseOrb(
+            playing: _playbackRunning,
+            onPressed: _togglePlay,
           ),
         ),
         Positioned(
