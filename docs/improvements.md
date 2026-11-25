@@ -47,7 +47,7 @@
 | 1 | 2026-11-25 | 「界面上的说明文字太多，占大量空间」 | P1 | 8 处页面顶部说明块删除或压缩；`flutter analyze` 0 error；全量测试绿；截图可见首屏内容上移 | 不改卡片功能、不改文案含义、不动发布链 | done | `trim-2026-11-25-*.png`；test 534 passed / 2 skipped |
 | 2 | 2026-11-25 | 「片源管理不用单独拿出来，放全局右上角」 | P1 | 导航里没有「片源」席；窄屏顶栏有片源入口、一点直达；宽屏保留「连接片源」；测试绿 | 不改片源页内容、不动其他导航席、不改宽屏已有入口 | done | `trim-2026-11-25-sources.png`；test 534 passed / 2 skipped |
 | 3 | 2026-11-25 | 「精彩帧收藏后看不到在哪，也不能回到播放进度」 | P1 | 片库首格有「精彩帧」入口；收藏成功提示带「查看」；列表每条可「播放这一帧」并带到该秒；测试绿 | 不改数据格式、不改播放器内「本片精彩帧」、不新增独立页面 | done | `frames-2026-11-25-library.png`；test 535 passed / 2 skipped |
-| 4 | 2026-11-25 | 「播放界面里最想直接用的 agent 不行；陪伴的宠物应该做成浮窗」 | P1 | 点开后影片不暂停；浮窗可拖动、可收成头像球；收起不掐断会话；测试绿 | 不改 AI 协议 / 密钥 / 提示词；不做跨页面全局浮层 | blocked（等用户定形态） | 侦查见 §4；player_screen.dart:827、:849 |
+| 4 | 2026-11-25 | 「播放界面里最想直接用的 agent 不行；陪伴的宠物应该做成浮窗」 | P1 | 点开后影片不暂停；浮窗可拖动、可收成头像球、点球能再展开；收起不掐断会话；测试绿 | 不改 AI 协议 / 密钥 / 提示词；不做跨页面全局浮层 | done | `companion_dock.dart`；2 tests；561 passed / 2 skipped |
 | 5 | 2026-11-25 | 「播放和暂停按键应该放在播放界面，而不是播放控件上」 | P1 | 画面中央就有播放/暂停键；播放中淡至 0.26、暂停满不透明；点击回调 _togglePlay；测试能被改坏 | 不删控件条里那个按钮；不改单击手势（仍是切控件条）；不动播放内核 | done | lib/playback/play_pause_orb.dart；538 passed / 2 skipped |
 | 6 | 2026-11-25 | 「最希望有音频频谱和进度条结合的功能，一直做不出来」 | P1 | 进度条游标显示真分频能量（1024 点 FFT、16 段对数）；拿不到频段退回白点；测试能被改坏；analyze 0 error / 0 warning；全量绿 | 不改播放内核；不动 console 里的旧电平表；不引入第三方 FFT；不做整条时间轴频谱图 | done | spectrum-2026-11-25-scrubber.png；9 tests；547 passed / 2 skipped |
 | 7 | 2026-11-25 | 「上滑调节音量和明亮度没有做」 | P1 | 左半边上滑调亮度、右半边调音量（上滑为加）；竖向滑动不跳进度；HUD 显示百分比；锁定不响应；测试能被改坏；analyze 0 error / 0 warning；全量绿 | 不改系统亮度、不引入亮度插件；不改音量的敏感内容与耳机规则；不动横向 seek / 长按倍速 / 双击静音 | done | 4 条手势测试；551 passed / 2 skipped |
@@ -142,7 +142,9 @@
   - A. 播放器内浮窗（右下、可拖动、收起成 56px 头像球），影片不停，收起不 stop —— 推荐。
   - B. 只去掉 pause()、保留底部大面板 —— 半屏仍被盖，等于没解决。
   - C. 全局 Overlay 常驻宠物（跨页面）—— 范围大一个量级，先不做。
-- **状态**：blocked。等用户一句话定形态（以及要不要先提交上一轮 12 个文件）。
+- **执行**：新增 `lib/playback/companion_dock.dart`（Positioned 卡片：抓手拖动、安全区与键盘内夹紧、收起成 56px 气泡、生成中显示状态点）；`player_screen.dart` 用浮窗替换 `showModalBottomSheet`，去掉 `pause()` 与关闭时的 `stop()`；`watch_ai_view.dart` 增 `onCollapse`/`onClose`，让面板的「收起」与 Esc 不再 pop 播放器路由。
+- **验证（实跑）**：flutter analyze 467 issues / 0 error / 0 warning；新增 `test/companion_dock_test.dart` 2 passed（抓手拖动、越界夹紧、气泡展开、收起/关闭回调、无回调时不摆关闭按钮）；全量 539 passed / 2 skipped（其余）+ 22 passed（`custom_metadata*` 单独跑）= **561 passed / 2 skipped / 0 failed**。
+- **未做**：不做跨页面全局浮层（要一层全局 Overlay）；浮窗位置不持久（每次进播放器回默认右下）。
 
 ### 5. 播放／暂停键长在画面上（P1，done）
 
