@@ -158,9 +158,7 @@ class _WatchAiConfigDialogState extends State<_WatchAiConfigDialog> {
                   for (final p in kModelProviders)
                     DropdownMenuItem<String?>(
                       value: p.id,
-                      child: Text(
-                        p.needsKey ? p.label : '${p.label} · 免 Key',
-                      ),
+                      child: Text(p.needsKey ? p.label : '${p.label} · 免 Key'),
                     ),
                 ],
                 onChanged: _saving ? null : _applyPreset,
@@ -295,10 +293,18 @@ class WatchCompanionPanel extends StatefulWidget {
     required this.capture,
     required this.onImportSubtitle,
     required this.onSelectSubtitle,
+    this.onCollapse,
+    this.onClose,
   });
   final WatchAiController controller;
   final Future<Uint8List?> Function() capture;
   final Future<void> Function() onImportSubtitle, onSelectSubtitle;
+
+  /// 浮窗形态下由外面收窗口：面板自己 pop 会把播放器路由一起退掉。
+  final VoidCallback? onCollapse;
+
+  /// 浮窗形态下真正关闭陪看（不只是收起）。
+  final VoidCallback? onClose;
   @override
   State<WatchCompanionPanel> createState() => _WatchCompanionPanelState();
 }
@@ -330,292 +336,310 @@ class _WatchCompanionPanelState extends State<WatchCompanionPanel> {
       // when the panel is closed.
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () =>
-            Navigator.of(context).maybePop(),
+            widget.onCollapse ?? Navigator.of(context).maybePop(),
       },
       child: Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        12,
-        20,
-        16 + MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // A grabber that actually works: drag it down and the panel goes.
-          // Three text buttons at the bottom said the same thing and none of
-          // them followed the finger.
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onVerticalDragEnd: (details) {
-              if ((details.primaryVelocity ?? 0) > 180) {
-                Navigator.of(context).maybePop();
-              }
-            },
-            child: Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: WowColors.muted.withValues(alpha: .55),
-                  borderRadius: BorderRadius.circular(2),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          12,
+          20,
+          16 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // A grabber that actually works: drag it down and the panel goes.
+            // Three text buttons at the bottom said the same thing and none of
+            // them followed the finger.
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragEnd: (details) {
+                if ((details.primaryVelocity ?? 0) > 180) {
+                  Navigator.of(context).maybePop();
+                }
+              },
+              child: Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: WowColors.muted.withValues(alpha: .55),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
             ),
-          ),
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: WowColors.accent.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(
-                  Icons.face_3_outlined,
-                  color: WowColors.accent,
-                  size: 29,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '小映陪看',
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      '把看不懂的地方，留给我。',
-                      style: WowType.body(11, color: WowColors.muted),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'AI 字幕与陪看设置',
-                onPressed: () =>
-                    configureWatchAi(context, settings: ai.settings),
-                icon: const Icon(Icons.tune, size: 20),
-              ),
-              IconButton(
-                tooltip: '收起（Esc）',
-                onPressed: () => Navigator.of(context).maybePop(),
-                icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 22),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: ListView(
+            Row(
               children: [
-                if (!ai.config.enabled || !ai.config.configured)
-                  CinemaPanel(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '先接入你的 API',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '这是默认关闭的可选功能。开启后可以翻译已有字幕，或让我帮你理解台词和当前情节。',
-                          style: WowType.body(12, color: WowColors.muted),
-                        ),
-                        const SizedBox(height: 12),
-                        FilledButton(
-                          onPressed: () =>
-                              configureWatchAi(context, settings: ai.settings),
-                          child: const Text('配置并选择开启'),
-                        ),
-                      ],
-                    ),
-                  )
-                else ...[
-                  Text(
-                    '当前信息来自 ${watchTime(ai.position)} 及之前的台词。默认不剧透，AI 解释可能有误。',
-                    style: WowType.body(11, color: WowColors.muted),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: WowColors.accent.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  const SizedBox(height: 12),
-                  if (ai.currentText.isEmpty)
-                    Text(
-                      '当前没有可读取的文字字幕。可选择字幕轨道或导入 SRT / VTT；解释场景也可按需附带画面。',
-                      style: WowType.body(12, color: WowColors.muted),
-                    )
-                  else
+                  child: Icon(
+                    Icons.face_3_outlined,
+                    color: WowColors.accent,
+                    size: 29,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '小映陪看',
+                        style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        '把看不懂的地方，留给我。',
+                        style: WowType.body(11, color: WowColors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'AI 字幕与陪看设置',
+                  onPressed: () =>
+                      configureWatchAi(context, settings: ai.settings),
+                  icon: const Icon(Icons.tune, size: 20),
+                ),
+                if (widget.onClose != null)
+                  IconButton(
+                    tooltip: '关闭陪看',
+                    onPressed: widget.onClose,
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                  ),
+                IconButton(
+                  tooltip: '收起（Esc）',
+                  onPressed:
+                      widget.onCollapse ??
+                      () => Navigator.of(context).maybePop(),
+                  icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 22),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView(
+                children: [
+                  if (!ai.config.enabled || !ai.config.configured)
                     CinemaPanel(
-                      padding: const EdgeInsets.all(14),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Eyebrow('当前台词'),
-                          const SizedBox(height: 8),
-                          SelectableText(
-                            ai.currentText,
-                            style: const TextStyle(fontSize: 13),
+                          const Text(
+                            '先接入你的 API',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                          if (ai.translation != null) ...[
-                            const SizedBox(height: 10),
-                            SelectableText(
-                              ai.translation!,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: WowColors.accent,
-                              ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '这是默认关闭的可选功能。开启后可以翻译已有字幕，或让我帮你理解台词和当前情节。',
+                            style: WowType.body(12, color: WowColors.muted),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: () => configureWatchAi(
+                              context,
+                              settings: ai.settings,
                             ),
-                          ],
-                          if (ai.translating)
-                            const Padding(
-                              padding: EdgeInsets.only(top: 10),
-                              child: LinearProgressIndicator(minHeight: 2),
-                            ),
+                            child: const Text('配置并选择开启'),
+                          ),
                         ],
                       ),
+                    )
+                  else ...[
+                    Text(
+                      '当前信息来自 ${watchTime(ai.position)} 及之前的台词。默认不剧透，AI 解释可能有误。',
+                      style: WowType.body(11, color: WowColors.muted),
                     ),
-                ],
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: widget.onSelectSubtitle,
-                      icon: const Icon(Icons.subtitles_outlined, size: 16),
-                      label: const Text('选择字幕'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: widget.onImportSubtitle,
-                      icon: const Icon(Icons.upload_file, size: 16),
-                      label: const Text('导入 SRT / VTT'),
-                    ),
+                    const SizedBox(height: 12),
+                    if (ai.currentText.isEmpty)
+                      Text(
+                        '当前没有可读取的文字字幕。可选择字幕轨道或导入 SRT / VTT；解释场景也可按需附带画面。',
+                        style: WowType.body(12, color: WowColors.muted),
+                      )
+                    else
+                      CinemaPanel(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Eyebrow('当前台词'),
+                            const SizedBox(height: 8),
+                            SelectableText(
+                              ai.currentText,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            if (ai.translation != null) ...[
+                              const SizedBox(height: 10),
+                              SelectableText(
+                                ai.translation!,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: WowColors.accent,
+                                ),
+                              ),
+                            ],
+                            if (ai.translating)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 10),
+                                child: LinearProgressIndicator(minHeight: 2),
+                              ),
+                          ],
+                        ),
+                      ),
                   ],
-                ),
-                if (ai.active && ai.config.companion) ...[
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      for (final q in [
-                        '这句台词是什么意思？',
-                        '解释一下当前情节',
-                        '这里有什么文化背景？',
-                        '这个场景有哪些值得注意的细节？',
-                      ])
-                        ActionChip(
-                          label: Text(q, style: const TextStyle(fontSize: 11)),
-                          onPressed: ai.busy ? null : () => _ask(q),
-                        ),
+                      OutlinedButton.icon(
+                        onPressed: widget.onSelectSubtitle,
+                        icon: const Icon(Icons.subtitles_outlined, size: 16),
+                        label: const Text('选择字幕'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: widget.onImportSubtitle,
+                        icon: const Icon(Icons.upload_file, size: 16),
+                        label: const Text('导入 SRT / VTT'),
+                      ),
                     ],
                   ),
-                ],
-                for (final answer in ai.answers)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 18),
-                    child: CinemaPanel(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${watchTime(answer.seconds)} · ${answer.usedFrame ? '台词与单帧画面' : '台词上下文'}',
-                            style: WowType.body(10, color: WowColors.muted),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            answer.question,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                  if (ai.active && ai.config.companion) ...[
+                    const SizedBox(height: 18),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final q in [
+                          '这句台词是什么意思？',
+                          '解释一下当前情节',
+                          '这里有什么文化背景？',
+                          '这个场景有哪些值得注意的细节？',
+                        ])
+                          ActionChip(
+                            label: Text(
+                              q,
+                              style: const TextStyle(fontSize: 11),
                             ),
+                            onPressed: ai.busy ? null : () => _ask(q),
                           ),
-                          const SizedBox(height: 10),
-                          SelectableText(
-                            answer.answer,
-                            style: WowType.body(13),
-                          ),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: IconButton(
-                              tooltip: '复制解释',
-                              onPressed: () => Clipboard.setData(
-                                ClipboardData(text: answer.answer),
+                      ],
+                    ),
+                  ],
+                  for (final answer in ai.answers)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 18),
+                      child: CinemaPanel(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${watchTime(answer.seconds)} · ${answer.usedFrame ? '台词与单帧画面' : '台词上下文'}',
+                              style: WowType.body(10, color: WowColors.muted),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              answer.question,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
                               ),
-                              icon: const Icon(Icons.copy_outlined, size: 16),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 10),
+                            SelectableText(
+                              answer.answer,
+                              style: WowType.body(13),
+                            ),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: IconButton(
+                                tooltip: '复制解释',
+                                onPressed: () => Clipboard.setData(
+                                  ClipboardData(text: answer.answer),
+                                ),
+                                icon: const Icon(Icons.copy_outlined, size: 16),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                if (ai.error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 14),
-                    child: Text(
-                      ai.error!,
-                      style: TextStyle(color: WowColors.error, fontSize: 12),
+                  if (ai.error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 14),
+                      child: Text(
+                        ai.error!,
+                        style: TextStyle(color: WowColors.error, fontSize: 12),
+                      ),
                     ),
+                  if (ai.busy)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 16),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                ],
+              ),
+            ),
+            if (ai.active && ai.config.companion) ...[
+              if (ai.config.allowFrames)
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text(
+                    '本次问题附带当前画面',
+                    style: TextStyle(fontSize: 12),
                   ),
-                if (ai.busy)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 16),
-                    child: LinearProgressIndicator(minHeight: 2),
+                  subtitle: const Text(
+                    '仅一张截图，会发送到所配置的 API',
+                    style: TextStyle(fontSize: 10),
                   ),
+                  value: _frame,
+                  onChanged: ai.busy
+                      ? null
+                      : (v) => setState(() => _frame = v!),
+                ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _question,
+                enabled: !ai.busy,
+                maxLength: 500,
+                minLines: 1,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: '例如：他为什么在这里说这句话？',
+                  counterText: '',
+                  suffixIcon: IconButton(
+                    tooltip: '向小映提问',
+                    onPressed: ai.busy ? null : () => _ask(_question.text),
+                    icon: const Icon(Icons.arrow_upward),
+                  ),
+                ),
+                onSubmitted: _ask,
+              ),
+            ],
+            Row(
+              children: [
+                if (ai.busy || ai.translating)
+                  TextButton(onPressed: ai.stop, child: const Text('停止请求')),
+                TextButton(onPressed: ai.clear, child: const Text('清理会话与缓存')),
               ],
             ),
-          ),
-          if (ai.active && ai.config.companion) ...[
-            if (ai.config.allowFrames)
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: const Text('本次问题附带当前画面', style: TextStyle(fontSize: 12)),
-                subtitle: const Text(
-                  '仅一张截图，会发送到所配置的 API',
-                  style: TextStyle(fontSize: 10),
-                ),
-                value: _frame,
-                onChanged: ai.busy ? null : (v) => setState(() => _frame = v!),
-              ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _question,
-              enabled: !ai.busy,
-              maxLength: 500,
-              minLines: 1,
-              maxLines: 3,
-              decoration: InputDecoration(
-                hintText: '例如：他为什么在这里说这句话？',
-                counterText: '',
-                suffixIcon: IconButton(
-                  tooltip: '向小映提问',
-                  onPressed: ai.busy ? null : () => _ask(_question.text),
-                  icon: const Icon(Icons.arrow_upward),
-                ),
-              ),
-              onSubmitted: _ask,
-            ),
           ],
-          Row(
-            children: [
-              if (ai.busy || ai.translating)
-                TextButton(onPressed: ai.stop, child: const Text('停止请求')),
-              TextButton(onPressed: ai.clear, child: const Text('清理会话与缓存')),
-            ],
-          ),
-        ],
-      ),
+        ),
       ),
     ),
   );

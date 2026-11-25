@@ -28,6 +28,7 @@ import 'speech_synthesizer.dart';
 import 'sensitive_content.dart';
 import 'voice_translation.dart';
 import 'dubbing_controller.dart';
+import 'companion_dock.dart';
 import 'player_console.dart';
 import 'video_look.dart';
 import '../features/commentary_view.dart';
@@ -83,6 +84,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   final AbLoop _ab = AbLoop();
   final _prefs = PlaybackPreferences.I;
   bool _lookTray = false;
+  bool _companionOpen = false, _companionCollapsed = false;
   VideoLook get _look => VideoLook.byId(_prefs.look);
   final _privacy = AudioPrivacy(DailyVolumeMemory());
   Timer? _routePoll, _sensitiveTimer;
@@ -832,38 +834,28 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
   }
 
-  Future<void> _showCompanion() async {
-    if (_voice?.active == true) await _stopDubbing();
-    final resume = _playing;
-    await _player.pause();
-    if (!mounted) return;
-    _hideTimer?.cancel();
-    _hoverBar = true;
-    try {
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        showDragHandle: true,
-        constraints: const BoxConstraints(maxWidth: 720),
-        builder: (_) => SizedBox(
-          height: MediaQuery.sizeOf(context).height * .86,
-          child: WatchCompanionPanel(
-            controller: _watchAi,
-            capture: _captureAiFrame,
-            onImportSubtitle: _importSubtitle,
-            onSelectSubtitle: _selectSubtitle,
-          ),
-        ),
-      );
-    } finally {
-      _watchAi.stop();
-      _hoverBar = false;
-      if (mounted) {
-        if (resume) await _player.play();
-        _reveal();
-      }
+  /// 打开/关闭小映浮窗。影片不暂停——这正是它和原来那个弹层的区别。
+  Future<void> _toggleCompanion() async {
+    if (_companionOpen) {
+      _closeCompanion();
+      return;
     }
+    if (_voice?.active == true) await _stopDubbing();
+    if (!mounted) return;
+    setState(() {
+      _companionOpen = true;
+      _companionCollapsed = false;
+    });
+    _reveal();
+  }
+
+  /// 收起只是收窗口：会话、回答、缓存都留着，片子继续放。
+  void _closeCompanion() {
+    if (!_companionOpen) return;
+    setState(() {
+      _companionOpen = false;
+      _companionCollapsed = false;
+    });
   }
 
   Future<void> _importSubtitle() async {
@@ -1518,6 +1510,23 @@ class _PlayerScreenState extends State<PlayerScreen>
                       child: _controlsLayer(),
                     ),
                   ),
+                if (_companionOpen)
+                  CompanionDock(
+                    collapsed: _companionCollapsed,
+                    busy: _watchAi.busy,
+                    onCollapse: () =>
+                        setState(() => _companionCollapsed = true),
+                    onExpand: () => setState(() => _companionCollapsed = false),
+                    panel: WatchCompanionPanel(
+                      controller: _watchAi,
+                      capture: _captureAiFrame,
+                      onImportSubtitle: _importSubtitle,
+                      onSelectSubtitle: _selectSubtitle,
+                      onCollapse: () =>
+                          setState(() => _companionCollapsed = true),
+                      onClose: _closeCompanion,
+                    ),
+                  ),
                 if (_seekPreview != null)
                   Center(
                     child: IgnorePointer(
@@ -1848,10 +1857,10 @@ class _PlayerScreenState extends State<PlayerScreen>
         if (widget.item.kind != MediaKind.audio && widget.item.aiAllowed)
           IconButton(
             tooltip: 'AI 字幕与小映陪看',
-            onPressed: _showCompanion,
+            onPressed: _toggleCompanion,
             icon: Icon(
               Icons.face_3_outlined,
-              color: _watchAi.config.enabled
+              color: _companionOpen || _watchAi.config.enabled
                   ? const Color(0xFFFFE3AD)
                   : Colors.white,
               size: 24,
