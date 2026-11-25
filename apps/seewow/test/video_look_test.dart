@@ -3,8 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:seewow/playback/video_look.dart';
 
 void main() {
-  test('the console offers eight looks with distinct ids', () {
-    expect(VideoLook.presets.length, 8);
+  test('the console offers every look with a distinct id', () {
+    // 14 = 原色 + 十三款画风。数字变了是因为这次真的加了六款（冷白、粉白、
+    // 国漫、日漫、美漫、今敏），不是把断言放宽。
+    expect(VideoLook.presets.length, 14);
     final ids = VideoLook.presets.map((look) => look.id).toSet();
     expect(ids.length, VideoLook.presets.length);
     for (final look in VideoLook.presets) {

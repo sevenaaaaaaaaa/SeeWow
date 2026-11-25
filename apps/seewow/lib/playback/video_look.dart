@@ -65,7 +65,7 @@ class VideoLook {
     matrix: _identity,
   );
 
-  /// The eight looks the console offers, in the order it shows them.
+  /// 原色 + 十三款画风，顺序就是控制台里的排列顺序。
   static final List<VideoLook> presets = [
     native,
     VideoLook(
@@ -141,6 +141,101 @@ class VideoLook {
       matrix: grade(contrast: 1.10, sat: 1.42, lift: [0.008, 0.0, 0.012]),
       bloom: .06,
     ),
+    // 白皙系：把肤色抬亮、压低一点对比，同时用极轻的染色给冷暖方向。
+    VideoLook(
+      id: 'coolwhite',
+      label: '冷白',
+      blurb: '肤色抬亮、整体往冷里推一点，像阴天里的白瓷',
+      icon: Icons.ac_unit_rounded,
+      matrix: grade(
+        contrast: 1.06,
+        sat: .90,
+        tint: [.965, 1.0, 1.07],
+        lift: [.022, .024, .034],
+      ),
+    ),
+    VideoLook(
+      id: 'pinkwhite',
+      label: '粉白',
+      blurb: '皮肤粉里透红：提亮的同时把红留住，气色比原片好一层',
+      icon: Icons.spa_rounded,
+      matrix: grade(
+        contrast: 1.04,
+        sat: 1.06,
+        tint: [1.055, .99, 1.005],
+        lift: [.03, .012, .02],
+      ),
+    ),
+    // 三种动画：靠串扰分开——国漫的青玉阴影、日漫的干净高光、
+    // 美漫的压死黑位，只调对比度是做不出差别的。
+    VideoLook(
+      id: 'guoman',
+      label: '国漫',
+      blurb: '奶白的黑位、青玉阴影，像水墨落在宣纸上',
+      icon: Icons.landscape_rounded,
+      matrix: grade(
+        contrast: .99,
+        sat: 1.14,
+        tint: [1.0, 1.005, 1.01],
+        lift: [.045, .05, .048],
+        mix: [
+          [.97, .03, 0],
+          [.02, .96, .05],
+          [0, .08, .93],
+        ],
+      ),
+    ),
+    VideoLook(
+      id: 'riiman',
+      label: '日漫',
+      blurb: '干净的赛璐珞：饱和拉满、高光偏冷、黑位收紧',
+      icon: Icons.brightness_5_rounded,
+      matrix: grade(
+        contrast: 1.12,
+        sat: 1.34,
+        lift: [.004, .006, .012],
+        mix: [
+          [1, 0, 0],
+          [0, .99, .01],
+          [.01, .02, 1],
+        ],
+      ),
+    ),
+    VideoLook(
+      id: 'meiman',
+      label: '美漫',
+      blurb: '黑位压到底、原色更凶，像印在铜版纸上的分镜',
+      icon: Icons.flash_on_rounded,
+      matrix: grade(
+        contrast: 1.22,
+        sat: 1.38,
+        lift: [-.026, -.026, -.024],
+        mix: [
+          [1.03, -.02, 0],
+          [.01, .99, 0],
+          [0, .02, .98],
+        ],
+      ),
+      vignette: .18,
+    ),
+    VideoLook(
+      id: 'kon',
+      label: '今敏',
+      blurb: '洋红影子配躁动的红，梦里那层不真实的高对比',
+      icon: Icons.blur_on_rounded,
+      matrix: grade(
+        contrast: 1.16,
+        sat: 1.22,
+        lift: [-.012, -.004, .008],
+        mix: [
+          [1.04, 0, .03],
+          [-.01, .98, .02],
+          [.05, 0, .98],
+        ],
+      ),
+      vignette: .22,
+      grain: .02,
+    ),
   ];
 
   /// Composes a look's grade. Matrix offsets are in the 0-255 space Flutter
@@ -150,16 +245,52 @@ class VideoLook {
     double sat = 1,
     List<double> tint = const [1, 1, 1],
     List<double> lift = const [0, 0, 0],
+    List<List<double>>? mix,
   }) {
     const lr = 0.2126, lg = 0.7152, lb = 0.0722;
     final a = lr * (1 - sat), b = lg * (1 - sat), c = lb * (1 - sat);
     final k = contrast;
     final m = <double>[
-      (a + sat) * k * tint[0], b * k * tint[0], c * k * tint[0], 0, 0,
-      a * k * tint[1], (b + sat) * k * tint[1], c * k * tint[1], 0, 0,
-      a * k * tint[2], b * k * tint[2], (c + sat) * k * tint[2], 0, 0,
-      0, 0, 0, 1, 0,
+      (a + sat) * k * tint[0],
+      b * k * tint[0],
+      c * k * tint[0],
+      0,
+      0,
+      a * k * tint[1],
+      (b + sat) * k * tint[1],
+      c * k * tint[1],
+      0,
+      0,
+      a * k * tint[2],
+      b * k * tint[2],
+      (c + sat) * k * tint[2],
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
     ];
+    if (mix != null) {
+      // 3x3 串扰：把某个通道的能量漏给另一个通道。它是唯一能让
+      // 「暗部偏青、亮部偏暖」这种分级在纯矩阵里成立的项。
+      final rows = [
+        [m[0], m[1], m[2]],
+        [m[5], m[6], m[7]],
+        [m[10], m[11], m[12]],
+      ];
+      const slots = [0, 1, 2, 5, 6, 7, 10, 11, 12];
+      for (var r = 0; r < 3; r++) {
+        for (var c = 0; c < 3; c++) {
+          var v = 0.0;
+          for (var k2 = 0; k2 < 3; k2++) {
+            v += rows[r][k2] * mix[k2][c];
+          }
+          m[slots[r * 3 + c]] = v;
+        }
+      }
+    }
     final base = (1 - k) * 0.5;
     m[4] = (base + lift[0]) * 255;
     m[9] = (base + lift[1]) * 255;
@@ -168,10 +299,26 @@ class VideoLook {
   }
 
   static const List<double> _identity = [
-    1, 0, 0, 0, 0,
-    0, 1, 0, 0, 0,
-    0, 0, 1, 0, 0,
-    0, 0, 0, 1, 0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
   ];
 }
 
@@ -293,12 +440,7 @@ class _VideoLookViewState extends State<VideoLookView>
             child: AnimatedBuilder(
               animation: _switch,
               builder: (context, _) => ColoredBox(
-                color: Color.fromRGBO(
-                  255,
-                  255,
-                  255,
-                  (1 - _switch.value) * .12,
-                ),
+                color: Color.fromRGBO(255, 255, 255, (1 - _switch.value) * .12),
               ),
             ),
           ),
@@ -324,17 +466,18 @@ class LookPainter extends CustomPainter {
     if (look.bloom > 0) {
       final bloom = Paint()
         ..blendMode = BlendMode.plus
-        ..shader = RadialGradient(
-          colors: [
-            Colors.white.withValues(alpha: look.bloom * .22),
-            Colors.white.withValues(alpha: 0),
-          ],
-        ).createShader(
-          Rect.fromCircle(
-            center: rect.center,
-            radius: math.max(size.width, size.height) * .58,
-          ),
-        );
+        ..shader =
+            RadialGradient(
+              colors: [
+                Colors.white.withValues(alpha: look.bloom * .22),
+                Colors.white.withValues(alpha: 0),
+              ],
+            ).createShader(
+              Rect.fromCircle(
+                center: rect.center,
+                radius: math.max(size.width, size.height) * .58,
+              ),
+            );
       canvas.drawRect(rect, bloom);
     }
 
