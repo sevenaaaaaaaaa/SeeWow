@@ -23,6 +23,7 @@ import 'audio_privacy.dart';
 import 'commentary_controller.dart';
 import 'playback_gestures.dart';
 import 'play_pause_orb.dart';
+import 'spectrum_thumb.dart';
 import 'speech_synthesizer.dart';
 import 'sensitive_content.dart';
 import 'voice_translation.dart';
@@ -2097,7 +2098,8 @@ class _PlayerScreenState extends State<PlayerScreen>
             _seekTo(d.localPosition.dx / w * _duration);
           },
           child: SizedBox(
-            height: 16,
+            // 28px 的频谱游标要求栈高一点：原来 16px 会把竖条上下裁掉。
+            height: 32,
             child: Stack(
               alignment: Alignment.centerLeft,
               children: [
@@ -2140,15 +2142,16 @@ class _PlayerScreenState extends State<PlayerScreen>
                       color: WowColors.accent.withValues(alpha: .85),
                     ),
                   ),
+                // 频谱就长在游标上：进度条不再只是一根白点，它同时显示此刻的
+                // 分频能量。拿不到频段（暂停、译配、采样失败）时退回白点，
+                // 拖动手感因此永远不变。
                 Positioned(
-                  left: (w * ratio - 6).clamp(0, w - 12),
-                  child: Container(
-                    width: 12,
-                    height: 12,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                    ),
+                  left: (w * ratio - SpectrumThumb.width / 2).clamp(
+                    0.0,
+                    (w - SpectrumThumb.width).clamp(0.0, w),
+                  ),
+                  child: SpectrumThumb(
+                    bands: _voice?.active == true ? const [] : _level.bands,
                   ),
                 ),
               ],

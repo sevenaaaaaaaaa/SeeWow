@@ -7,6 +7,7 @@ import 'package:media_kit/media_kit.dart';
 import '../domain/media_item.dart';
 import '../metadata/metadata_transport.dart';
 import 'audio_capture.dart';
+import 'spectrum_analysis.dart';
 
 class AudioLevel extends ChangeNotifier {
   AudioLevel(this.player);
@@ -18,6 +19,9 @@ class AudioLevel extends ChangeNotifier {
   double _start = 0;
   bool _reading = false, _disposed = false, _enabled = false, _visible = true;
   double? level;
+
+  /// 当前播放点的分频能量（0–1，16 段）。暂停、译配中或采样失败时为空。
+  List<double> bands = const [];
   set visible(bool value) {
     _visible = value;
     if (!value) _capture.cancel();
@@ -30,6 +34,7 @@ class AudioLevel extends ChangeNotifier {
       await _capture.cancel();
       _audio = null;
       level = null;
+      bands = const [];
     }
     if (value && !_disposed)
       _timer = Timer.periodic(
@@ -45,6 +50,7 @@ class AudioLevel extends ChangeNotifier {
     try {
       if (!player.state.playing || player.state.buffering) {
         level = 0;
+        bands = const [];
       } else {
         final at = player.state.position.inMilliseconds / 1000;
         if (_audio == null || at < _start || at >= _start + _audio!.duration) {
@@ -56,11 +62,12 @@ class AudioLevel extends ChangeNotifier {
           _start = at;
           _audio = await _capture.capture(source!, at, math.min(4, remaining));
         }
-        if (!_disposed)
-          level = _audio!.levelAt(
-            player.state.position.inMilliseconds / 1000 - _start,
-            volume: player.state.volume,
-          );
+        final offset = player.state.position.inMilliseconds / 1000 - _start;
+        if (!_disposed) {
+          level = _audio!.levelAt(offset, volume: player.state.volume);
+          // 同一帧 PCM 顺手做掉 FFT：不额外解码，只多几千次乘加。
+          bands = SpectrumAnalysis.bands(_audio!, at: offset);
+        }
       }
       if (!_disposed) notifyListeners();
     } on MetadataCancelled {
