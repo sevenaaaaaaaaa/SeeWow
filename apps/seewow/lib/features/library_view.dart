@@ -26,6 +26,7 @@ class LibraryView extends StatefulWidget {
     this.onInteract,
     this.downloads,
     this.onPlay,
+    this.onFrames,
   });
   final LibraryStore store;
   final ValueChanged<MediaItem> onOpen;
@@ -33,6 +34,9 @@ class LibraryView extends StatefulWidget {
   /// Optional: play straight from a poster instead of opening the detail page.
   final ValueChanged<MediaItem>? onPlay;
   final VoidCallback? onSources;
+
+  /// Opens the saved-frame list. Null hides the entry in the filter strip.
+  final VoidCallback? onFrames;
 
   /// Fired on any pointer-down: a shake right after a tap is never intended.
   final VoidCallback? onInteract;
@@ -212,6 +216,16 @@ class _LibraryViewState extends State<LibraryView> {
                         child: ListView(
                           scrollDirection: Axis.horizontal,
                           children: [
+                            // 收藏过的画面是用户自己的东西，不该藏在最右端：
+                            // 放在横滚带第一格，一进片库就看得见。
+                            if (widget.onFrames != null) ...[
+                              _chip(
+                                label: '精彩帧',
+                                icon: Icons.photo_library_outlined,
+                                onTap: widget.onFrames!,
+                              ),
+                              const SizedBox(width: 6),
+                            ],
                             for (final category in CatalogCategory.values) ...[
                               _chip(
                                 label: categoryLabel(category),

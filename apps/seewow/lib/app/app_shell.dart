@@ -25,12 +25,14 @@ import '../downloads/downloads_view.dart';
 import '../features/agent_view.dart';
 import '../features/detail_view.dart';
 import '../features/home_view.dart';
+import '../features/frame_bookmarks_view.dart';
 import '../features/library_view.dart';
 import '../features/live_view.dart';
 import '../features/settings_view.dart';
 import '../features/short_drama_view.dart';
 import '../features/online_source_view.dart';
 import '../features/sources_view.dart';
+import '../playback/frame_bookmarks.dart';
 import '../playback/player_screen.dart';
 import '../remote/remote_hub.dart';
 import '../remote/remote_server.dart';
@@ -471,6 +473,23 @@ class _AppShellState extends State<AppShell> {
     ),
   );
   void _play(MediaItem item) => _playLive(_store.current(item), live: false);
+
+  /// Opens one saved frame: finds the film it came from and starts there.
+  /// 影片已经不在片库里时不假装能播，直接说清楚。
+  void _openFrame(FrameBookmark frame) {
+    for (final item in _store.items) {
+      if (item.id == frame.itemId) {
+        _playLive(_store.current(item), live: false, startAt: frame.seconds);
+        return;
+      }
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('这张精彩帧所属的影片已不在片库')),
+    );
+  }
+
+  Future<void> _openFrames() =>
+      showFrameBookmarks(context, onOpen: _openFrame);
   /// Plays a short-drama queue from [index] and rolls on to the next episode
   /// when the current one ends.
   void _playDramaQueue(List<MediaItem> queue, int index) {
@@ -483,6 +502,7 @@ class _AppShellState extends State<AppShell> {
     bool live = true,
     List<MediaItem>? queue,
     int index = 0,
+    double? startAt,
   }) async {
     if (_playerOpen) return;
     _playerOpen = true;
@@ -493,6 +513,7 @@ class _AppShellState extends State<AppShell> {
         GlassPageRoute<bool>(
           builder: (_) => PlayerScreen(
             item: item,
+            startAt: startAt,
             isLive: live,
             resolve: live
                 ? null
@@ -1284,6 +1305,7 @@ class _AppShellState extends State<AppShell> {
       onSources: () => _select(Section.sources),
       onInteract: _shakeGate.markInteraction,
       downloads: _downloads,
+      onFrames: _openFrames,
     ),
     Section.collections => CollectionsView(
       store: _store,
@@ -1313,6 +1335,7 @@ class _AppShellState extends State<AppShell> {
       onOpenDownloads: _openDownloads,
       onConfigureAgent: () => configureAgent(context, _agent),
       onSources: () => _select(Section.sources),
+      onOpenFrame: _openFrame,
     ),
   };
 }

@@ -11,6 +11,7 @@ import 'custom_scraper_view.dart';
 import 'cover_generation_view.dart';
 import 'playback_settings_view.dart';
 import 'frame_bookmarks_view.dart';
+import '../playback/frame_bookmarks.dart';
 import 'voice_translation_view.dart';
 import 'subtitle_dialog.dart';
 import '../metadata/subtitles.dart';
@@ -77,12 +78,16 @@ class SettingsView extends StatelessWidget {
     this.agent,
     this.downloads,
     this.onOpenDownloads,
+    this.onOpenFrame,
   });
   final LibraryStore store;
   final AgentController? agent;
   final VoidCallback? onConfigureAgent, onSources;
   final DownloadManager? downloads;
   final VoidCallback? onOpenDownloads;
+
+  /// Opens the film a saved frame came from, at that frame's timestamp.
+  final void Function(FrameBookmark frame)? onOpenFrame;
 
   String get _agentHost =>
       Uri.tryParse(agent?.endpoint ?? '')?.host ?? '';
@@ -209,7 +214,8 @@ class SettingsView extends StatelessWidget {
                 title: const Text('精彩帧收藏'),
                 subtitle: const Text('本机保存的影片画面与时间点'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => showFrameBookmarks(context),
+                onTap: () =>
+                    showFrameBookmarks(context, onOpen: onOpenFrame),
               ),
             ],
           ),

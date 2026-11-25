@@ -4,17 +4,24 @@ import '../design/artwork.dart';
 import '../playback/frame_bookmarks.dart';
 import '../playback/playback_preferences.dart';
 
+/// Shows the saved frames.
+///
+/// [onSelect] jumps the player that opened the sheet to that moment. [onOpen]
+/// is for callers with no player at hand (the library, settings): it opens the
+/// film the frame came from and starts at the frame's timestamp.
 Future<void> showFrameBookmarks(
   BuildContext context, {
   String? itemId,
   FrameBookmarks? store,
   ValueChanged<FrameBookmark>? onSelect,
+  ValueChanged<FrameBookmark>? onOpen,
 }) => showDialog<void>(
   context: context,
   builder: (_) => FrameBookmarksView(
     store: store ?? FrameBookmarks.I,
     itemId: itemId,
     onSelect: onSelect,
+    onOpen: onOpen,
   ),
 );
 
@@ -24,10 +31,12 @@ class FrameBookmarksView extends StatefulWidget {
     required this.store,
     this.itemId,
     this.onSelect,
+    this.onOpen,
   });
   final FrameBookmarks store;
   final String? itemId;
   final ValueChanged<FrameBookmark>? onSelect;
+  final ValueChanged<FrameBookmark>? onOpen;
   @override
   State<FrameBookmarksView> createState() => _FrameBookmarksViewState();
 }
@@ -142,6 +151,15 @@ class _FrameBookmarksViewState extends State<FrameBookmarksView> {
                                   widget.onSelect!(frame);
                                 },
                                 child: const Text('回到此刻'),
+                              ),
+                            if (widget.onOpen != null)
+                              TextButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  widget.onOpen!(frame);
+                                },
+                                icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                                label: const Text('播放这一帧'),
                               ),
                             TextButton(
                               onPressed: () => _remove(frame),

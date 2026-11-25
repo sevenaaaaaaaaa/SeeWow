@@ -273,9 +273,10 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
   }
 
-  void _message(String text) {
+  void _message(String text, {SnackBarAction? action}) {
     if (mounted)
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(text), action: action));
   }
 
   Future<void> _configureBackground() async {
@@ -495,7 +496,11 @@ class _PlayerScreenState extends State<PlayerScreen>
       );
       if (confirm == true) {
         await FrameBookmarks.I.add(widget.item, at, image, note: note.text);
-        _message('精彩帧已收藏至本机');
+        // 收藏完就说清楚它在哪：一条能点的提示，比让人事后去设置里翻省事。
+        _message(
+          '精彩帧已收藏至本机',
+          action: SnackBarAction(label: '查看', onPressed: _showFrames),
+        );
       }
     } catch (e) {
       _message(e is FormatException ? '${e.message}' : '画面收藏失败，请检查本机存储');
