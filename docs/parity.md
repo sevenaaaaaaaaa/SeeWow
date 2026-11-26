@@ -79,3 +79,17 @@ SeeWow 的界面与业务逻辑来自同一套 Flutter 代码，功能默认双�
 1. 现在不存在"桌面修了、移动没修"的代码级差异——A 线是同一份 Dart。
 2. 真正的分叉风险在 **Rust 线只服务 macOS**（决策 D-12）：A 线之外的改进，移动端永远拿不到。
 3. 本文档此后按路线图 P1 的做法维护：每条必须能指向代码或真机记录，不接受"应该一致"的表述。
+
+---
+
+## 2026-11-26 复核（iOS 功能对齐与雪豹打磨）
+
+> 逐个核对 1.21.7–1.22.0 新能力在 iOS 上的真实可用性，以代码为准。
+
+| 能力 | 代码位置 | iOS 结论 |
+| --- | --- | --- |
+| 胶片轨 / trickplay / 章节轨 | `lib/playback/trickplay*.dart`、`chapters*.dart`、`film_rail.dart` | 无平台门槛，Dart 层随包可用；章节取数走「缓存 → mpv → ffprobe」，iOS 无 ffprobe 时由 mpv 内嵌信息兜底（ffprobe 仅为桌面第三回退）。真机未验 |
+| 进度条频谱 / 音量亮度手势 / 小映浮窗 / 六款画风 | `spectrum_thumb.dart`、`playback_gestures.dart`、`companion_dock.dart`、`video_look.dart` | 同一套 Dart，无平台分叉 |
+| **自动解说** | `lib/playback/speech_synthesizer.dart`、`ios/Runner/AppDelegate.swift`（IOSVoiceBridge） | **本轮补齐**：此前只有桌面三端（say / SAPI / espeak），iOS `backend()` 返回 null、入口消失；现接 AVSpeechSynthesizer（`seewow/voice` 通道）离线渲染 16 位单声道 WAV，与桌面 `say + afconvert` 产物等价。真机行为未验证 |
+| PiP / 钥匙串 / Files 文件夹 / 锁屏遥控 | `ios/Runner/AppDelegate.swift` | 已有；PiP 拒绝自定义认证头时由回环代理兜底 |
+| 后台下载 / 移动 SMB / 手机作主机 | 设计边界 | 维持「已知差异」一节结论，本轮不放宽 |
