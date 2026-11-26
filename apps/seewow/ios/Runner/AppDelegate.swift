@@ -3,12 +3,14 @@ import UIKit
 import Security
 import UniformTypeIdentifiers
 import AVKit
+import AVFoundation
 import MediaPlayer
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var nativeBridge: IOSNativeBridge?
   private var playbackBridge: IOSPlaybackBridge?
+  private var voiceBridge: IOSVoiceBridge?
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -21,6 +23,7 @@ import MediaPlayer
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SeeWowNative") {
       nativeBridge = IOSNativeBridge(registrar: registrar)
       playbackBridge = IOSPlaybackBridge(registrar: registrar)
+      voiceBridge = IOSVoiceBridge(registrar: registrar)
     }
   }
 }
@@ -330,4 +333,154 @@ final class IOSNativeBridge: NSObject, UIDocumentPickerDelegate {
   }
 
   deinit { for url in folders.values { url.stopAccessingSecurityScopedResource() } }
+}
+
+/// 自动解说的 iOS 语音后端。桌面端走 `say` / SAPI / espeak 子进程，iOS 沙箱
+/// 不允许 spawn 进程，所以用 AVSpeechSynthesizer 的离线渲染把解说词写成
+/// 16 位 PCM WAV——与桌面 `say + afconvert` 交给播放器的产物等价。
+/// 没有系统语音时如实报告不可用，不回落到任何在线服务。
+final class IOSVoiceBridge: NSObject, AVSpeechSynthesizerDelegate {
+  private let channel: FlutterMethodChannel
+  private let synthesizer = AVSpeechSynthesizer()
+  private var pending: FlutterResult?
+  private var sink: AVAudioFile?
+  private var converter: AVAudioConverter?
+  private var outputPath: URL?
+  private var watchdog: DispatchWorkItem?
+
+  init(registrar: FlutterPluginRegistrar) {
+    channel = FlutterMethodChannel(name: "seewow/voice", binaryMessenger: registrar.messenger())
+    super.init()
+    synthesizer.delegate = self
+    channel.setMethodCallHandler { [weak self] call, result in self?.handle(call, result: result) }
+  }
+
+  deinit {
+    watchdog?.cancel()
+    sink = nil
+    synthesizer.stopSpeaking(at: .immediate)
+  }
+
+  private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    let args = call.arguments as? [String: Any] ?? [:]
+    switch call.method {
+    case "tts.probe":
+      let voices = AVSpeechSynthesisVoice.speechVoices()
+      result(voices.isEmpty ? nil : voices.count)
+    case "tts.synthesize": synthesize(args, result)
+    default: result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func synthesize(_ args: [String: Any], _ result: @escaping FlutterResult) {
+    guard pending == nil else {
+      result(FlutterError(code: "busy", message: "上一段解说还在合成", details: nil)); return
+    }
+    guard let text = args["text"] as? String,
+      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      result(nil); return
+    }
+    guard let path = args["path"] as? String, path.hasSuffix(".wav") else {
+      result(FlutterError(code: "invalid", message: "解说音频路径无效", details: nil)); return
+    }
+    let utterance = AVSpeechUtterance(string: text)
+    // 语言提示与桌面 espeak 的 _espeakVoice 映射同源：zh / ja / en，缺省跟系统。
+    if let language = args["language"] as? String, !language.isEmpty,
+      AVSpeechSynthesisVoice(language: language) != nil {
+      utterance.voice = AVSpeechSynthesisVoice(language: language)
+    }
+    utterance.postUtteranceDelay = 0.05
+    let url = URL(fileURLWithPath: path)
+    try? FileManager.default.removeItem(at: url)
+    pending = result
+    outputPath = url
+    // 120 秒看门狗：渲染卡死时如实报错，不让 Dart 侧永远等一个不会来的回调。
+    let timeout = DispatchWorkItem { [weak self] in self?.fail("系统语音合成超时，请重试") }
+    watchdog = timeout
+    DispatchQueue.main.asyncAfter(deadline: .now() + 120, execute: timeout)
+    synthesizer.write(utterance) { [weak self] buffer in
+      DispatchQueue.main.async { self?.sink(buffer) }
+    }
+  }
+
+  /// 逐缓冲写入。目标固定 16 位单声道 WAV（与桌面 LEI16 一致）；源格式
+  /// Float32 只有格式差异，用 AVAudioConverter 转换后落盘。
+  private func sink(_ rawBuffer: AVAudioBuffer) {
+    guard pending != nil, let pcm = rawBuffer as? AVAudioPCMBuffer, pcm.frameLength > 0 else { return }
+    if sink == nil {
+      guard let target = AVAudioFormat(
+        commonFormat: .pcmFormatInt16,
+        sampleRate: pcm.format.sampleRate,
+        channels: 1,
+        interleaved: true),
+        let url = outputPath,
+        let output = try? AVAudioFile(
+          forWriting: url,
+          settings: target.settings,
+          commonFormat: .pcmFormatInt16,
+          interleaved: true),
+        let bridge = AVAudioConverter(from: pcm.format, to: target) else {
+        fail("无法创建解说音频文件"); return
+      }
+      sink = output
+      converter = bridge
+    }
+    guard let converter, let sink else { return }
+    let ratio = (converter.outputFormat.sampleRate / pcm.format.sampleRate).rounded(.up)
+    let capacity = AVAudioFrameCount(Double(pcm.frameLength) * ratio) + 64
+    guard let out = AVAudioPCMBuffer(pcmFormat: converter.outputFormat, frameCapacity: capacity) else {
+      fail("解说音频缓冲不足"); return
+    }
+    var delivered = false
+    var convertError: NSError?
+    let status = converter.convert(to: out, error: &convertError) { _, status in
+      if delivered { status.pointee = .endOfStream; return nil }
+      delivered = true
+      status.pointee = .haveData
+      return pcm
+    }
+    if status == .error || convertError != nil {
+      fail("系统语音合成失败：\(convertError?.localizedDescription ?? "转换错误")"); return
+    }
+    if out.frameLength > 0 {
+      do { try sink.write(from: out) } catch {
+        fail("解说音频写入失败：\(error.localizedDescription)"); return
+      }
+    }
+  }
+
+  private func finish() {
+    watchdog?.cancel(); watchdog = nil
+    let callback = pending; pending = nil
+    let url = outputPath
+    let frames = sink?.length
+    sink = nil; converter = nil; outputPath = nil
+    guard let callback, let url else { return }
+    guard (frames ?? 0) > 128,
+      let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int,
+      size >= 128 else {
+      try? FileManager.default.removeItem(at: url)
+      callback(FlutterError(code: "tts", message: "系统语音没有生成音频", details: nil)); return
+    }
+    callback(url.path)
+  }
+
+  private func fail(_ message: String) {
+    watchdog?.cancel(); watchdog = nil
+    let callback = pending; pending = nil
+    let url = outputPath
+    sink = nil; converter = nil; outputPath = nil
+    if let url { try? FileManager.default.removeItem(at: url) }
+    callback?(FlutterError(code: "tts", message: message, details: nil))
+  }
+
+  // MARK: AVSpeechSynthesizerDelegate
+
+  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+    finish()
+  }
+
+  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+    fail("系统语音合成被取消")
+  }
 }

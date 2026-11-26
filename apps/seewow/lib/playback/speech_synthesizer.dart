@@ -1,27 +1,44 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 /// Text-to-speech through the operating system's own voice.
 ///
 /// The app ships no TTS engine and needs no API key for this: macOS has `say`,
-/// Windows has SAPI through PowerShell, and Linux usually has `espeak-ng`.
-/// When none of them exist the feature reports itself unavailable instead of
-/// failing at playback time.
+/// Windows has SAPI through PowerShell, Linux usually has `espeak-ng`, and iOS
+/// renders through AVSpeechSynthesizer on the native side. When none of them
+/// exist the feature reports itself unavailable instead of failing at
+/// playback time.
 class SpeechSynthesizer {
-  SpeechSynthesizer({this.voice = ''});
+  SpeechSynthesizer({this.voice = '', this.platformOverride});
 
   /// Optional voice name (`say -v '?'` lists them on macOS).
   final String voice;
 
+  /// 测试注入点：macOS 宿主上跑不了 Platform.isIOS 的分支，用覆盖值模拟。
+  @visibleForTesting
+  final String? platformOverride;
+
   String? _resolved;
 
-  /// `macos`, `windows`, `espeak`, or null when nothing usable exists.
+  static const MethodChannel _voice = MethodChannel('seewow/voice');
+
+  bool get _onIOS =>
+      platformOverride != null ? platformOverride == 'ios' : Platform.isIOS;
+
+  /// `macos`, `windows`, `espeak`, `ios`, or null when nothing usable exists.
   Future<String?> backend() async {
     if (_resolved != null) return _resolved!.isEmpty ? null : _resolved;
     String found = '';
     try {
-      if (Platform.isMacOS) {
+      if (_onIOS) {
+        // iOS 沙箱不允许子进程；探测与合成都走 seewow/voice 原生通道。
+        // 覆盖值优先于真实平台，让 macOS 宿主也能验证这条分支。
+        found = await _voice.invokeMethod<bool>('tts.probe') == true
+            ? 'ios'
+            : '';
+      } else if (Platform.isMacOS) {
         if (await _probe('say', ['-v', '?'])) found = 'macos';
       } else if (Platform.isWindows) {
         // Windows PowerShell has no --version flag; a no-op command is the
@@ -100,6 +117,15 @@ class SpeechSynthesizer {
           ['-f', 'WAVE', '-d', 'LEI16', raw.path, wav.path],
           runInShell: false,
         );
+      } else if (engine == 'ios') {
+        // 原生 AVSpeechSynthesizer 直接产出 16 位 PCM WAV；失败以
+        // PlatformException 抛出，与本桌面分支的「合成失败即报错」一致。
+        await _voice.invokeMethod<dynamic>('tts.synthesize', {
+          'text': trimmed,
+          'path': wav.path,
+          'language': languageHint ?? '',
+          'voice': voice,
+        });
       } else if (engine.startsWith('espeak')) {
         final binary = engine.split(':').last;
         final code = _espeakVoice(languageHint);
