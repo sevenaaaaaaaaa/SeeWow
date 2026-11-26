@@ -43,8 +43,9 @@ class SkinGenerator {
         }),
       );
       final response = await req.close().timeout(const Duration(seconds: 60));
-      if (response.statusCode != 200)
+      if (response.statusCode != 200) {
         throw HttpException('皮肤生成服务返回 HTTP ${response.statusCode}');
+      }
       final bytes = <int>[];
       await for (final chunk in response.timeout(const Duration(seconds: 30))) {
         bytes.addAll(chunk);

@@ -24,10 +24,12 @@ class OpenListScanner {
   }
 
   static Map<String, dynamic> data(Map<String, dynamic> response) {
-    if (response['code'] != 200)
+    if (response['code'] != 200) {
       throw FormatException('网关请求失败（${response['code']}），请检查 Token、挂载状态与目录权限');
-    if (response['data'] is! Map<String, dynamic>)
+    }
+    if (response['data'] is! Map<String, dynamic>) {
       throw const FormatException('网关返回格式无效');
+    }
     return response['data'] as Map<String, dynamic>;
   }
 
@@ -38,8 +40,9 @@ class OpenListScanner {
     while (queue.isNotEmpty) {
       final (path, depth) = queue.removeLast();
       if (!visited.add(path)) continue;
-      if (depth > 16 || visited.length > 2000)
+      if (depth > 16 || visited.length > 2000) {
         throw const FormatException('目录范围过大，请缩小根目录；原片库保留');
+      }
       var offset = 0;
       final names = <String>{};
       for (var page = 1; page <= 1000; page++) {
@@ -56,11 +59,13 @@ class OpenListScanner {
         final total = (json['total'] as num?)?.toInt();
         if (content == null && total == 0) break;
         if (content is! List) throw const FormatException('网关未返回目录列表');
-        if (content.isEmpty && total != null && offset < total)
+        if (content.isEmpty && total != null && offset < total) {
           throw const FormatException('网关分页中断；原片库保留');
+        }
         for (final raw in content) {
-          if (raw is! Map || raw['name'] is! String)
+          if (raw is! Map || raw['name'] is! String) {
             throw const FormatException('网关文件格式无效');
+          }
           final name = raw['name'] as String;
           if (!names.add(name)) throw const FormatException('网关返回重复分页；原片库保留');
           final child = childRemotePath(path, name);
@@ -78,14 +83,16 @@ class OpenListScanner {
               ),
             );
           }
-          if (items.length > 20000)
+          if (items.length > 20000) {
             throw const FormatException('超过 20,000 个影片，请缩小根目录；原片库保留');
+          }
         }
         offset += content.length;
         if (content.isEmpty ||
             (total != null && offset >= total) ||
-            (total == null && content.length < 200))
+            (total == null && content.length < 200)) {
           break;
+        }
         if (page == 1000) throw const FormatException('网关分页超限；原片库保留');
       }
     }
@@ -111,8 +118,9 @@ class OpenListScanner {
               'cookie',
               'authorization',
             ].contains(e.key.toString().toLowerCase()) &&
-            e.value is String)
+            e.value is String) {
           headers[e.key.toString()] = e.value as String;
+        }
       }
     }
     if (url.origin == api.base.origin && headers.isNotEmpty) {
@@ -146,7 +154,7 @@ class OpenListScanner {
           final location = response.headers.value(HttpHeaders.locationHeader);
           if (location == null) throw const FormatException('网关跳转缺少目标地址');
           final next = playableUri(current.resolve(location).toString());
-          if (next.origin != current.origin)
+          if (next.origin != current.origin) {
             headers.removeWhere(
               (name, _) => [
                 'authorization',
@@ -155,11 +163,13 @@ class OpenListScanner {
                 'x-api-key',
               ].contains(name.toLowerCase()),
             );
+          }
           current = next;
           continue;
         }
-        if (response.statusCode != 200 && response.statusCode != 206)
+        if (response.statusCode != 200 && response.statusCode != 206) {
           throw const FormatException('网关播放地址无法读取，请检查挂载状态');
+        }
         return (current, headers);
       }
       throw const FormatException('网关播放跳转次数过多');

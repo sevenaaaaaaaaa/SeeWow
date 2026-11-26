@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 
@@ -230,35 +229,38 @@ class _PlayerScreenState extends State<PlayerScreen>
       if (mounted) setState(() => _buffering = b);
     });
     _errorSub = _player.stream.error.listen((e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _error = '播放失败，请检查片源连接或文件是否可读';
           _buffering = false;
         });
+      }
     });
     _open().catchError((Object e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _error = '无法打开媒体，请检查来源连接后重试';
           _buffering = false;
         });
+      }
     });
     _scheduleHide();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       _focus.requestFocus();
       try {
-        if (PlaybackWindow.desktop)
+        if (PlaybackWindow.desktop) {
           await _window.begin(
             enterFullscreen:
                 _prefs.fullscreen &&
                 !widget.isLive &&
                 widget.item.kind != MediaKind.audio,
           );
-        else if (_prefs.fullscreen &&
+        } else if (_prefs.fullscreen &&
             !widget.isLive &&
-            widget.item.kind != MediaKind.audio)
+            widget.item.kind != MediaKind.audio) {
           await _toggleFullscreen();
+        }
         await _configureBackground();
       } catch (_) {
         if (mounted) _message('系统窗口或后台能力暂不可用，仍可在当前窗口播放');
@@ -298,8 +300,9 @@ class _PlayerScreenState extends State<PlayerScreen>
         _backgroundVideoTrack ??= _player.state.track.video;
         _player.setVideoTrack(VideoTrack.no());
       }
-      if (_voice?.active == true)
+      if (_voice?.active == true) {
         _stopDubbing(resumeOriginal: _backgroundAllowed || _systemPip);
+      }
       if (!_backgroundAllowed && !_systemPip && !_enteringPip) {
         _pausedForBackground = wasRunning;
         _player.pause();
@@ -308,9 +311,10 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   void _message(String text, {SnackBarAction? action}) {
-    if (mounted)
+    if (mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(text), action: action));
+    }
   }
 
   Future<void> _configureBackground() async {
@@ -358,12 +362,14 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
     if (call.method == 'pip.restore') {
       setState(() => _systemPip = false);
-      if (args['position'] is num)
+      if (args['position'] is num) {
         await _player.seek(
           Duration(milliseconds: (args['position'] as num).round()),
         );
-      if (args['playing'] == true && (_foreground || _backgroundAllowed))
+      }
+      if (args['playing'] == true && (_foreground || _backgroundAllowed)) {
         await _player.play();
+      }
     }
     if (call.method == 'action') {
       switch (args['action']) {
@@ -443,7 +449,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         e is PlatformException
             ? (e.message ?? '系统小窗不可用')
             : e is FormatException
-            ? '${e.message}'
+            ? e.message
             : '系统小窗不可用',
       );
     }
@@ -469,7 +475,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         '$text${_ab.enabled ? ' · ${playbackTime(_ab.a!)}—${playbackTime(_ab.b!)}' : ''}',
       );
     } catch (e) {
-      _message(e is FormatException ? '${e.message}' : '循环点设置失败');
+      _message(e is FormatException ? e.message : '循环点设置失败');
     }
     _reveal();
   }
@@ -538,17 +544,18 @@ class _PlayerScreenState extends State<PlayerScreen>
         );
       }
     } catch (e) {
-      _message(e is FormatException ? '${e.message}' : '画面收藏失败，请检查本机存储');
+      _message(e is FormatException ? e.message : '画面收藏失败，请检查本机存储');
     } finally {
       note.dispose();
       _savingFrame = false;
       _hoverBar = false;
       if (mounted) {
         if (resume && _foreground) {
-          if (voice?.active == true && voice!.paused)
+          if (voice?.active == true && voice!.paused) {
             await voice.togglePause();
-          else
+          } else {
             await _player.play();
+          }
         }
         _reveal();
       }
@@ -582,8 +589,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       } catch (_) {}
       if (!mounted) return;
       await _player.setVolume(_privacy.effectiveVolume);
-      if (_voice?.active == true)
+      if (_voice?.active == true) {
         await _voice?.setVolume(_privacy.effectiveVolume);
+      }
     });
     if (mounted) setState(() {});
     await _audioWrites;
@@ -655,8 +663,9 @@ class _PlayerScreenState extends State<PlayerScreen>
         !(_target ?? widget.item).aiAllowed ||
         widget.item.kind == MediaKind.audio ||
         !_prefs.sensitiveScan ||
-        _prefs.sensitiveEndpoint.isEmpty)
+        _prefs.sensitiveEndpoint.isEmpty) {
       return;
+    }
     _sensitiveClient = SensitiveContentClient(_prefs.sensitiveEndpoint);
     _sensitiveTimer = Timer.periodic(
       const Duration(seconds: 3),
@@ -674,8 +683,9 @@ class _PlayerScreenState extends State<PlayerScreen>
         !_playing ||
         _systemPip ||
         !_introDone ||
-        _capturingAiFrame)
+        _capturingAiFrame) {
       return;
+    }
     _scanningSensitive = true;
     try {
       final bytes = await reduceWatchFrame(
@@ -887,8 +897,9 @@ class _PlayerScreenState extends State<PlayerScreen>
         allowedExtensions: SubtitleFiles.extensions,
       );
       if (file == null || !mounted) return;
-      if ((await file.length() ?? 67108865) > 64 * 1024 * 1024)
+      if ((await file.length() ?? 67108865) > 64 * 1024 * 1024) {
         throw const FormatException('字幕文件不能超过 64 MiB');
+      }
       if (file.path != null) {
         await _player.setSubtitleTrack(
           SubtitleTrack.uri(File(file.path!).uri.toString(), title: file.name),
@@ -902,7 +913,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         );
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -910,6 +921,7 @@ class _PlayerScreenState extends State<PlayerScreen>
             ),
           ),
         );
+      }
     }
   }
 
@@ -941,17 +953,19 @@ class _PlayerScreenState extends State<PlayerScreen>
           ],
         ),
       );
-      if (selected != null && mounted)
+      if (selected != null && mounted) {
         await _player.setSubtitleTrack(
           SubtitleTrack.uri(
             File(selected.path).uri.toString(),
             title: selected.name,
           ),
         );
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('无法读取同目录字幕，请检查目录权限')));
+      }
     }
   }
 
@@ -964,7 +978,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         result.text,
         language: result.language,
       );
-      if (mounted)
+      if (mounted) {
         await _player.setSubtitleTrack(
           SubtitleTrack.uri(
             File(saved.path).uri.toString(),
@@ -972,8 +986,9 @@ class _PlayerScreenState extends State<PlayerScreen>
             language: result.language,
           ),
         );
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         await _player.setSubtitleTrack(
           SubtitleTrack.data(
             result.text,
@@ -981,6 +996,7 @@ class _PlayerScreenState extends State<PlayerScreen>
             language: result.language,
           ),
         );
+      }
     }
   }
 
@@ -1016,8 +1032,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     await _privacy.load();
     if (!mounted) return;
     if (hasSensitiveMetadata(target.metadata) ||
-        hasSensitiveMetadata(widget.item.metadata))
+        hasSensitiveMetadata(widget.item.metadata)) {
       _privacy.detectSensitive();
+    }
     await _readAudioRoute();
     if (!mounted) return;
     _routePoll = Timer.periodic(
@@ -1053,8 +1070,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       return;
     }
     final start = widget.startAt ?? widget.item.position;
-    if (start > 5)
+    if (start > 5) {
       await _player.seek(Duration(milliseconds: (start * 1000).round()));
+    }
     await _applyAudioPrivacy();
     _ready = true;
     _configureSensitiveScan();
@@ -1125,10 +1143,11 @@ class _PlayerScreenState extends State<PlayerScreen>
       _finishEntrance();
       return;
     }
-    if (_voice?.active == true)
+    if (_voice?.active == true) {
       _voice!.togglePause();
-    else
+    } else {
       _player.playOrPause();
+    }
     _reveal();
   }
 
@@ -1221,8 +1240,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     _sensitiveClient?.close();
     PlaybackWindow.channel.setMethodCallHandler(null);
     _window.close().catchError((Object _) {});
-    if (Platform.isIOS || Platform.isAndroid)
+    if (Platform.isIOS || Platform.isAndroid) {
       PlaybackWindow.channel.invokeMethod('end').catchError((Object _) => null);
+    }
     _subtitleSub?.cancel();
     _watchAi.dispose();
     _hideTimer?.cancel();
@@ -1618,7 +1638,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   );
 
   Widget _controlsLayer() {
-    if (_window.mini)
+    if (_window.mini) {
       return Stack(
         children: [
           Positioned(
@@ -1664,6 +1684,7 @@ class _PlayerScreenState extends State<PlayerScreen>
           ),
         ],
       );
+    }
     return Stack(
       fit: StackFit.expand,
       children: [

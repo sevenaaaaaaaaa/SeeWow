@@ -1,3 +1,4 @@
+// ignore_for_file: avoid_print
 // 手动探针：用真实网络跑一遍「免费源」链路，四个场景各查一次。
 //
 //   cd apps/seewow && flutter pub run tool/live_metadata_check.dart

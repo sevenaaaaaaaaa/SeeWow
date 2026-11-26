@@ -74,7 +74,7 @@ class Atmosphere extends StatelessWidget {
               ),
             ),
           const IgnorePointer(child: RepaintBoundary(child: CustomPaint(painter: GrainPainter(), size: Size.infinite))),
-          if (child != null) child!,
+          ?child,
         ],
       ),
     );

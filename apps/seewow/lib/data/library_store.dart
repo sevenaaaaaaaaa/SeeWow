@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
@@ -282,8 +281,9 @@ class LibraryStore extends ChangeNotifier {
           s.id != source.id &&
           s.location == source.location &&
           s.rootPath == source.rootPath,
-    ))
+    )) {
       throw StateError('此连接与目录已存在');
+    }
     sources[index] = source;
     await save();
     notifyListeners();
@@ -361,13 +361,14 @@ class LibraryStore extends ChangeNotifier {
             }),
           );
         }
-        if (prev?.metadata?.localized.isNotEmpty == true)
+        if (prev?.metadata?.localized.isNotEmpty == true) {
           incoming = incoming.copyWith(
             metadata: retainLanguages(
               metadataForLanguages(incoming),
               prev!.metadata,
             ),
           );
+        }
         return prev == null
             ? incoming
             : incoming.copyWith(
@@ -548,10 +549,11 @@ class LibraryStore extends ChangeNotifier {
       try {
         final headers = await headersFor(source);
         for (var n = 0; n < items.length; n++) {
-          if (items[n].sourceId == source.id)
+          if (items[n].sourceId == source.id) {
             items[n] = items[n].copyWith(
               httpHeaders: {...items[n].httpHeaders.wherePublic(), ...headers},
             );
+          }
         }
       } catch (_) {
         sourceErrors[source.id] = '凭据读取失败，请重新连接片源';
@@ -578,10 +580,11 @@ class LibraryStore extends ChangeNotifier {
         final episode = items[n];
         if (episode.kind == MediaKind.episode &&
             episode.sourceId == item.sourceId &&
-            (episode.showTitle ?? episode.title) == show)
+            (episode.showTitle ?? episode.title) == show) {
           items[n] = episode.withMetadata(
             retainLanguages(match, episode.metadata),
           );
+        }
       }
     } else {
       items[index] = item.withMetadata(retainLanguages(match, item.metadata));
@@ -594,10 +597,12 @@ class LibraryStore extends ChangeNotifier {
     final next = <String, MediaMetadata>{};
     for (final draft in drafts) {
       final item = items.where((i) => i.id == draft.itemId).firstOrNull;
-      if (item == null || metadataSnapshot(item) != draft.before)
+      if (item == null || metadataSnapshot(item) != draft.before) {
         throw const FormatException('资料或来源已改变，请重新生成多语言预览');
-      if (draft.generatedByModel && !item.aiAllowed)
+      }
+      if (draft.generatedByModel && !item.aiAllowed) {
         throw const FormatException('此来源不允许 AI 处理');
+      }
       final base = metadataForLanguages(item);
       for (final entry in draft.metadata.localized.entries) {
         final old = base.localized[entry.key];
@@ -610,8 +615,9 @@ class LibraryStore extends ChangeNotifier {
             (old.overview.isNotEmpty &&
                 old.overviewOrigin != 'machine' &&
                 value.overviewOrigin == 'machine' &&
-                value.overview != old.overview))
+                value.overview != old.overview)) {
           throw const FormatException('本机补译不能覆盖已有来源文字');
+        }
       }
       previous[item.id] = item.metadata;
       next[item.id] = base.withLanguages(
@@ -628,11 +634,12 @@ class LibraryStore extends ChangeNotifier {
       await _changed();
     } catch (_) {
       for (var i = 0; i < items.length; i++) {
-        if (previous.containsKey(items[i].id))
+        if (previous.containsKey(items[i].id)) {
           items[i] = items[i].copyWith(
             metadata: previous[items[i].id],
             clearMetadata: previous[items[i].id] == null,
           );
+        }
       }
       notifyListeners();
       rethrow;
@@ -649,13 +656,15 @@ class LibraryStore extends ChangeNotifier {
   }) async {
     void validateCurrent() {
       final item = items.where((i) => i.id == itemId).firstOrNull;
-      if (item == null || metadataSnapshot(item) != before)
+      if (item == null || metadataSnapshot(item) != before) {
         throw const FormatException('媒体资料或封面已改变，请重新生成预览');
+      }
       if (!item.aiAllowed) throw const FormatException('此来源不允许 AI 处理');
       if (!replace &&
           item.posterUrl?.isNotEmpty == true &&
-          !item.posterUrl!.startsWith('seewow:'))
+          !item.posterUrl!.startsWith('seewow:')) {
         throw const FormatException('此条目已有封面，请明确选择替换');
+      }
     }
 
     validateCurrent();
@@ -749,11 +758,12 @@ class LibraryStore extends ChangeNotifier {
     final ids = selected.map((i) => i.id).toSet();
     for (var n = 0; n < items.length; n++) {
       final item = items[n];
-      if (ids.contains(item.id))
+      if (ids.contains(item.id)) {
         items[n] = item.copyWith(
           duration: value && item.duration <= 0 ? 1 : item.duration,
           position: value ? (item.duration > 0 ? item.duration : 1) : 0,
         );
+      }
     }
     await _changed();
   }

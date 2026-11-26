@@ -56,8 +56,9 @@ String renderVoiceTemplate(
   });
   // Unknown placeholders are a configuration mistake, not an empty string.
   final leftover = RegExp(r'\{\{([a-zA-Z_]+)\}\}').firstMatch(out);
-  if (leftover != null)
+  if (leftover != null) {
     throw FormatException('模板里有不支持的占位符 {{${leftover.group(1)}}}');
+  }
   return out;
 }
 
@@ -107,26 +108,33 @@ class VoiceTranslationConfig {
   void validate() {
     MetadataTransport.endpoint(endpoint);
     if (model.length > 160 ||
-        !RegExp(r'^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,2}$').hasMatch(language))
+        !RegExp(r'^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,2}$').hasMatch(language)) {
       throw const FormatException('填写语音翻译模型与目标语言代码（如 zh-CN、ja-JP）');
-    if (!RegExp(r'^[A-Za-z0-9-]{1,64}$').hasMatch(authHeader))
+    }
+    if (!RegExp(r'^[A-Za-z0-9-]{1,64}$').hasMatch(authHeader)) {
       throw const FormatException('认证头名称只能包含字母、数字与连字符');
+    }
     if (protocol == VoiceProtocol.seeWow) {
-      if (model.trim().isEmpty)
+      if (model.trim().isEmpty) {
         throw const FormatException('填写语音翻译模型与目标语言代码（如 zh-CN、ja-JP）');
+      }
       return;
     }
     final template = bodyTemplate.trim();
-    if (template.isEmpty || template.length > 20000)
+    if (template.isEmpty || template.length > 20000) {
       throw const FormatException('请求模板为空或过长（上限 20 KB）');
-    if (!template.contains('{{audio_base64}}'))
+    }
+    if (!template.contains('{{audio_base64}}')) {
       throw const FormatException('通用适配的请求模板必须包含 {{audio_base64}}');
+    }
     if (!_pathPattern.hasMatch(audioPath) ||
         (textPath.isNotEmpty && !_pathPattern.hasMatch(textPath)) ||
-        (voicePath.isNotEmpty && !_pathPattern.hasMatch(voicePath)))
+        (voicePath.isNotEmpty && !_pathPattern.hasMatch(voicePath))) {
       throw const FormatException('响应字段路径只能包含字母、数字、下划线与点');
-    if (audioPath.isEmpty)
+    }
+    if (audioPath.isEmpty) {
       throw const FormatException('请填写音频字段路径');
+    }
     // Prove the template is valid JSON once the placeholders are filled.
     final rendered = renderVoiceTemplate(
       template,
@@ -142,8 +150,9 @@ class VoiceTranslationConfig {
     } catch (_) {
       throw const FormatException('请求模板不是合法 JSON；占位符要写在引号内');
     }
-    if (decoded is! Map)
+    if (decoded is! Map) {
       throw const FormatException('请求模板必须是 JSON 对象');
+    }
   }
 
   static const key = 'playback.voiceTranslation';
@@ -172,8 +181,9 @@ class VoiceTranslationConfig {
 
   Future<void> save({String token = '', bool clearToken = false}) async {
     validate();
-    if (token.length > 4096 || token.contains(RegExp(r'[\r\n]')))
+    if (token.length > 4096 || token.contains(RegExp(r'[\r\n]'))) {
       throw const FormatException('密钥格式无效');
+    }
     if (clearToken) await NativeBridge.secretDelete(secretKey);
     if (token.isNotEmpty) await NativeBridge.secretWrite(secretKey, token);
     await NativeBridge.secretWrite(
@@ -219,8 +229,9 @@ class VoiceTranslationClient {
   ) async {
     if (!item.aiAllowed) throw const FormatException('此来源不允许 AI 处理');
     config.validate();
-    if (!at.isFinite || at < 0 || audio.duration > 8.5)
+    if (!at.isFinite || at < 0 || audio.duration > 8.5) {
       throw const FormatException('语音片段范围无效');
+    }
     final atMs = (at * 1000).round();
     final durationMs = (audio.duration * 1000).round();
     final audioBase64 = base64Encode(audio.bytes);
@@ -236,8 +247,9 @@ class VoiceTranslationClient {
         atMs: atMs,
         durationMs: durationMs,
       );
-      if (rendered.length > 6 * 1024 * 1024)
+      if (rendered.length > 6 * 1024 * 1024) {
         throw const FormatException('渲染后的请求体超过 6 MiB，请检查模板重复引用了音频');
+      }
       Object? decoded;
       try {
         decoded = jsonDecode(rendered);
@@ -271,11 +283,13 @@ class VoiceTranslationClient {
     );
     if (result is! Map ||
         result['target_language'] != config.language ||
-        result['voice_preserved'] != true)
+        result['voice_preserved'] != true) {
       throw const FormatException('服务未确认目标语言或音色保留能力，未替换原声');
+    }
     final encoded = result['audio_base64'];
-    if (encoded is! String || encoded.length > 2800000)
+    if (encoded is! String || encoded.length > 2800000) {
       throw const FormatException('服务未返回有界的 Base64 WAV 译音');
+    }
     Uint8List bytes;
     try {
       bytes = base64Decode(encoded);
@@ -284,11 +298,13 @@ class VoiceTranslationClient {
     }
     final translated = WavAudio.parse(bytes);
     if ((translated.duration - audio.duration).abs() >
-        audio.duration * .15 + .05)
+        audio.duration * .15 + .05) {
       throw const FormatException('译音与原片段时长差异过大，无法同步；请让服务返回对齐音频');
+    }
     final text = result['text'] ?? '';
-    if (text is! String || text.length > 4000)
+    if (text is! String || text.length > 4000) {
       throw const FormatException('译音文字长度或格式无效');
+    }
     return TranslatedSpeech(translated, text);
   }
 
@@ -297,8 +313,9 @@ class VoiceTranslationClient {
   TranslatedSpeech _readGeneric(Object? result, WavAudio audio) {
     if (result is! Map) throw const FormatException('适配服务未返回 JSON 对象');
     final encoded = voiceFieldAt(result, config.audioPath);
-    if (encoded is! String || encoded.isEmpty || encoded.length > 2800000)
+    if (encoded is! String || encoded.isEmpty || encoded.length > 2800000) {
       throw const FormatException('适配服务未返回有界的 Base64 WAV 译音');
+    }
     Uint8List bytes;
     try {
       bytes = base64Decode(encoded);
@@ -307,20 +324,24 @@ class VoiceTranslationClient {
     }
     final translated = WavAudio.parse(bytes);
     if ((translated.duration - audio.duration).abs() >
-        audio.duration * .15 + .05)
+        audio.duration * .15 + .05) {
       throw const FormatException('译音与原片段时长差异过大，无法同步；请让服务返回对齐音频');
+    }
     var text = '';
     if (config.textPath.isNotEmpty) {
       final node = voiceFieldAt(result, config.textPath);
-      if (node != null && node is! String)
+      if (node != null && node is! String) {
         throw const FormatException('译音文字字段不是字符串');
+      }
       text = node as String? ?? '';
-      if (text.length > 4000)
+      if (text.length > 4000) {
         throw const FormatException('译音文字长度或格式无效');
+      }
     }
     if (config.voicePath.isNotEmpty &&
-        voiceFieldAt(result, config.voicePath) != true)
+        voiceFieldAt(result, config.voicePath) != true) {
       throw const FormatException('服务未声明音色保留，未替换原声');
+    }
     return TranslatedSpeech(translated, text);
   }
 

@@ -14,10 +14,9 @@ import 'package:path_provider/path_provider.dart';
 class PlexLogin {
   PlexLogin({
     Uri? endpoint,
-    String clientId = '',
+    this.clientId = '',
     HttpClient Function()? clientFactory,
   }) : endpoint = endpoint ?? Uri.parse('https://plex.tv'),
-       clientId = clientId,
        _clientFactory = clientFactory ?? HttpClient.new;
 
   final Uri endpoint;
@@ -60,8 +59,9 @@ class PlexLogin {
     final json = await _request('POST', '/api/v2/pins');
     final id = (json['id'] as num?)?.toInt();
     final code = json['code']?.toString() ?? '';
-    if (id == null || id <= 0 || code.isEmpty)
+    if (id == null || id <= 0 || code.isEmpty) {
       throw const PlexException('Plex 没有返回有效的登录验证码');
+    }
     return PlexPin(id: id, code: code);
   }
 
@@ -88,8 +88,9 @@ class PlexLogin {
     final servers = <PlexServer>[];
     for (final entry in raw.whereType<Map>()) {
       final provides = entry['provides']?.toString() ?? '';
-      if (!provides.split(',').map((s) => s.trim()).contains('server'))
+      if (!provides.split(',').map((s) => s.trim()).contains('server')) {
         continue;
+      }
       final connections = (entry['connections'] as List? ?? [])
           .whereType<Map>()
           .toList();
@@ -156,16 +157,18 @@ class PlexLogin {
       request.headers.set('X-Plex-Client-Identifier', clientId);
       request.headers.set('X-Plex-Version', _version);
       request.headers.set('X-Plex-Platform', Platform.operatingSystem);
-      if (token != null && token.isNotEmpty)
+      if (token != null && token.isNotEmpty) {
         request.headers.set('X-Plex-Token', token);
+      }
       final response = await request.close().timeout(
         const Duration(seconds: 20),
       );
       final bytes = <int>[];
       await for (final chunk in response.timeout(const Duration(seconds: 20))) {
         bytes.addAll(chunk);
-        if (bytes.length > 1024 * 1024)
+        if (bytes.length > 1024 * 1024) {
           throw const PlexException('Plex 响应超过大小限制');
+        }
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw PlexException(

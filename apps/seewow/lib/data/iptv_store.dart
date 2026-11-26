@@ -51,7 +51,7 @@ class IPTVStore extends ChangeNotifier {
 
   Future<void> load() async {
     final d = await _dir();
-    final file = File(d.path + '/iptv.json');
+    final file = File('${d.path}/iptv.json');
     if (!await file.exists()) return;
     try {
       final raw = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
@@ -84,18 +84,19 @@ class IPTVStore extends ChangeNotifier {
         ..addAll((raw['recents'] as List? ?? []).map((e) => e as String));
       for (final playlist in playlists) {
         for (final channelId in _epgChannelIds(playlist)) {
-          if (epg.containsKey(channelId))
+          if (epg.containsKey(channelId)) {
             epg.putIfAbsent(
               '${playlist.id}::$channelId',
               () => epg[channelId]!,
             );
+          }
         }
       }
       epg.removeWhere((key, _) => !key.contains('::'));
       _pruneEpg();
       notifyListeners();
     } catch (e) {
-      debugPrint('iptv load failed: ' + e.toString());
+      debugPrint('iptv load failed: $e');
     }
   }
 
@@ -176,8 +177,9 @@ class IPTVStore extends ChangeNotifier {
           : epgUrl.trim().isEmpty
           ? null
           : epgUrl.trim();
-      if (selectedEpg != null)
+      if (selectedEpg != null) {
         SubscriptionReader.validateWebUri(Uri.parse(selectedEpg));
+      }
       final parsed = M3UParser.stableIds(data.channels, id);
       var playlist = IPTVPlaylist(
         id: id,
@@ -231,8 +233,9 @@ class IPTVStore extends ChangeNotifier {
         playlist.source,
         allowLocalNetwork: playlist.allowLocalNetwork,
       );
-      if (data.channels.isEmpty)
+      if (data.channels.isEmpty) {
         throw const FormatException('订阅已变为配置目录或没有频道，保留原列表');
+      }
       if (!playlists.any((p) => p.id == playlist.id)) return;
       final parsed = M3UParser.stableIds(data.channels, playlist.id);
       // Migrate the previous index-based IDs without moving favourites.
@@ -258,7 +261,7 @@ class IPTVStore extends ChangeNotifier {
         );
       }
       await save();
-      toast = '已更新 ' + parsed.length.toString() + ' 个频道';
+      toast = '已更新 ${parsed.length} 个频道';
       if (playlist.epgUrl != null) await refreshEpg(playlist);
     } catch (e) {
       channels
@@ -308,7 +311,7 @@ class IPTVStore extends ChangeNotifier {
       final idx = playlists.indexWhere((p) => p.id == playlist.id);
       if (idx >= 0) playlists[idx] = playlists[idx].copyWith(epgCount: count);
       await save();
-      toast = '节目单已更新：' + count.toString() + ' 条';
+      toast = '节目单已更新：$count 条';
     } catch (e) {
       toast = '节目单更新失败，请检查地址和 XMLTV 格式';
     } finally {
@@ -335,8 +338,9 @@ class IPTVStore extends ChangeNotifier {
       clearEpg: value.isEmpty,
       epgCount: value.isEmpty ? 0 : null,
     );
-    if (value.isEmpty)
+    if (value.isEmpty) {
       epg.removeWhere((key, _) => key.startsWith('${playlist.id}::'));
+    }
     await save();
     notifyListeners();
     if (value.isNotEmpty) await refreshEpg(playlists[idx]);

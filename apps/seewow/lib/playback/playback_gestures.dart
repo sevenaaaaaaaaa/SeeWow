@@ -65,8 +65,9 @@ class _PlaybackGesturesState extends State<PlaybackGestures> {
 
   void _down(PointerDownEvent e) {
     // Touch and primary mouse/trackpad buttons only.
-    if (e.kind == PointerDeviceKind.mouse && e.buttons != kPrimaryButton)
+    if (e.kind == PointerDeviceKind.mouse && e.buttons != kPrimaryButton) {
       return;
+    }
     _pointers[e.pointer] = e.localPosition;
     _origins[e.pointer] = e.localPosition;
     _cancelHold();

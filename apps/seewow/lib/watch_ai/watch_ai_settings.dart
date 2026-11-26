@@ -52,8 +52,9 @@ class WatchAiConfig {
         );
       }
     }
-    if (enabled && !configured)
+    if (enabled && !configured) {
       throw const FormatException('开启前请填写 API 地址和模型名称');
+    }
     if (model.length > 160 || language.isEmpty || language.length > 40) {
       throw const FormatException('模型名称或目标语言无效');
     }

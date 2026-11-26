@@ -34,8 +34,9 @@ class SubscriptionParser {
     required String playlistId,
   }) {
     text = text.replaceFirst(RegExp(r'^\uFEFF'), '').trim();
-    if (text.startsWith('<'))
+    if (text.startsWith('<')) {
       throw const FormatException('这是网页或 XML 文件，请提供播放列表或配置文件');
+    }
     final warnings = <String>{};
     final channels = <IPTVChannel>[];
     final links = <SubscriptionLink>[];
@@ -50,8 +51,9 @@ class SubscriptionParser {
           !RegExp(
             r'^(?:/|\./|\.\./)|^[^\s<>]+\.(?:json|m3u8?|txt|mp4|mkv|ts)(?:[?#]|$)',
             caseSensitive: false,
-          ).hasMatch(value.trim()))
+          ).hasMatch(value.trim())) {
         return null;
+      }
       final result = uri.resolveUri(ref);
       return ['http', 'https'].contains(result.scheme) &&
               result.host.isNotEmpty &&
@@ -177,8 +179,9 @@ class SubscriptionParser {
         }
       }
     } else if (text.startsWith('#EXTM3U') || text.contains('#EXTINF:')) {
-      if (text.contains('#EXT-X-'))
+      if (text.contains('#EXT-X-')) {
         throw const FormatException('这是单个视频的 HLS 清单，请导入频道列表');
+      }
       final headerEpg = RegExp(
         r'''(?:url-tvg|x-tvg-url)\s*=\s*["']([^"']+)["']''',
         caseSensitive: false,
@@ -218,10 +221,11 @@ class SubscriptionParser {
       }
     }
     final stable = M3UParser.stableIds(channels, playlistId);
-    if (stable.isEmpty && links.isEmpty && warnings.isEmpty)
+    if (stable.isEmpty && links.isEmpty && warnings.isEmpty) {
       throw const FormatException(
         '未找到支持的频道或配置；支持 M3U、名称逗号地址 TXT，以及 channels / lives / urls JSON',
       );
+    }
     return SubscriptionPreview(
       uri: uri,
       channels: stable,

@@ -38,7 +38,7 @@ void main() {
 
   setUp(() async {
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    base = Uri.parse('http://127.0.0.1:' + server.port.toString() + '/dav/');
+    base = Uri.parse('http://127.0.0.1:${server.port}/dav/');
     server.listen((req) async {
       if (req.headers.value('authorization') == null) {
         req.response.statusCode = 401;
@@ -86,7 +86,7 @@ void main() {
     final client = WebDavClient(base, username: 'swd', password: 'swd');
     final entries = await client.list(base);
     expect(entries, isNotEmpty);
-    final expected = 'Basic ' + base64Encode(utf8.encode('swd:swd'));
+    final expected = 'Basic ${base64Encode(utf8.encode('swd:swd'))}';
     expect(client.authHeaders['Authorization'], expected);
     expect(client.authHeaders['User-Agent'], contains('SeeWow'));
     client.close();

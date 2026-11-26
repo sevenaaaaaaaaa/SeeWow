@@ -33,7 +33,7 @@ class OnlineSite {
     while (path.endsWith('/')) {
       path = path.substring(0, path.length - 1);
     }
-    return '${uri.host.toLowerCase()}/${path}';
+    return '${uri.host.toLowerCase()}/$path';
   }
 
   Map<String, Object?> toJson() => {

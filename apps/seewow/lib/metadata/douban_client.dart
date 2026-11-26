@@ -157,7 +157,7 @@ class DoubanClient implements MetadataSource {
     if (interests is! List) return const [];
     return [
       for (final entry in interests.whereType<Map>())
-        if (_review(Map<String, dynamic>.from(entry)) case final review?) review,
+        ?_review(Map<String, dynamic>.from(entry)),
     ];
   }
 
@@ -229,7 +229,7 @@ class DoubanClient implements MetadataSource {
       for (final word in value.split(RegExp(r'\s+')))
         if (word.trim().isNotEmpty) word.trim(),
     ];
-    final countries = parts.length > 0 ? words(parts[0]) : const <String>[];
+    final countries = parts.isNotEmpty ? words(parts[0]) : const <String>[];
     final genres = parts.length > 1 ? words(parts[1]) : const <String>[];
     final people = <MediaPerson>[];
     if (parts.length > 2) {

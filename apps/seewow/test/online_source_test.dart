@@ -51,7 +51,7 @@ CmsVodItem _item(String name, {String url = 'https://x/1.m3u8'}) => CmsVodItem(
   id: name,
   name: name,
   playFrom: 'lzm3u8',
-  playUrl: '第01集' + r'$' + url,
+  playUrl: '第01集\$$url',
 );
 
 void main() {

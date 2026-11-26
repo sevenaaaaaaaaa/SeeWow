@@ -175,13 +175,14 @@ Future<void> connectLocalMediaFolder(
     }
   } catch (e) {
     final message = e is StateError ? e.message : e.toString();
-    if (context.mounted)
+    if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('未能添加文件夹：$message'),
           duration: const Duration(seconds: 8),
         ),
       );
+    }
   }
 }
 
@@ -1080,11 +1081,13 @@ class _ConnectDialogState extends State<_ConnectDialog> {
       }
       await _connect();
     } on PlexException catch (e) {
-      if (mounted && session == _plexSession)
+      if (mounted && session == _plexSession) {
         setState(() => _plexStatus = '登录失败：${e.message}');
+      }
     } catch (e) {
-      if (mounted && session == _plexSession)
+      if (mounted && session == _plexSession) {
         setState(() => _plexStatus = '登录失败：$e');
+      }
     } finally {
       if (mounted && session == _plexSession) setState(() => _plexBusy = false);
     }
@@ -1272,8 +1275,9 @@ class _ConnectDialogState extends State<_ConnectDialog> {
           initial: location,
           name: _name.text.trim(),
           epgUrl: _epg.text.trim(),
-        ))
+        )) {
           return;
+        }
       } else {
         final root = _rooted ? normalizedRemotePath(_root.text) : '/';
         final previous =
@@ -1300,11 +1304,12 @@ class _ConnectDialogState extends State<_ConnectDialog> {
           enabled: previous?.enabled ?? true,
           lastScan: previous?.lastScan,
         );
-        if (_password.text.isNotEmpty)
+        if (_password.text.isNotEmpty) {
           await NativeBridge.secretWrite(
             sourceSecretKey(source),
             _password.text,
           );
+        }
         if (previous == null) {
           await widget.library.addSource(source);
         } else {
@@ -1337,8 +1342,9 @@ class _ConnectDialogState extends State<_ConnectDialog> {
             SourceKind.iptv,
           ],
     );
-    if (_type == 'smb' && !modes.contains(SourceKind.smb))
+    if (_type == 'smb' && !modes.contains(SourceKind.smb)) {
       modes.add(SourceKind.smb);
+    }
     return PopScope(
       canPop: !_busy,
       child: AlertDialog(
@@ -1417,20 +1423,23 @@ class _ConnectDialogState extends State<_ConnectDialog> {
                         }
                         if (!(Platform.isMacOS ||
                             Platform.isWindows ||
-                            Platform.isLinux))
+                            Platform.isLinux)) {
                           return '移动端 SMB 暂未接入，请使用 WebDAV';
+                        }
                         return null;
                       }
                       final uri = Uri.tryParse(value?.trim() ?? '');
                       if (uri == null ||
                           uri.host.isEmpty ||
-                          uri.userInfo.isNotEmpty)
+                          uri.userInfo.isNotEmpty) {
                         return '填写完整地址，账号和密钥填在单独字段';
+                      }
                       if (!['http', 'https'].contains(uri.scheme)) {
                         return '需要 http:// 或 https:// 地址';
                       }
-                      if (_type != 'iptv' && (uri.hasQuery || uri.hasFragment))
+                      if (_type != 'iptv' && (uri.hasQuery || uri.hasFragment)) {
                         return '地址中不要包含查询参数或密钥';
+                      }
                       return null;
                     },
                   ),
@@ -1479,10 +1488,10 @@ class _ConnectDialogState extends State<_ConnectDialog> {
                               await Clipboard.setData(
                                 ClipboardData(text: _plexPin!.code),
                               );
-                              if (mounted)
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('验证码已复制')),
-                                );
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('验证码已复制')),
+                              );
                             },
                             icon: const Icon(Icons.copy, size: 16),
                           ),
@@ -1557,10 +1566,11 @@ class _ConnectDialogState extends State<_ConnectDialog> {
                             widget.existing != null &&
                                 _location.text.trim() !=
                                     widget.existing!.location;
-                        if (required && (v == null || v.isEmpty))
+                        if (required && (v == null || v.isEmpty)) {
                           return _server
                               ? '请输入服务器 API Key'
                               : '请填写凭据；更换地址时不自动复用旧密钥';
+                        }
                         return null;
                       },
                     ),

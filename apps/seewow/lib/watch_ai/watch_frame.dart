@@ -6,8 +6,9 @@ import 'dart:ui' as ui;
 /// encoded image for the current request and dispose decoder resources eagerly.
 Future<Uint8List?> reduceWatchFrame(Uint8List? bytes) async {
   if (bytes == null) return null;
-  if (bytes.length > 8 * 1024 * 1024)
+  if (bytes.length > 8 * 1024 * 1024) {
     throw const FormatException('原始截图过大，本次请使用台词分析');
+  }
   final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
   ui.ImageDescriptor? descriptor;
   ui.Codec? codec;

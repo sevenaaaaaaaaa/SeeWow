@@ -56,8 +56,9 @@ class DubbingController extends ChangeNotifier {
 
   Future<void> _mute(bool value) async {
     final native = video.platform;
-    if (native is NativePlayer && !native.disposed)
+    if (native is NativePlayer && !native.disposed) {
       await native.setProperty('mute', value ? 'yes' : 'no');
+    }
   }
 
   Future<void> start() async {
@@ -65,8 +66,9 @@ class DubbingController extends ChangeNotifier {
     await _runFuture;
     if (!source.aiAllowed) throw const FormatException('此来源不允许 AI 处理');
     client.config.validate();
-    if (video.state.duration.inMilliseconds <= 0)
+    if (video.state.duration.inMilliseconds <= 0) {
       throw const FormatException('译配需要可定位的点播影片');
+    }
     final revision = ++_revision;
     active = true;
     paused = false;
@@ -98,12 +100,14 @@ class DubbingController extends ChangeNotifier {
           ),
         );
     final completed = audio.stream.completed.listen((v) {
-      if (v && _chunkDone != null && !_chunkDone!.isCompleted)
+      if (v && _chunkDone != null && !_chunkDone!.isCompleted) {
         _chunkDone!.complete();
+      }
     });
     final failed = audio.stream.error.listen((_) {
-      if (_chunkDone != null && !_chunkDone!.isCompleted)
+      if (_chunkDone != null && !_chunkDone!.isCompleted) {
         _chunkDone!.completeError(const FormatException('译音无法播放'));
+      }
     });
     _audio = audio;
     var normalEnd = false;
@@ -160,8 +164,9 @@ class DubbingController extends ChangeNotifier {
         normalEnd = next == null;
       }
     } catch (e) {
-      if (revision == _revision && e is! MetadataCancelled)
-        error = e is FormatException ? '${e.message}' : '译配中断，已恢复原片声音';
+      if (revision == _revision && e is! MetadataCancelled) {
+        error = e is FormatException ? e.message : '译配中断，已恢复原片声音';
+      }
     } finally {
       if (!_stopSignal.isCompleted) _stopSignal.complete();
       await completed.cancel();

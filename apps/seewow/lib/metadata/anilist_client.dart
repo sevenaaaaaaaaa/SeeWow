@@ -160,7 +160,7 @@ query ($id: Int, $n: Int) {
     if (nodes is! List) return const [];
     return [
       for (final node in nodes.whereType<Map>())
-        if (_review(Map<String, dynamic>.from(node)) case final review?) review,
+        ?_review(Map<String, dynamic>.from(node)),
     ];
   }
 

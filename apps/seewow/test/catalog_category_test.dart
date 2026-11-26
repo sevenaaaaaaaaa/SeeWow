@@ -17,7 +17,7 @@ MediaItem _item({
   kind: kind,
   title: title,
   showTitle: showTitle,
-  locator: '/media/' + title,
+  locator: '/media/$title',
   genres: genres,
   duration: duration,
 );

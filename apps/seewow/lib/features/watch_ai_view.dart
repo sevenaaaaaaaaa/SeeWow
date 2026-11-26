@@ -7,7 +7,6 @@ import '../design/tokens.dart';
 import '../watch_ai/watch_ai_controller.dart';
 import '../watch_ai/watch_ai_settings.dart';
 
-import 'dart:typed_data';
 
 Future<void> configureWatchAi(
   BuildContext context, {
@@ -107,10 +106,11 @@ class _WatchAiConfigDialogState extends State<_WatchAiConfigDialog> {
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = e is FormatException ? e.message : '无法保存配置，请检查系统凭据存储',
         );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

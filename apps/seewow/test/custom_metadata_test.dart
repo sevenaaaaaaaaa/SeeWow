@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
@@ -35,7 +34,7 @@ class _FailedSaveStore extends LibraryStore {
   @override
   Future<void> save() async {
     items[0] = items[0].copyWith(position: 77);
-    if (concurrentEdit)
+    if (concurrentEdit) {
       items[0] = items[0].copyWith(
         title: 'Newer edit',
         metadata: MediaMetadata.fromJson({
@@ -43,6 +42,7 @@ class _FailedSaveStore extends LibraryStore {
           'title': 'Newer edit',
         }),
       );
+    }
     throw StateError('fixture disk failure');
   }
 }

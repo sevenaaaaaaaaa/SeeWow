@@ -106,7 +106,7 @@ class _BatchScrapeDialogState extends State<BatchScrapeDialog> {
           decoration: BoxDecoration(
             color: WowColors.panel,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            border: Border.all(color: WowColors.wash(0.08)),
           ),
           padding: const EdgeInsets.fromLTRB(22, 20, 22, 16),
           child: Column(
@@ -120,7 +120,7 @@ class _BatchScrapeDialogState extends State<BatchScrapeDialog> {
                 '只填空白字段，已手动确认过的条目一律不动',
                 style: WowType.monoLabel(
                   9,
-                  color: Colors.white.withValues(alpha: 0.42),
+                  color: WowColors.fade(0.42),
                   spacing: 0.6,
                 ),
               ),
@@ -148,7 +148,7 @@ class _BatchScrapeDialogState extends State<BatchScrapeDialog> {
                   child: LinearProgressIndicator(
                     value: total == 0 ? null : _done / total,
                     minHeight: 4,
-                    backgroundColor: Colors.white.withValues(alpha: 0.08),
+                    backgroundColor: WowColors.wash(0.08),
                     color: WowColors.accent,
                   ),
                 ),

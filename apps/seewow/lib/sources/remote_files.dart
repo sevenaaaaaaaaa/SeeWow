@@ -42,8 +42,9 @@ String childRemotePath(String parent, String name) {
       name == '.' ||
       name == '..' ||
       name.contains('/') ||
-      name.contains('\\'))
+      name.contains('\\')) {
     throw const FormatException('服务返回了无效的文件名');
+  }
   return normalizedRemotePath('$parent/$name');
 }
 
@@ -83,7 +84,8 @@ Uri playableUri(String url) {
   if (u == null ||
       !['http', 'https'].contains(u.scheme) ||
       u.host.isEmpty ||
-      u.userInfo.isNotEmpty)
+      u.userInfo.isNotEmpty) {
     throw const FormatException('服务未返回有效的 HTTP 播放地址');
+  }
   return u;
 }

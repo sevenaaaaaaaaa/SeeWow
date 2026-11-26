@@ -335,14 +335,16 @@ class _SkinStudioDialogState extends State<SkinStudioDialog> {
       );
       if (result.isEmpty || !mounted) return;
       final file = result.single;
-      if ((await file.length() ?? 65537) > 65536)
+      if ((await file.length() ?? 65537) > 65536) {
         throw const FormatException('文件不能超过 64 KB');
+      }
       final contents = utf8.decode(await file.readAsBytes());
-      if (mounted)
+      if (mounted) {
         setState(() {
           _document.text = contents;
           _error = null;
         });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = _message(e));
     }
@@ -534,8 +536,9 @@ class _SkinStudioDialogState extends State<SkinStudioDialog> {
         decoration: const InputDecoration(labelText: '皮肤名称'),
         onFieldSubmitted: (v) => _edit({'name': v}),
         onChanged: (v) {
-          if (v.trim().isNotEmpty && v.length <= 60)
+          if (v.trim().isNotEmpty && v.length <= 60) {
             _draft = _draft.edit({'name': v});
+          }
         },
       ),
       const SizedBox(height: 14),
@@ -588,13 +591,14 @@ class _SkinStudioDialogState extends State<SkinStudioDialog> {
                     'colors': {..._draft.data['colors'] as Map, role: v.trim()},
                   }),
                   onChanged: (v) {
-                    if (RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(v.trim()))
+                    if (RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(v.trim())) {
                       _edit({
                         'colors': {
                           ..._draft.data['colors'] as Map,
                           role: v.trim(),
                         },
                       });
+                    }
                   },
                 ),
               ),

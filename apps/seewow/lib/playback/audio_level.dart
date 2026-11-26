@@ -36,16 +36,18 @@ class AudioLevel extends ChangeNotifier {
       level = null;
       bands = const [];
     }
-    if (value && !_disposed)
+    if (value && !_disposed) {
       _timer = Timer.periodic(
         const Duration(milliseconds: 100),
         (_) => _read(),
       );
+    }
   }
 
   Future<void> _read() async {
-    if (_disposed || _reading || !_enabled || !_visible || source == null)
+    if (_disposed || _reading || !_enabled || !_visible || source == null) {
       return;
+    }
     _reading = true;
     try {
       if (!player.state.playing || player.state.buffering) {

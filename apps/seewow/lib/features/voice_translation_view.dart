@@ -42,7 +42,7 @@ class _VoiceTranslationSettingsState extends State<VoiceTranslationSettings> {
     super.initState();
     VoiceTranslationConfig.load()
         .then((c) {
-          if (mounted)
+          if (mounted) {
             setState(() {
               _endpoint.text = c.endpoint;
               _model.text = c.model;
@@ -57,13 +57,15 @@ class _VoiceTranslationSettingsState extends State<VoiceTranslationSettings> {
               _authBearer = c.authBearer;
               _busy = false;
             });
+          }
         })
         .catchError((Object _) {
-          if (mounted)
+          if (mounted) {
             setState(() {
               _busy = false;
               _error = '配置读取失败，请重新填写';
             });
+          }
         });
   }
 
@@ -104,10 +106,11 @@ class _VoiceTranslationSettingsState extends State<VoiceTranslationSettings> {
       ).save(token: _token.text.trim(), clearToken: _clear);
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
-          () => _error = e is FormatException ? '${e.message}' : '译配服务保存失败',
+          () => _error = e is FormatException ? e.message : '译配服务保存失败',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

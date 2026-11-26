@@ -164,7 +164,7 @@ class RemoteClient {
   Future<RemoteStatus> command(String action, [num? value]) async {
     final json = await _post('/api/command', {
       'action': action,
-      if (value != null) 'value': value,
+      'value': ?value,
     });
     return RemoteStatus.fromJson(json);
   }

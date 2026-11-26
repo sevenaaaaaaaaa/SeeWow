@@ -156,15 +156,17 @@ class SettingsView extends StatelessWidget {
                 onTap: () async {
                   try {
                     await SubtitleCache().clear();
-                    if (context.mounted)
+                    if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('字幕下载缓存已清理')),
                       );
+                    }
                   } catch (_) {
-                    if (context.mounted)
+                    if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('缓存清理失败，请停止播放后重试')),
                       );
+                    }
                   }
                 },
               ),
@@ -349,7 +351,7 @@ class _AiSettingsGroupState extends State<_AiSettingsGroup> {
 
   String _sub(String base, AiServiceStatus status) => status.configured &&
           status.detail.isNotEmpty
-      ? base + ' · ' + status.detail
+      ? '$base · ${status.detail}'
       : base;
 
   @override
@@ -366,7 +368,7 @@ class _AiSettingsGroupState extends State<_AiSettingsGroup> {
           ? '全部使用你自己配置的服务，密钥只存本机凭据存储'
           : [
               '6 项',
-              ready.toString() + ' 项已接入',
+              '$ready 项已接入',
               '密钥只存本机凭据存储',
             ].join(' · '),
       children: [
@@ -379,9 +381,7 @@ class _AiSettingsGroupState extends State<_AiSettingsGroup> {
           title: const Text('AI 模型', style: TextStyle(fontSize: 14)),
           subtitle: Text(
             modelReady
-                ? '当前：' +
-                      widget.agent!.model +
-                      (widget.host.isEmpty ? '' : ' · ' + widget.host)
+                ? '当前：${widget.agent!.model}${widget.host.isEmpty ? '' : ' · ${widget.host}'}'
                 : '未接入 · 使用本地规则模式',
             style: const TextStyle(fontSize: 12),
           ),
@@ -465,7 +465,7 @@ class _StatusPill extends StatelessWidget {
     decoration: BoxDecoration(
       color: configured
           ? WowColors.success.withValues(alpha: .14)
-          : Colors.white.withValues(alpha: .05),
+          : WowColors.wash(.05),
       borderRadius: BorderRadius.circular(999),
       border: Border.all(
         color: configured

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
@@ -41,7 +40,7 @@ class WatchAiController extends ChangeNotifier {
   final Duration translationDelay, minimumInterval;
   WatchAiConfig get config => settings.config;
   final _cues = Queue<WatchCue>();
-  final _cache = LinkedHashMap<String, String>();
+  final _cache = <String, String>{};
   final List<WatchAnswer> answers = [];
   List<WatchCue> get cues => List.unmodifiable(_cues);
   int get cacheCount => _cache.length;
@@ -91,8 +90,9 @@ class WatchAiController extends ChangeNotifier {
     if (currentText == bounded) return;
     currentText = bounded;
     if (active && bounded.isNotEmpty) {
-      if (_cues.isEmpty || _cues.last.text != bounded)
+      if (_cues.isEmpty || _cues.last.text != bounded) {
         _cues.add(WatchCue(position, bounded));
+      }
       while (_cues.length > 16) {
         _cues.removeFirst();
       }
@@ -108,8 +108,9 @@ class WatchAiController extends ChangeNotifier {
         busy ||
         translating ||
         currentText.isEmpty ||
-        _cache.containsKey(currentText))
+        _cache.containsKey(currentText)) {
       return;
+    }
     final elapsed = _lastTranslation == null
         ? minimumInterval
         : DateTime.now().difference(_lastTranslation!);
@@ -125,8 +126,9 @@ class WatchAiController extends ChangeNotifier {
         busy ||
         translating ||
         currentText.isEmpty ||
-        _cache.containsKey(currentText))
+        _cache.containsKey(currentText)) {
       return;
+    }
     final cue = currentText, generation = _generation, snapshot = config;
     _lastTranslation = DateTime.now();
     translating = true;
@@ -145,8 +147,9 @@ class WatchAiController extends ChangeNotifier {
         _cache.remove(_cache.keys.first);
       }
     } catch (e) {
-      if (generation == _generation && e is! WatchAiCancelled)
+      if (generation == _generation && e is! WatchAiCancelled) {
         error = _message(e);
+      }
     } finally {
       if (generation == _generation) {
         translating = false;
@@ -193,8 +196,9 @@ class WatchAiController extends ChangeNotifier {
           ? await capture!().timeout(const Duration(seconds: 8))
           : null;
       if (generation != _generation || !active) return;
-      if (withFrame && frame == null)
+      if (withFrame && frame == null) {
         throw const FormatException('当前画面无法截取，可关闭画面选项后按台词提问');
+      }
       final answer = await client.complete(
         config: snapshot,
         system:
@@ -214,8 +218,9 @@ class WatchAiController extends ChangeNotifier {
         answers.removeAt(0);
       }
     } catch (e) {
-      if (generation == _generation && e is! WatchAiCancelled)
+      if (generation == _generation && e is! WatchAiCancelled) {
         error = _message(e);
+      }
     } finally {
       if (generation == _generation) {
         busy = false;

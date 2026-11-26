@@ -43,8 +43,9 @@ class FrameBookmarks {
   static final I = FrameBookmarks();
   final Directory? directory;
   static Future<void> validateImage(Uint8List bytes) async {
-    if (bytes.length > 8 * 1024 * 1024)
+    if (bytes.length > 8 * 1024 * 1024) {
       throw const FormatException('画面超过 8 MiB，请选择较低分辨率画面');
+    }
     await validateCoverBytes(bytes);
   }
 
@@ -70,15 +71,17 @@ class FrameBookmarks {
   Future<List<FrameBookmark>> _read() async {
     final file = File('${(await _dir()).path}/index.json');
     if (!await file.exists()) return [];
-    if (await file.length() > 4 * 1024 * 1024)
+    if (await file.length() > 4 * 1024 * 1024) {
       throw const FormatException('精彩帧索引过大');
+    }
     final values = (jsonDecode(await file.readAsString()) as List)
         .map((j) => FrameBookmark.fromJson(Map<String, dynamic>.from(j)))
         .toList();
     if (values.any(
       (f) => !_validId(f.id) || !f.seconds.isFinite || f.seconds < 0,
-    ))
+    )) {
       throw const FormatException('精彩帧索引格式无效');
+    }
     return values;
   }
 
@@ -90,8 +93,9 @@ class FrameBookmarks {
   Future<void> _save(List<FrameBookmark> frames) async {
     final dir = await _dir(),
         data = jsonEncode(frames.map((f) => f.toJson()).toList());
-    if (utf8.encode(data).length > 4 * 1024 * 1024)
+    if (utf8.encode(data).length > 4 * 1024 * 1024) {
       throw const FormatException('收藏数量已达到索引容量');
+    }
     final temp = File('${dir.path}/index.json.tmp');
     await temp.writeAsString(data, flush: true);
     await temp.rename('${dir.path}/index.json');
@@ -104,8 +108,9 @@ class FrameBookmarks {
     String note = '',
   }) {
     final done = _writes.catchError((Object _) {}).then((_) async {
-      if (!seconds.isFinite || seconds < 0 || note.length > 2000)
+      if (!seconds.isFinite || seconds < 0 || note.length > 2000) {
         throw const FormatException('收藏时间或备注无效');
+      }
       await validateImage(bytes);
       final now = DateTime.now().toUtc();
       final id = sha256

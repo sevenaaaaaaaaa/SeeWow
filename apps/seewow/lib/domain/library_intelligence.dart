@@ -166,8 +166,9 @@ class RecommendationEngine {
       if (requested.isNotEmpty && !i.genres.any(requested.contains)) continue;
       // Unknown duration cannot satisfy a time budget.
       if (maxMinutes != null &&
-          (i.duration <= 0 || i.duration > maxMinutes * 60))
+          (i.duration <= 0 || i.duration > maxMinutes * 60)) {
         continue;
+      }
       final matches = i.genres.where((g) => (weights[g] ?? 0) > 0).toList();
       var score =
           (i.rating ?? 5) +
@@ -207,8 +208,9 @@ class LibraryAudit {
     final groups = <String, List<MediaItem>>{};
     for (final i in items) {
       if (i.kind != MediaKind.audio &&
-          (i.posterUrl == null || i.overview.isEmpty))
+          (i.posterUrl == null || i.overview.isEmpty)) {
         missingMetadata.add(i);
+      }
       final title = (i.showTitle ?? i.title).toLowerCase().replaceAll(
         RegExp(r'[^\w\u4e00-\u9fff]'),
         '',

@@ -28,8 +28,9 @@ class PlaybackWindow extends ChangeNotifier with WindowListener {
       await done.future.timeout(
         const Duration(seconds: 3),
         onTimeout: () async {
-          if (await windowManager.isFullScreen() != target)
+          if (await windowManager.isFullScreen() != target) {
             throw const FormatException('系统全屏切换未完成，请重试');
+          }
         },
       );
     } finally {
@@ -105,16 +106,18 @@ class PlaybackWindow extends ChangeNotifier with WindowListener {
   @override
   void onWindowEnterFullScreen() {
     fullscreen = true;
-    if (_transitionTarget == true && _transition?.isCompleted == false)
+    if (_transitionTarget == true && _transition?.isCompleted == false) {
       _transition!.complete();
+    }
     if (!_closed) notifyListeners();
   }
 
   @override
   void onWindowLeaveFullScreen() {
     fullscreen = false;
-    if (_transitionTarget == false && _transition?.isCompleted == false)
+    if (_transitionTarget == false && _transition?.isCompleted == false) {
       _transition!.complete();
+    }
     if (!_closed) notifyListeners();
   }
 }

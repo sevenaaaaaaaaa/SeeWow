@@ -184,7 +184,7 @@ class _ReviewCard extends StatelessWidget {
     decoration: BoxDecoration(
       color: WowColors.panel,
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      border: Border.all(color: WowColors.wash(0.06)),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,

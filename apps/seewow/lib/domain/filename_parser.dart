@@ -55,14 +55,23 @@ class FilenameParser {
     final qualities = <String>{};
     for (final m in _quality.allMatches(name)) {
       final token = m.group(1)!.toLowerCase();
-      if (token.contains('2160') || token == '4k' || token == 'uhd') qualities.add('4K');
-      else if (token.contains('1080')) qualities.add('1080p');
-      else if (token.contains('720')) qualities.add('720p');
-      else if (token.contains('dolby') || token == 'dv') qualities.add('Dolby Vision');
-      else if (token.startsWith('hdr')) qualities.add('HDR');
-      else if (token.contains('blu')) qualities.add('BluRay');
-      else if (token.contains('web')) qualities.add('WEB');
-      else if (token.contains('remux')) qualities.add('Remux');
+      if (token.contains('2160') || token == '4k' || token == 'uhd') {
+        qualities.add('4K');
+      } else if (token.contains('1080')) {
+        qualities.add('1080p');
+      } else if (token.contains('720')) {
+        qualities.add('720p');
+      } else if (token.contains('dolby') || token == 'dv') {
+        qualities.add('Dolby Vision');
+      } else if (token.startsWith('hdr')) {
+        qualities.add('HDR');
+      } else if (token.contains('blu')) {
+        qualities.add('BluRay');
+      } else if (token.contains('web')) {
+        qualities.add('WEB');
+      } else if (token.contains('remux')) {
+        qualities.add('Remux');
+      }
     }
 
     String title;

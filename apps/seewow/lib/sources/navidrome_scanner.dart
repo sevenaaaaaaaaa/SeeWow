@@ -13,8 +13,9 @@ class NavidromeScanner {
   final String password;
   final JsonApi api;
   Map<String, String> auth() {
-    if (source.username.isEmpty || password.isEmpty)
+    if (source.username.isEmpty || password.isEmpty) {
       throw const FormatException('请填写 Navidrome 用户名和密码');
+    }
     final random = Random.secure();
     final salt = List.generate(
       16,
@@ -43,16 +44,18 @@ class NavidromeScanner {
         'songOffset': '${items.length}',
       });
       final response = raw['subsonic-response'];
-      if (response is! Map || response['status'] != 'ok')
+      if (response is! Map || response['status'] != 'ok') {
         throw const FormatException('Navidrome 认证或目录请求失败，请检查账号、协议权限');
+      }
       final search = response['searchResult3'];
       if (search is! Map) throw const FormatException('Navidrome 未返回音乐目录');
       final list = search['song'] ?? [];
       if (list is! List) throw const FormatException('Navidrome 音乐列表格式无效');
       for (final m in list.whereType<Map>()) {
         final id = m['id']?.toString() ?? '';
-        if (id.isEmpty || !seen.add(id))
+        if (id.isEmpty || !seen.add(id)) {
           throw const FormatException('Navidrome 返回重复分页；原音乐库保留');
+        }
         items.add(
           MediaItem(
             id: '${source.id}:$id',

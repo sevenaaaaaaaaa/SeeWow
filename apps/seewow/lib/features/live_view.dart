@@ -113,7 +113,7 @@ class _LiveViewState extends State<LiveView> {
             children: [
               Container(width: 4, height: 4, decoration: BoxDecoration(shape: BoxShape.circle, color: WowColors.accent.withValues(alpha: 0.9))),
               const SizedBox(width: 10),
-              Text('LIVE TELEVISION', style: WowType.monoLabel(8.5, color: Colors.white.withValues(alpha: 0.34), spacing: 2.4)),
+              Text('LIVE TELEVISION', style: WowType.monoLabel(8.5, color: WowColors.fade(0.34), spacing: 2.4)),
               const Spacer(),
               _SearchField(controller: _search, onChanged: (v) => setState(() => _query = v)),
               const SizedBox(width: 10),
@@ -128,13 +128,13 @@ class _LiveViewState extends State<LiveView> {
               const SizedBox(width: 14),
               Padding(
                 padding: const EdgeInsets.only(bottom: 7),
-                child: Text(store.channels.length.toString().padLeft(2, '0') + '  CHANNELS',
-                    style: WowType.monoLabel(8.5, color: Colors.white.withValues(alpha: 0.3), spacing: 2.2)),
+                child: Text('${store.channels.length.toString().padLeft(2, '0')}  CHANNELS',
+                    style: WowType.monoLabel(8.5, color: WowColors.fade(0.3), spacing: 2.2)),
               ),
             ],
           ),
           const SizedBox(height: 18),
-          Container(height: 1, color: Colors.white.withValues(alpha: 0.07)),
+          Container(height: 1, color: WowColors.wash(0.07)),
           const SizedBox(height: 18),
           Row(
             children: [
@@ -185,7 +185,7 @@ class _LiveViewState extends State<LiveView> {
                         padding: const EdgeInsets.only(bottom: 60),
                         children: [
                           if (onAir.isNotEmpty) ...[
-                            SectionHeading(index: 1, title: '正在播', subtitle: '0' + onAir.length.toString() + ' ON AIR NOW'),
+                            SectionHeading(index: 1, title: '正在播', subtitle: '0${onAir.length} ON AIR NOW'),
                             const SizedBox(height: 16),
                             SizedBox(
                               height: 92,
@@ -202,7 +202,7 @@ class _LiveViewState extends State<LiveView> {
                             SectionHeading(
                               index: (onAir.isNotEmpty ? 2 : 1) + gi,
                               title: groups.entries.elementAt(gi).key,
-                              subtitle: groups.entries.elementAt(gi).value.length.toString().padLeft(2, '0') + ' CHANNELS',
+                              subtitle: '${groups.entries.elementAt(gi).value.length.toString().padLeft(2, '0')} CHANNELS',
                             ),
                             const SizedBox(height: 16),
                             GridView.builder(
@@ -249,7 +249,7 @@ class _LiveViewState extends State<LiveView> {
             decoration: BoxDecoration(
               color: active
                   ? WowColors.accent.withValues(alpha: 0.18)
-                  : Colors.white.withValues(alpha: 0.04),
+                  : WowColors.wash(0.04),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: active
@@ -280,7 +280,7 @@ class _LiveViewState extends State<LiveView> {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
+            color: WowColors.wash(0.05),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: WowColors.line),
           ),
@@ -303,12 +303,12 @@ class _SearchField extends StatelessWidget {
       height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: WowColors.wash(0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: WowColors.line),
       ),
       child: Row(children: [
-        Icon(Icons.search_rounded, size: 15, color: Colors.white.withValues(alpha: 0.35)),
+        Icon(Icons.search_rounded, size: 15, color: WowColors.fade(0.35)),
         const SizedBox(width: 8),
         Expanded(
           child: TextField(
@@ -319,11 +319,11 @@ class _SearchField extends StatelessWidget {
               isDense: true,
               border: InputBorder.none,
               hintText: '搜索频道',
-              hintStyle: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.28)),
+              hintStyle: TextStyle(fontSize: 12, color: WowColors.fade(0.28)),
             ),
           ),
         ),
-        Text('⌘K', style: WowType.monoLabel(8, color: Colors.white.withValues(alpha: 0.25), spacing: 0.6)),
+        Text('⌘K', style: WowType.monoLabel(8, color: WowColors.fade(0.25), spacing: 0.6)),
       ]),
     );
   }
@@ -342,7 +342,7 @@ class _PlaylistChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.only(left: 12, right: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
+        color: WowColors.wash(0.04),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: WowColors.line),
       ),
@@ -352,7 +352,7 @@ class _PlaylistChip extends StatelessWidget {
         Text(playlist.name, style: WowType.body(11.5, height: 1.2)),
         const SizedBox(width: 8),
         Text(
-          hasEpg ? playlist.channelCount.toString() + ' · EPG' : playlist.channelCount.toString(),
+          hasEpg ? '${playlist.channelCount} · EPG' : playlist.channelCount.toString(),
           style: WowType.monoLabel(8.5, color: hasEpg ? WowColors.accent : WowColors.faint, spacing: 0.8),
         ),
         _chipAction(hasEpg ? Icons.event_available_rounded : Icons.event_note_rounded, onEpg,
@@ -371,7 +371,7 @@ class _PlaylistChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(6),
-          child: Icon(icon, size: size, color: Colors.white.withValues(alpha: 0.45)),
+          child: Icon(icon, size: size, color: WowColors.fade(0.45)),
         ),
       ),
     );
@@ -404,7 +404,7 @@ class _OnAirCardState extends State<_OnAirCard> {
           width: 268,
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: _hover ? 0.08 : 0.04),
+            color: WowColors.wash(_hover ? 0.08 : 0.04),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: _hover ? WowColors.accent.withValues(alpha: 0.35) : WowColors.line),
           ),
@@ -418,7 +418,7 @@ class _OnAirCardState extends State<_OnAirCard> {
                     overflow: TextOverflow.ellipsis,
                     style: WowType.monoLabel(8.5, color: WowColors.faint, spacing: 1).copyWith(height: 1.2)),
               ),
-              Text(_clock(p.start) + ' – ' + _clock(p.stop),
+              Text('${_clock(p.start)} – ${_clock(p.stop)}',
                   style: WowType.monoLabel(8, color: WowColors.faint, spacing: 0.6)),
             ]),
             const SizedBox(height: 7),
@@ -432,7 +432,7 @@ class _OnAirCardState extends State<_OnAirCard> {
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 2,
-                backgroundColor: Colors.white.withValues(alpha: 0.08),
+                backgroundColor: WowColors.wash(0.08),
                 valueColor: AlwaysStoppedAnimation(WowColors.accent.withValues(alpha: 0.85)),
               ),
             ),
@@ -473,7 +473,7 @@ class _ChannelTileState extends State<_ChannelTile> {
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: _hover ? 0.08 : 0.035),
+            color: WowColors.wash(_hover ? 0.08 : 0.035),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: _hover ? WowColors.accent.withValues(alpha: 0.35) : WowColors.line),
           ),
@@ -498,7 +498,7 @@ class _ChannelTileState extends State<_ChannelTile> {
                     child: LinearProgressIndicator(
                       value: now.progressAt(DateTime.now()),
                       minHeight: 2,
-                      backgroundColor: Colors.white.withValues(alpha: 0.07),
+                      backgroundColor: WowColors.wash(0.07),
                       valueColor: AlwaysStoppedAnimation(WowColors.accent.withValues(alpha: 0.7)),
                     ),
                   ),
@@ -801,4 +801,4 @@ class _AddPlaylistDialogState extends State<_AddPlaylistDialog> {
   }
 }
 
-String _clock(DateTime t) => t.hour.toString().padLeft(2, '0') + ':' + t.minute.toString().padLeft(2, '0');
+String _clock(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';

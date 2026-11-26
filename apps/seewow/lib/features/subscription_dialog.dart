@@ -118,16 +118,18 @@ class _SubscriptionDialogState extends State<SubscriptionDialog> {
         _readSource = target;
         if (link != null) _source.text = target;
         if (link != null) _name.text = link.name;
-        if (widget.epgUrl.isEmpty || link != null)
+        if (widget.epgUrl.isEmpty || link != null) {
           _epg.text = data.epgUrl ?? link?.epgUrl ?? '';
+        }
       });
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = e is FormatException
               ? e.message.toString()
               : '读取失败，请检查地址、文件格式或访问权限',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -50,8 +50,9 @@ class SensitiveContentClient {
     },
   );
   Future<bool> _detect(Uint8List image) async {
-    if (image.isEmpty || image.length > 512 * 1024)
+    if (image.isEmpty || image.length > 512 * 1024) {
       throw const FormatException('检测帧大小无效');
+    }
     final request = await _http
         .postUrl(endpoint)
         .timeout(const Duration(seconds: 3));

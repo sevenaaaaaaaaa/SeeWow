@@ -30,8 +30,9 @@ class MediaServerScanner {
         if (batch is! List) throw const FormatException('媒体服务器响应缺少 Items 列表');
         var added = 0;
         for (final raw in batch) {
-          if (raw is! Map<String, dynamic>)
+          if (raw is! Map<String, dynamic>) {
             throw const FormatException('媒体条目格式无效');
+          }
           final id = raw['Id']?.toString() ?? '';
           if (id.isEmpty || !seen.add(id)) continue;
           added++;
@@ -146,12 +147,14 @@ class MediaServerScanner {
         }
         offset += batch.length;
         final total = (json['TotalRecordCount'] as num?)?.toInt();
-        if (batch.isEmpty && total != null && total > offset)
+        if (batch.isEmpty && total != null && total > offset) {
           throw const FormatException('服务器提前返回空页，未覆盖原片库');
+        }
         if (batch.isEmpty ||
             (total != null && offset >= total) ||
-            (total == null && batch.length < pageSize))
+            (total == null && batch.length < pageSize)) {
           return items;
+        }
         if (added == 0) throw const FormatException('服务器重复返回同一页，已停止扫描并保留原片库');
       }
       throw const FormatException('片库超过本轮 20,000 条扫描上限，未覆盖原片库');

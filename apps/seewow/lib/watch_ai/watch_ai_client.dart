@@ -75,15 +75,17 @@ class WatchAiClient {
           }),
         );
         final response = await req.close();
-        if (response.statusCode != 200)
+        if (response.statusCode != 200) {
           throw HttpException(
             'API 返回 HTTP ${response.statusCode}，请检查接口地址（通常以 /chat/completions 结尾）、模型、密钥或视觉能力',
           );
+        }
         final bytes = <int>[];
         await for (final chunk in response) {
           bytes.addAll(chunk);
-          if (bytes.length > 128 * 1024)
+          if (bytes.length > 128 * 1024) {
             throw const FormatException('AI 响应超过 128 KB');
+          }
         }
         if (ticket != _revision) throw WatchAiCancelled();
         final text = utf8.decode(bytes);
@@ -94,10 +96,12 @@ class WatchAiClient {
         }
         final raw = jsonDecode(text) as Map<String, dynamic>;
         final answer = raw['choices']?[0]?['message']?['content'];
-        if (answer is! String || answer.trim().isEmpty)
+        if (answer is! String || answer.trim().isEmpty) {
           throw const FormatException('模型没有返回有效文本');
-        if (answer.length > 4000)
+        }
+        if (answer.length > 4000) {
           throw const FormatException('模型回答过长，请使用简洁输出模型');
+        }
         return answer.trim();
       })().timeout(const Duration(seconds: 35));
     } catch (e) {

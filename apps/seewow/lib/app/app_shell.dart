@@ -600,10 +600,12 @@ class _AppShellState extends State<AppShell> {
     }
     final section = Section.values.where((s) => s.name == launch).firstOrNull;
     if (section != null) _select(section);
-    if (launch == 'detail' && _store.items.isNotEmpty)
+    if (launch == 'detail' && _store.items.isNotEmpty) {
       _open(_store.movies.firstOrNull ?? _store.items.first);
-    if (launch == 'play' && _store.items.isNotEmpty)
+    }
+    if (launch == 'play' && _store.items.isNotEmpty) {
       _play(_store.movies.firstOrNull ?? _store.items.first);
+    }
     if (launch == 'playweb') {
       final i = _store.items
           .where((i) => i.locator.startsWith('http'))
@@ -964,7 +966,7 @@ class _AppShellState extends State<AppShell> {
                               fit: StackFit.expand,
                               children: [
                                 ...previous,
-                                if (current != null) current,
+                                ?current,
                               ],
                             ),
                             transitionBuilder: (child, animation) =>

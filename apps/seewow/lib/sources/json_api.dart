@@ -12,8 +12,9 @@ class JsonApi {
         base.host.isEmpty ||
         base.userInfo.isNotEmpty ||
         base.hasQuery ||
-        base.hasFragment)
+        base.hasFragment) {
       throw const FormatException('请填写不含账号、密钥或查询参数的服务地址');
+    }
   }
   final Uri base;
   final Map<String, String> headers;
@@ -61,21 +62,23 @@ class JsonApi {
         req.write(body);
       }
       final response = await req.close().timeout(const Duration(seconds: 25));
-      if (response.statusCode != 200)
+      if (response.statusCode != 200) {
         throw HttpException(switch (response.statusCode) {
           401 || 403 => '认证失败（HTTP ${response.statusCode}），请检查凭据与访问权限',
           404 => '接口不存在（HTTP 404），请检查服务根路径',
           429 => '请求过于频繁（HTTP 429），请稍后重试',
           _ => '服务返回 HTTP ${response.statusCode}',
         });
+      }
       final bytes = <int>[];
       await for (final chunk in response.timeout(const Duration(seconds: 25))) {
         bytes.addAll(chunk);
         if (bytes.length > maxBytes) throw const FormatException('服务响应超过大小限制');
       }
       final decoded = jsonDecode(utf8.decode(bytes));
-      if (decoded is! Map<String, dynamic>)
+      if (decoded is! Map<String, dynamic>) {
         throw const FormatException('服务没有返回有效的 JSON 对象');
+      }
       return decoded;
     } on HttpException {
       rethrow;

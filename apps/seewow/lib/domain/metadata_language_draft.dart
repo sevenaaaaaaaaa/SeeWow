@@ -50,20 +50,23 @@ MediaMetadata retainLanguages(MediaMetadata fresh, MediaMetadata? previous) {
     if (fresh.provider != previous.provider ||
         freshId.isEmpty ||
         oldId.isEmpty ||
-        freshId != oldId)
+        freshId != oldId) {
       return fresh;
+    }
   }
   if (fresh.id > 0 &&
       previous.id > 0 &&
       (fresh.id != previous.id ||
           fresh.mediaType != previous.mediaType ||
-          fresh.provider != previous.provider))
+          fresh.provider != previous.provider)) {
     return fresh;
+  }
   for (final key in ['tmdb', 'imdb']) {
     if (fresh.externalIds[key]?.isNotEmpty == true &&
         previous.externalIds[key]?.isNotEmpty == true &&
-        fresh.externalIds[key] != previous.externalIds[key])
+        fresh.externalIds[key] != previous.externalIds[key]) {
       return fresh;
+    }
   }
   final texts = {...previous.localized};
   for (final entry in fresh.localized.entries) {

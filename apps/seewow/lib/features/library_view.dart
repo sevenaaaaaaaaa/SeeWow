@@ -90,10 +90,11 @@ class _LibraryViewState extends State<LibraryView> {
           watch: _watch,
           sort: _sort,
         ).apply(store.items, store.taste);
-        if (widget.collection != null)
+        if (widget.collection != null) {
           items = items
               .where((i) => widget.collection!.itemIds.contains(i.id))
               .toList();
+        }
         if (_category != CatalogCategory.all) {
           items = filterCategory(items, _category);
         }
@@ -589,9 +590,10 @@ class _LibraryViewState extends State<LibraryView> {
     );
     if (name != null) {
       await widget.store.createCollection(name, items.map((i) => i.id));
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('片单已保存，可在「我的片单」查看')));
+      }
     }
   }
 

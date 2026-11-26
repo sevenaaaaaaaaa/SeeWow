@@ -99,8 +99,9 @@ class SubtitleFiles {
     if (uri == null ||
         (uri.hasScheme &&
             uri.scheme != 'file' &&
-            !RegExp(r'^[A-Za-z]:[\\/]').hasMatch(locator)))
+            !RegExp(r'^[A-Za-z]:[\\/]').hasMatch(locator))) {
       return [];
+    }
     final file = uri.scheme == 'file' ? File.fromUri(uri) : File(locator);
     if (!await file.exists()) return [];
     final videoName = file.uri.pathSegments.last;
@@ -114,8 +115,9 @@ class SubtitleFiles {
       var visited = 0;
       await for (final entry in dir.list(followLinks: false)) {
         if (++visited > 1000) break;
-        if (entry is! File || !matches(entry.uri.pathSegments.last, videoName))
+        if (entry is! File || !matches(entry.uri.pathSegments.last, videoName)) {
           continue;
+        }
         if (await entry.length() > 16 * 1024 * 1024) continue;
         results.add(LocalSubtitle(entry.path, entry.uri.pathSegments.last));
       }
@@ -156,8 +158,9 @@ class OpenSubtitlesClient {
          },
          maxBytes: 2 * 1024 * 1024,
        ) {
-    if (apiKey.trim().isEmpty)
+    if (apiKey.trim().isEmpty) {
       throw const FormatException('请先配置 OpenSubtitles API Key');
+    }
   }
   final JsonApi _api;
   final SubscriptionReader reader;
@@ -177,8 +180,9 @@ class OpenSubtitlesClient {
   static Future<OpenSubtitlesClient> configured() async {
     try {
       final raw = await NativeBridge.secretRead(credentialsKey);
-      if (raw == null)
+      if (raw == null) {
         throw const FormatException('请先配置 OpenSubtitles API Key');
+      }
       final data = jsonDecode(raw) as Map<String, dynamic>;
       final base = Uri.parse(
         data['base'] as String? ?? 'https://api.opensubtitles.com/api/v1',
@@ -201,13 +205,15 @@ class OpenSubtitlesClient {
     String username = '',
     String password = '',
   }) async {
-    if (key.trim().isEmpty)
+    if (key.trim().isEmpty) {
       throw const FormatException('请填写 OpenSubtitles API Key');
+    }
     String token = '';
     var base = Uri.parse('https://api.opensubtitles.com/api/v1');
     if (username.trim().isNotEmpty || password.isNotEmpty) {
-      if (username.trim().isEmpty || password.isEmpty)
+      if (username.trim().isEmpty || password.isEmpty) {
         throw const FormatException('登录需要同时填写用户名和密码');
+      }
       final client = OpenSubtitlesClient(key);
       try {
         final result = await client._api.post('login', {
@@ -221,8 +227,9 @@ class OpenSubtitlesClient {
           final proposed = Uri.parse(
             host.startsWith('https://') ? host : 'https://$host',
           );
-          if (!officialBase(proposed))
+          if (!officialBase(proposed)) {
             throw const FormatException('字幕服务返回了未经信任的账号地址');
+          }
           base = proposed.replace(path: '/api/v1');
         }
       } finally {
@@ -249,10 +256,11 @@ class OpenSubtitlesClient {
         .join(',');
     if (codes.isNotEmpty &&
         !RegExp(r'^[a-z]{2,3}(?:-[a-z]{2})?(?:,[a-z]{2,3}(?:-[a-z]{2})?)*$')
-            .hasMatch(codes))
+            .hasMatch(codes)) {
       throw const FormatException(
         '字幕语言填写 en、zh-cn、zh-tw、pt-br 等代码，用英文逗号分隔；留空搜索全部语言',
       );
+    }
     if (page < 1 || page > 500) throw const FormatException('页码超出范围');
     final imdb = item.metadata?.externalIds['imdb'] ?? '';
     final useId = query == null && RegExp(r'^tt\d+$').hasMatch(imdb);
@@ -306,15 +314,17 @@ class OpenSubtitlesClient {
     if (uri == null ||
         uri.scheme != 'https' ||
         uri.userInfo.isNotEmpty ||
-        uri.host.isEmpty)
+        uri.host.isEmpty) {
       throw const FormatException('字幕服务未返回安全的下载地址');
+    }
     remaining = (result['remaining'] as num?)?.toInt();
     // A separate anonymous, bounded transport never forwards account headers.
     final text = (await reader.read(uri.toString())).text
         .replaceFirst('\uFEFF', '');
     if (text.trimLeft().startsWith('<') ||
-        (!text.contains('-->') && !text.contains('[Script Info]')))
+        (!text.contains('-->') && !text.contains('[Script Info]'))) {
       throw const FormatException('下载内容不是支持的文字字幕，请尝试其他版本');
+    }
     return text;
   }
 

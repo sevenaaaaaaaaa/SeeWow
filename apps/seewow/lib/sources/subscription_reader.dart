@@ -31,8 +31,9 @@ class SubscriptionReader {
       final file = uri.scheme == 'file'
           ? File.fromUri(uri)
           : File(source.trim());
-      if (await file.length() > maxBytes)
+      if (await file.length() > maxBytes) {
         throw const FormatException('文件超过读取大小限制');
+      }
       return SubscriptionText(
         await _decode(file.openRead()).timeout(timeout),
         file.absolute.uri,
@@ -80,8 +81,9 @@ class SubscriptionReader {
         if (response.statusCode != 200) {
           throw FormatException('服务返回 HTTP ${response.statusCode}');
         }
-        if (response.contentLength > maxBytes)
+        if (response.contentLength > maxBytes) {
           throw const FormatException('文件超过读取大小限制');
+        }
         return SubscriptionText(await _decode(response), current);
       }
       throw const FormatException('重定向次数过多');

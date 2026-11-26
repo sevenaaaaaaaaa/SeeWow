@@ -7,7 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../domain/media_item.dart';
 
 /// Keychain / secrets-file key for a source.
-String sourceSecretKey(MediaSource source) => 'source.' + source.id;
+String sourceSecretKey(MediaSource source) => 'source.${source.id}';
 
 /// Host capabilities SeeWow needs but Flutter does not expose:
 /// SMB mounting (NetFS on macOS) and secret storage (Keychain on macOS).
@@ -101,8 +101,9 @@ class NativeBridge {
         throw NativeException(e.message ?? 'SMB 挂载失败');
       }
     }
-    if (Platform.isWindows)
+    if (Platform.isWindows) {
       return _windowsMount(host, share, username, password, subpath);
+    }
     if (Platform.isLinux) return _linuxMount(host, share, subpath);
     throw NativeException('当前平台暂不支持 SMB 直连，请使用 WebDAV 或本地文件夹');
   }
@@ -115,12 +116,12 @@ class NativeBridge {
     String subpath,
   ) async {
     for (final drive in ['Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S']) {
-      final target = '\\\\' + host + '\\' + share;
-      final args = ['use', drive + ':', target, '/persistent:no'];
-      if (username.isNotEmpty) args.addAll(['/user:' + username, password]);
+      final target = '\\\\$host\\$share';
+      final args = ['use', '$drive:', target, '/persistent:no'];
+      if (username.isNotEmpty) args.addAll(['/user:$username', password]);
       final r = await Process.run('net', args, runInShell: true);
       if (r.exitCode == 0) {
-        final base = drive + ':\\';
+        final base = '$drive:\\';
         return subpath.isEmpty ? base : base + subpath;
       }
     }
@@ -132,25 +133,25 @@ class NativeBridge {
     String share,
     String subpath,
   ) async {
-    final uri = 'smb://' + host + '/' + share;
+    final uri = 'smb://$host/$share';
     final r = await Process.run('gio', ['mount', uri], runInShell: true);
     if (r.exitCode != 0) {
       throw NativeException(
-        '无法挂载 ' + uri + '。Linux 请先在「文件」中连接该共享（凭据存入密钥环），或改用 WebDAV。',
+        '无法挂载 $uri。Linux 请先在「文件」中连接该共享（凭据存入密钥环），或改用 WebDAV。',
       );
     }
     final uid = (await Process.run('id', ['-u'])).stdout.toString().trim();
-    final root = Directory('/run/user/' + uid + '/gvfs');
+    final root = Directory('/run/user/$uid/gvfs');
     if (await root.exists()) {
       await for (final e in root.list()) {
         if (!e.path.contains('smb-share')) continue;
-        if (e.path.contains('server=' + host) ||
-            e.path.contains(':server=' + host)) {
-          return subpath.isEmpty ? e.path : e.path + '/' + subpath;
+        if (e.path.contains('server=$host') ||
+            e.path.contains(':server=$host')) {
+          return subpath.isEmpty ? e.path : '${e.path}/$subpath';
         }
       }
     }
-    throw NativeException('挂载成功但找不到挂载点（' + uri + '）');
+    throw NativeException('挂载成功但找不到挂载点（$uri）');
   }
 }
 
@@ -168,9 +169,9 @@ class _FileSecrets {
 
   Future<File> _file() async {
     final support = await getApplicationSupportDirectory();
-    final dir = Directory(support.path + '/SeeWow');
+    final dir = Directory('${support.path}/SeeWow');
     if (!await dir.exists()) await dir.create(recursive: true);
-    return File(dir.path + '/secrets.json');
+    return File('${dir.path}/secrets.json');
   }
 
   Future<Map<String, String>> _load() async {

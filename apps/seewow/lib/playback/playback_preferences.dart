@@ -99,8 +99,9 @@ class PlaybackPreferences extends ChangeNotifier {
     bool sensitiveScan = false,
     String sensitiveEndpoint = '',
   }) async {
-    if (sensitiveScan)
+    if (sensitiveScan) {
       SensitiveContentClient.validateEndpoint(sensitiveEndpoint);
+    }
     await NativeBridge.secretWrite(
       key,
       jsonEncode(
@@ -128,8 +129,9 @@ class AbLoop {
   double? a, b;
   bool get enabled => a != null && b != null;
   String mark(double seconds) {
-    if (!seconds.isFinite || seconds < 0)
+    if (!seconds.isFinite || seconds < 0) {
       throw const FormatException('当前播放时间无效');
+    }
     if (a == null || enabled) {
       a = seconds;
       b = null;

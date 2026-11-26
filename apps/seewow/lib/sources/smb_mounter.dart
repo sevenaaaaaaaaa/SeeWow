@@ -19,7 +19,7 @@ class SmbMounter {
 
     final spec = parseSmbLocation(source.location);
     final support = await getApplicationSupportDirectory();
-    final mountPoint = support.path + '/SeeWow/mounts/' + source.id;
+    final mountPoint = '${support.path}/SeeWow/mounts/${source.id}';
     final password =
         await NativeBridge.secretRead(sourceSecretKey(source)) ?? '';
     final path = await NativeBridge.smbMount(
@@ -40,10 +40,10 @@ class SmbMounter {
     var text = raw.trim();
     if (text.isEmpty) throw NativeException('请填写 SMB 地址');
     if (text.startsWith('\\\\')) {
-      text = 'smb://' + text.substring(2).replaceAll('\\', '/');
+      text = 'smb://${text.substring(2).replaceAll('\\', '/')}';
     }
     if (!text.toLowerCase().startsWith('smb://')) {
-      text = 'smb://' + text.replaceFirst(RegExp(r'^/+'), '');
+      text = 'smb://${text.replaceFirst(RegExp(r'^/+'), '')}';
     }
     final uri = Uri.tryParse(text);
     if (uri == null || uri.host.isEmpty) {
@@ -61,7 +61,7 @@ class SmbMounter {
     if (segments.isEmpty) {
       throw NativeException('缺少共享名，例如 smb://192.168.1.10/media');
     }
-    return 'smb://' + uri.host + '/' + segments.join('/');
+    return 'smb://${uri.host}/${segments.join('/')}';
   }
 
   static SmbSpec parseSmbLocation(String raw) {

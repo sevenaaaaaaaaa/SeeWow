@@ -22,10 +22,12 @@ class CoverGenerationConfig {
     MetadataTransport.endpoint(endpoint);
     if (!Uri.parse(endpoint).path.endsWith('/images/generations') ||
         model.trim().isEmpty ||
-        model.length > 160)
+        model.length > 160) {
       throw const FormatException('填写完整的 /images/generations 地址与图像模型名称');
-    if (!['1024x1536', '1024x1024', '1024x1792', 'auto'].contains(size))
+    }
+    if (!['1024x1536', '1024x1024', '1024x1792', 'auto'].contains(size)) {
       throw const FormatException('图片尺寸无效');
+    }
   }
 
   String get credentialKey =>
@@ -53,8 +55,9 @@ class CoverGenerationConfig {
 
   Future<void> save({String token = '', bool clearToken = false}) async {
     validate();
-    if (token.length > 4096 || token.contains(RegExp(r'[\r\n]')))
+    if (token.length > 4096 || token.contains(RegExp(r'[\r\n]'))) {
       throw const FormatException('密钥格式无效');
+    }
     if (clearToken) await NativeBridge.secretDelete(credentialKey);
     if (token.isNotEmpty) await NativeBridge.secretWrite(credentialKey, token);
     await NativeBridge.secretWrite(key, jsonEncode(toJson()));
@@ -90,8 +93,9 @@ class CoverGenerator {
   Future<GeneratedCover> generate(MediaItem item, String prompt) async {
     if (!item.aiAllowed) throw const FormatException('此来源不允许 AI 处理');
     config.validate();
-    if (prompt.trim().isEmpty || prompt.length > 6000)
+    if (prompt.trim().isEmpty || prompt.length > 6000) {
       throw const FormatException('封面描述需为 1–6000 字');
+    }
     final response = await _http.json(
       Uri.parse(config.endpoint),
       headers: token.isEmpty ? {} : {'Authorization': 'Bearer $token'},
@@ -109,12 +113,14 @@ class CoverGenerator {
     final encoded = data is List && data.isNotEmpty && data.first is Map
         ? data.first['b64_json']
         : null;
-    if (encoded is! String || encoded.isEmpty)
+    if (encoded is! String || encoded.isEmpty) {
       throw const FormatException(
         '接口需返回 data[0].b64_json 图片；仅返回 URL 的服务请启用 Base64 选项或使用兼容适配器',
       );
-    if (encoded.length > 28 * 1024 * 1024)
+    }
+    if (encoded.length > 28 * 1024 * 1024) {
       throw const FormatException('图片超过大小限制');
+    }
     Uint8List bytes;
     try {
       bytes = base64Decode(encoded);
@@ -134,8 +140,9 @@ class CoverGenerator {
 
 /// Validate the encoded raster and dimensions before allocating a decoded image.
 Future<void> validateCoverBytes(Uint8List bytes) async {
-  if (bytes.isEmpty || bytes.length > 20 * 1024 * 1024)
+  if (bytes.isEmpty || bytes.length > 20 * 1024 * 1024) {
     throw const FormatException('图片为空或超过 20 MiB');
+  }
   final png =
       bytes.length >= 8 &&
       bytes[0] == 137 &&
@@ -151,8 +158,9 @@ Future<void> validateCoverBytes(Uint8List bytes) async {
       bytes.length >= 12 &&
       ascii.decode(bytes.sublist(0, 4), allowInvalid: true) == 'RIFF' &&
       ascii.decode(bytes.sublist(8, 12), allowInvalid: true) == 'WEBP';
-  if (!png && !jpeg && !webp)
+  if (!png && !jpeg && !webp) {
     throw const FormatException('仅接受 PNG、JPEG 或 WebP 栅格封面');
+  }
   final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
   ui.ImageDescriptor? descriptor;
   ui.Codec? codec;
@@ -163,8 +171,9 @@ Future<void> validateCoverBytes(Uint8List bytes) async {
         descriptor.height < 1 ||
         descriptor.width > 8192 ||
         descriptor.height > 8192 ||
-        descriptor.width * descriptor.height > 20 * 1000 * 1000)
+        descriptor.width * descriptor.height > 20 * 1000 * 1000) {
       throw const FormatException('图片尺寸超过限制');
+    }
     codec = await descriptor.instantiateCodec(
       targetWidth: descriptor.width > 256 ? 256 : descriptor.width,
     );

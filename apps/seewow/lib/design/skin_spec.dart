@@ -73,10 +73,12 @@ class SkinSpec {
       'density',
       'colors',
     ];
-    if (raw.keys.any((k) => !keys.contains(k)))
+    if (raw.keys.any((k) => !keys.contains(k))) {
       throw const FormatException('皮肤包含不支持的字段');
-    if (raw['schemaVersion'] != 1)
+    }
+    if (raw['schemaVersion'] != 1) {
       throw const FormatException('仅支持 schemaVersion: 1');
+    }
     final d = <String, dynamic>{
       'author': '社区作者',
       'description': '',
@@ -94,16 +96,18 @@ class SkinSpec {
         throw FormatException('$key 文本格式无效');
       }
     }
-    if ((d['name'] as String).trim().isEmpty)
+    if ((d['name'] as String).trim().isEmpty) {
       throw const FormatException('请填写皮肤名称');
+    }
     for (final entry in {
       'mode': ['light', 'dark'],
       'material': ['flat', 'glass'],
       'font': ['sans', 'editorial', 'humanist', 'geometric'],
       'density': ['comfortable', 'compact'],
     }.entries) {
-      if (!entry.value.contains(d[entry.key]))
+      if (!entry.value.contains(d[entry.key])) {
         throw FormatException('${entry.key} 取值无效');
+      }
     }
     for (final e in {
       'radius': [0, 28],
@@ -140,20 +144,23 @@ class SkinSpec {
   }
 
   static SkinSpec decode(String text) {
-    if (utf8.encode(text).length > 65536)
+    if (utf8.encode(text).length > 65536) {
       throw const FormatException('皮肤文件不能超过 64 KB');
+    }
     final fence = RegExp(r'```(?:seewow-skin|json)\s*\n([\s\S]*?)```')
         .firstMatch(text);
     final decoded = jsonDecode((fence?[1] ?? text).trim());
-    if (decoded is! Map<String, dynamic>)
+    if (decoded is! Map<String, dynamic>) {
       throw const FormatException('皮肤需要是 JSON 对象');
+    }
     return SkinSpec.fromJson(decoded);
   }
 
   /// Explicit token documents are deterministic and work without a model.
   static SkinSpec fromDesign(String markdown) {
-    if (utf8.encode(markdown).length > 65536)
+    if (utf8.encode(markdown).length > 65536) {
       throw const FormatException('design.md 不能超过 64 KB');
+    }
     if (markdown.trim().startsWith('{') ||
         markdown.contains('```seewow-skin') ||
         markdown.contains('```json')) {
@@ -188,8 +195,9 @@ class SkinSpec {
       if (values.containsKey(k)) base[k] = values[k];
     }
     for (final k in ['radius', 'posterRadius', 'blur', 'opacity']) {
-      if (values.containsKey(k))
+      if (values.containsKey(k)) {
         base[k] = double.tryParse(values[k]!) ?? values[k];
+      }
     }
     base['colors'] = colors;
     return SkinSpec.fromJson(base);

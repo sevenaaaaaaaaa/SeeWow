@@ -75,10 +75,12 @@ class NfoInfo {
     if (reference == null || reference.trim().isEmpty) return null;
     final ref = Uri.tryParse(reference.trim());
     if (ref == null || ref.userInfo.isNotEmpty) return null;
-    if (['http', 'https'].contains(ref.scheme) && ref.host.isNotEmpty)
+    if (['http', 'https'].contains(ref.scheme) && ref.host.isNotEmpty) {
       return ref.toString();
-    if (ref.hasScheme || ref.hasAuthority || ref.path.startsWith('/'))
+    }
+    if (ref.hasScheme || ref.hasAuthority || ref.path.startsWith('/')) {
       return null;
+    }
     final result = directory.resolveUri(ref);
     if (!result.path.startsWith(directory.path)) return null;
     return result.scheme == 'file' ? result.toFilePath() : result.toString();
@@ -86,8 +88,9 @@ class NfoInfo {
 
   static NfoInfo parse(String text, {Uri? directory}) {
     if (text.length > 2 * 1024 * 1024 ||
-        RegExp(r'<!DOCTYPE|<!ENTITY', caseSensitive: false).hasMatch(text))
+        RegExp(r'<!DOCTYPE|<!ENTITY', caseSensitive: false).hasMatch(text)) {
       throw const FormatException('NFO 不允许外部实体或超大内容');
+    }
     final root = XmlDocument.parse(text).rootElement;
     if (![
       'movie',
@@ -96,8 +99,9 @@ class NfoInfo {
       'musicvideo',
       'album',
       'artist',
-    ].contains(root.name.local))
+    ].contains(root.name.local)) {
       throw const FormatException('不支持的 NFO 类型');
+    }
     String? value(String name) {
       final value = root.getElement(name)?.innerText.trim();
       return value == null || value.isEmpty ? null : value;
@@ -132,8 +136,9 @@ class NfoInfo {
       );
       if (score.valid) scores.add(score);
     }
-    if (scores.isEmpty && rating != null)
+    if (scores.isEmpty && rating != null) {
       scores.add(MediaRating(source: 'NFO', value: rating));
+    }
     final people = <MediaPerson>[
       for (final actor in root.findElements('actor'))
         if ((actor.getElement('name')?.innerText.trim() ?? '').isNotEmpty)
@@ -222,8 +227,9 @@ class NfoInfo {
   }
 
   static String decode(List<int> bytes) {
-    if (bytes.length > 2 * 1024 * 1024)
+    if (bytes.length > 2 * 1024 * 1024) {
       throw const FormatException('NFO 超过读取上限');
+    }
     if (bytes.length >= 2 &&
         ((bytes[0] == 255 && bytes[1] == 254) ||
             (bytes[0] == 254 && bytes[1] == 255))) {

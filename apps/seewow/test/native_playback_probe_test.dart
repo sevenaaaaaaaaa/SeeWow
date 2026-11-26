@@ -1,3 +1,4 @@
+// ignore_for_file: avoid_print
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
@@ -102,8 +103,9 @@ void main() {
     });
     session.addListener(() {
       began = began || session.active;
-      if (began && !session.active && !finished.isCompleted)
+      if (began && !session.active && !finished.isCompleted) {
         finished.complete();
+      }
     });
     try {
       await session.start();

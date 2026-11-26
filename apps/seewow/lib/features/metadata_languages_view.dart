@@ -90,8 +90,9 @@ class _MetadataLanguagesViewState extends State<MetadataLanguagesView> {
     final metadata = widget.metadata;
     if (metadata.localized.isEmpty &&
         metadata.preferredLanguages.isEmpty &&
-        metadata.alternativeTitles.isEmpty)
+        metadata.alternativeTitles.isEmpty) {
       return const SizedBox.shrink();
+    }
     return ExpansionTile(
       tilePadding: EdgeInsets.zero,
       title: Text('多语言资料 · ${metadata.localized.length} 个版本'),

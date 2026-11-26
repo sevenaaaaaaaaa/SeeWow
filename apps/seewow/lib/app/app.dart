@@ -64,7 +64,7 @@ class _SeeWowAppState extends State<SeeWowApp> {
       if (!exists) {
         await _store.addSource(
           MediaSource(
-            id: 'demo-' + demo.hashCode.toString(),
+            id: 'demo-${demo.hashCode}',
             kind: SourceKind.local,
             name: '演示片库',
             location: demo,
@@ -82,11 +82,10 @@ class _SeeWowAppState extends State<SeeWowApp> {
         final back = await NativeBridge.secretRead('probe.key');
         await NativeBridge.secretDelete('probe.key');
         debugPrint(
-          'SEEWOW_PROBE keychain=' +
-              (back == 'swd' ? 'ok' : 'mismatch:' + back.toString()),
+          'SEEWOW_PROBE keychain=${back == 'swd' ? 'ok' : 'mismatch:$back'}',
         );
       } catch (e) {
-        debugPrint('SEEWOW_PROBE keychain=fail ' + e.toString());
+        debugPrint('SEEWOW_PROBE keychain=fail $e');
       }
       try {
         final path = await NativeBridge.smbMount(
@@ -97,11 +96,11 @@ class _SeeWowAppState extends State<SeeWowApp> {
           subpath: '',
           mountPoint: '/tmp/seewow-smb-probe',
         );
-        debugPrint('SEEWOW_PROBE smb=ok ' + path);
+        debugPrint('SEEWOW_PROBE smb=ok $path');
       } on NativeException catch (e) {
-        debugPrint('SEEWOW_PROBE smb=' + e.message);
+        debugPrint('SEEWOW_PROBE smb=${e.message}');
       } catch (e) {
-        debugPrint('SEEWOW_PROBE smb=fail ' + e.toString());
+        debugPrint('SEEWOW_PROBE smb=fail $e');
       }
     }
     final dav = Platform.environment['SEEWOW_ADD_WEBDAV'];
@@ -115,14 +114,15 @@ class _SeeWowAppState extends State<SeeWowApp> {
         final exists = _store.sources.any((s) => s.location == url);
         if (!exists || _store.items.isEmpty) {
           final source = MediaSource(
-            id: 'dav-' + DateTime.now().millisecondsSinceEpoch.toString(),
+            id: 'dav-${DateTime.now().millisecondsSinceEpoch}',
             kind: SourceKind.webdav,
             name: name,
             location: url,
             username: user,
           );
-          if (pass.isNotEmpty)
+          if (pass.isNotEmpty) {
             await NativeBridge.secretWrite(sourceSecretKey(source), pass);
+          }
           if (exists) {
             await _store.rescan(
               _store.sources.firstWhere((s) => s.location == url),
@@ -151,8 +151,9 @@ class _SeeWowAppState extends State<SeeWowApp> {
 
   String? _demoPath() {
     final env = Platform.environment['SEEWOW_DEMO_PATH'];
-    if (env != null && Directory(env).existsSync())
+    if (env != null && Directory(env).existsSync()) {
       return Directory(env).absolute.path;
+    }
     // Walk up from cwd and from the executable, so `flutter run`, a packaged
     // .app and a raw binary all find the dev sample library.
     final roots = <String>[

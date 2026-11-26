@@ -20,8 +20,9 @@ class MetadataTransport {
         uri.host.isEmpty ||
         uri.userInfo.isNotEmpty ||
         uri.hasQuery ||
-        uri.hasFragment)
+        uri.hasFragment) {
       throw const FormatException('服务地址需为不含账号、查询参数或片段的 HTTP(S) 地址');
+    }
     return uri;
   }
 
@@ -53,8 +54,9 @@ class MetadataTransport {
                     SubscriptionReader.isLocalAddress(a)) ||
                 (target.scheme == 'http' &&
                     !SubscriptionReader.isLocalAddress(a)),
-          ))
+          )) {
         throw const FormatException('公网服务须使用 HTTPS；局域网服务需在配置中明确允许');
+      }
       return target.scheme == 'https'
           ? SecureSocket.startConnect(addresses.first, target.port)
           : Socket.startConnect(addresses.first, target.port);
@@ -73,10 +75,12 @@ class MetadataTransport {
           request.write(jsonEncode(body));
         }
         final response = await request.close();
-        if (response.statusCode != 200)
+        if (response.statusCode != 200) {
           throw FormatException('服务返回 HTTP ${response.statusCode}；请检查接口、授权或额度');
-        if (response.contentLength > maxBytes)
+        }
+        if (response.contentLength > maxBytes) {
           throw const FormatException('响应超过大小限制');
+        }
         final bytes = <int>[];
         await for (final chunk in response) {
           bytes.addAll(chunk);

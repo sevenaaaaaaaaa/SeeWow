@@ -120,7 +120,7 @@ class SectionTitle extends StatelessWidget {
           ],
         ),
       ),
-      if (action != null) action!,
+      ?action,
     ],
   );
 }
@@ -621,8 +621,9 @@ Future<String?> askCollectionName(
         ),
         FilledButton(
           onPressed: () {
-            if (controller.text.trim().isNotEmpty)
+            if (controller.text.trim().isNotEmpty) {
               Navigator.pop(context, controller.text.trim());
+            }
           },
           child: const Text('保存'),
         ),

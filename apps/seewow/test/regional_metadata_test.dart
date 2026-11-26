@@ -125,11 +125,12 @@ void main() {
             },
           ],
         };
-        if (req.uri.path.endsWith('/translations'))
+        if (req.uri.path.endsWith('/translations')) {
           req.response.write(jsonEncode(translations));
-        else if (req.uri.path.contains('/search/')) {
-          if (req.uri.queryParameters['language'] == 'ko-KR')
+        } else if (req.uri.path.contains('/search/')) {
+          if (req.uri.queryParameters['language'] == 'ko-KR') {
             req.response.statusCode = 503;
+          }
           req.response.write(
             jsonEncode({
               'results': [
@@ -138,7 +139,7 @@ void main() {
               'total_pages': 2,
             }),
           );
-        } else
+        } else {
           req.response.write(
             jsonEncode({
               'id': 42,
@@ -152,6 +153,7 @@ void main() {
               },
             }),
           );
+        }
         await req.response.close();
       });
     });

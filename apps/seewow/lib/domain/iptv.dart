@@ -144,14 +144,15 @@ class M3UParser {
         continue;
       }
       if (line.startsWith('#')) continue;
-      if (!_scheme.hasMatch(line) && (baseUri == null || pendingName.isEmpty))
+      if (!_scheme.hasMatch(line) && (baseUri == null || pendingName.isEmpty)) {
         continue;
+      }
       final name = pendingName.isNotEmpty
           ? pendingName
-          : '频道 ' + (index + 1).toString();
+          : '频道 ${index + 1}';
       channels.add(
         IPTVChannel(
-          id: playlistId + '-' + index.toString().padLeft(4, '0'),
+          id: '$playlistId-${index.toString().padLeft(4, '0')}',
           playlistId: playlistId,
           name: name,
           url: baseUri?.resolve(line).toString() ?? line,

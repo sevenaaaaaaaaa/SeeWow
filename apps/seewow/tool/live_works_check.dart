@@ -1,3 +1,4 @@
+// ignore_for_file: avoid_print
 // 真网探针：把 20 个采集站的搜索结果按「作品」聚合，看少了几行。
 //
 //   cd apps/seewow && dart run tool/live_works_check.dart 庆余年

@@ -120,12 +120,13 @@ class _MetadataConfigState extends State<_MetadataConfig> {
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = e is FormatException
               ? e.message.toString()
               : '保存失败，请检查配置后重试',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -271,11 +272,12 @@ class _MetadataDialogState extends State<_MetadataDialog> {
         ? ''
         : widget.item.year?.toString() ?? '';
     TmdbClient.readLocale().then((value) {
-      if (mounted && !_localeEdited)
+      if (mounted && !_localeEdited) {
         setState(() {
           _language.text = value.language;
           _region.text = value.region;
         });
+      }
     });
     _query = TextEditingController(
       text: widget.item.showTitle ?? widget.item.title,
@@ -314,8 +316,9 @@ class _MetadataDialogState extends State<_MetadataDialog> {
       if (year.isNotEmpty &&
           (int.tryParse(year) == null ||
               int.parse(year) < 1 ||
-              int.parse(year) > 9999))
+              int.parse(year) > 9999)) {
         throw const FormatException('年份需要为 1 到 9999');
+      }
       final parsedYear = year.isEmpty ? null : int.parse(year);
       final series = _mediaType == 'tv';
       final registry = await _buildRegistry();
@@ -370,7 +373,7 @@ class _MetadataDialogState extends State<_MetadataDialog> {
           _sourcesSummary = '$_sourcesSummary · $_tmdbUnavailable';
         }
       }
-      if (mounted)
+      if (mounted) {
         setState(() {
           _page = targetPage;
           _candidates = {
@@ -379,6 +382,7 @@ class _MetadataDialogState extends State<_MetadataDialog> {
           }.values.toList();
           _searched = true;
         });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {

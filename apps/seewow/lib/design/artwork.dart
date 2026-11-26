@@ -27,16 +27,16 @@ class WowArt extends StatelessWidget {
     if (u.startsWith('file://')) {
       final path = Uri.tryParse(u)?.toFilePath();
       if (path == null) return placeholder;
-      return Image.file(File(path), fit: fit, errorBuilder: (_, __, ___) => placeholder);
+      return Image.file(File(path), fit: fit, errorBuilder: (_, _, _) => placeholder);
     }
     if (u.startsWith('/')) {
-      return Image.file(File(u), fit: fit, errorBuilder: (_, __, ___) => placeholder);
+      return Image.file(File(u), fit: fit, errorBuilder: (_, _, _) => placeholder);
     }
     return Image.network(
       u,
       fit: fit,
       headers: headers.isEmpty ? null : headers,
-      errorBuilder: (_, __, ___) => placeholder,
+      errorBuilder: (_, _, _) => placeholder,
     );
   }
 }

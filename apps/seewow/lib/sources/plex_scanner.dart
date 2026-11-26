@@ -71,8 +71,9 @@ class PlexScanner {
         if (allowed.isNotEmpty && !allowed.contains(key)) {
           continue;
         }
-        if (!RegExp(r'^\d+$').hasMatch(key))
+        if (!RegExp(r'^\d+$').hasMatch(key)) {
           throw const FormatException('Plex 资料库标识无效');
+        }
         final music = section['type'] == 'artist';
         var offset = 0;
         for (var page = 0; page < 100; page++) {
@@ -91,8 +92,9 @@ class PlexScanner {
               container['Metadata'] ?? (container['size'] == 0 ? [] : null);
           if (list is! List) throw const FormatException('Plex 未返回媒体列表');
           final total = (container['totalSize'] as num?)?.toInt();
-          if (list.isEmpty && total != null && offset < total)
+          if (list.isEmpty && total != null && offset < total) {
             throw const FormatException('Plex 分页中断；原片库保留');
+          }
           for (final m in list.whereType<Map>()) {
             final id = m['ratingKey']?.toString() ?? '';
             // One bad id used to abort the whole library; skip and count it.
@@ -113,8 +115,9 @@ class PlexScanner {
                   path.startsWith('//') ||
                   path.contains('?') ||
                   path.contains('#') ||
-                  path.contains('..'))
+                  path.contains('..')) {
                 throw const FormatException('Plex 返回了无效的媒体路径');
+              }
               return api.uri(path);
             }
 
@@ -262,8 +265,9 @@ class PlexScanner {
           offset += list.length;
           if (list.isEmpty ||
               total != null && offset >= total ||
-              total == null && list.length < 200)
+              total == null && list.length < 200) {
             break;
+          }
           if (page == 99) throw const FormatException('Plex 片库过大，请拆分来源；原片库保留');
         }
       }

@@ -63,11 +63,12 @@ class _MetadataLanguageBatchState extends State<MetadataLanguageBatch> {
     super.initState();
     _items = widget.items.map(widget.store.current).toList();
     LocalTranslationConfig.load().then((config) {
-      if (mounted && !_configEdited)
+      if (mounted && !_configEdited) {
         setState(() {
           _endpoint.text = config.endpoint;
           _model.text = config.model;
         });
+      }
     });
   }
 
@@ -121,18 +122,21 @@ class _MetadataLanguageBatchState extends State<MetadataLanguageBatch> {
         var changed = false, generated = existing?.generatedByModel ?? false;
         try {
           if (translate) {
-            if (!item.aiAllowed)
+            if (!item.aiAllowed) {
               throw const FormatException('此来源不允许 AI 处理，未发送到模型');
+            }
             final texts = {...metadata.localized};
             for (final target in _languages) {
               if (_stopped) break;
-              if (!LocalMetadataTranslator.needsTranslation(metadata, target))
+              if (!LocalMetadataTranslator.needsTranslation(metadata, target)) {
                 continue;
-              if (mounted)
+              }
+              if (mounted) {
                 setState(
                   () => _message =
                       '正在补译：${item.displayTitle} · ${MetadataLanguage.label(target)}',
                 );
+              }
               try {
                 texts[target] = await _translator!.translate(
                   item,
@@ -156,8 +160,9 @@ class _MetadataLanguageBatchState extends State<MetadataLanguageBatch> {
             final id = metadata.provider == 'tmdb'
                 ? metadata.id
                 : int.tryParse(metadata.externalIds['tmdb'] ?? '') ?? 0;
-            if (id <= 0)
+            if (id <= 0) {
               throw const FormatException('缺少已确认的 TMDB ID；可先匹配资料，或直接补译现有文字');
+            }
             final canonical = MediaMetadata.fromJson({
               ...metadata.toJson(),
               'id': id,
@@ -188,29 +193,33 @@ class _MetadataLanguageBatchState extends State<MetadataLanguageBatch> {
             _toSave.add(item.id);
           }
         } catch (e) {
-          if (!_stopped)
+          if (!_stopped) {
             _errors[item.id] = e is FormatException
                 ? e.message.toString()
                 : '资料采集失败，请检查网络、ID 与配置';
+          }
         }
-        if (mounted)
+        if (mounted) {
           setState(() {
             _done++;
           });
+        }
       }
-      if (mounted)
+      if (mounted) {
         setState(
           () => _message = _stopped
               ? '已停止，只有下方成功预览可保存'
               : '预览完成，请检查译文后再保存。未生成的语言不会用其他语言冒充',
         );
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _message = e is FormatException
               ? e.message.toString()
               : '服务不可用，请检查本机模型或资料源配置',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -227,12 +236,13 @@ class _MetadataLanguageBatchState extends State<MetadataLanguageBatch> {
       ]);
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _message = e is FormatException
               ? e.message.toString()
               : '保存失败，资料未确认写入',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -288,12 +298,13 @@ class _MetadataLanguageBatchState extends State<MetadataLanguageBatch> {
                               await _config.save();
                               if (mounted) setState(() => _message = '本机设置已保存');
                             } catch (e) {
-                              if (mounted)
+                              if (mounted) {
                                 setState(
                                   () => _message = e is FormatException
                                       ? e.message.toString()
                                       : '设置保存失败',
                                 );
+                              }
                             }
                           },
                     child: const Text('保存本机设置'),

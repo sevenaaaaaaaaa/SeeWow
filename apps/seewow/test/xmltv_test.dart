@@ -36,12 +36,7 @@ void main() {
     // the fixture by 8 hours on CI, so "正在播" looked finished.
     final reference = now.toUtc();
     String stamp(DateTime t) =>
-        t.year.toString().padLeft(4, '0') +
-        t.month.toString().padLeft(2, '0') +
-        t.day.toString().padLeft(2, '0') +
-        t.hour.toString().padLeft(2, '0') +
-        t.minute.toString().padLeft(2, '0') +
-        '00';
+        '${t.year.toString().padLeft(4, '0')}${t.month.toString().padLeft(2, '0')}${t.day.toString().padLeft(2, '0')}${t.hour.toString().padLeft(2, '0')}${t.minute.toString().padLeft(2, '0')}00';
     final xml = '''
 <tv>
   <programme start="${stamp(reference.subtract(const Duration(days: 2)))} +0000" stop="${stamp(reference.subtract(const Duration(days: 1)))} +0000" channel="old"><title>旧节目</title></programme>

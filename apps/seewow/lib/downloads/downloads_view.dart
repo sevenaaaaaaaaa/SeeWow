@@ -90,7 +90,7 @@ class DownloadsPage extends StatelessWidget {
                   Text(
                     manager.tasks.isEmpty
                         ? '无缓存'
-                        : manager.tasks.length.toString() + ' 项',
+                        : '${manager.tasks.length} 项',
                     style: WowType.monoLabel(9.5),
                   ),
                   const SizedBox(width: 14),
@@ -456,17 +456,27 @@ class _DownloadSheetState extends State<_DownloadSheet> {
           const SizedBox(height: 16),
           Text('画质', style: WowType.monoLabel(10, color: WowColors.muted)),
           const SizedBox(height: 4),
-          for (final quality in downloadQualitiesFor(widget.source))
-            RadioListTile<String>(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              value: quality.id,
-              groupValue: _qualityId,
-              onChanged: _busy
-                  ? null
-                  : (value) => setState(() => _qualityId = value ?? 'original'),
-              title: Text(quality.label, style: const TextStyle(fontSize: 13)),
+          RadioGroup<String>(
+            groupValue: _qualityId,
+            onChanged: _busy
+                ? (_) {}
+                : (value) => setState(() => _qualityId = value ?? 'original'),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final quality in downloadQualitiesFor(widget.source))
+                  RadioListTile<String>(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: quality.id,
+                    title: Text(
+                      quality.label,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+              ],
             ),
+          ),
           if (downloadQualitiesFor(widget.source).length == 1)
             Padding(
               padding: const EdgeInsets.only(top: 2),

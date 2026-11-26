@@ -96,8 +96,9 @@ class SourceScanner {
       SourceKind.jellyfin,
       SourceKind.emby,
       SourceKind.plex,
-    ].contains(source.kind))
+    ].contains(source.kind)) {
       return const {};
+    }
     final secret = await _readSecret(sourceSecretKey(source)) ?? '';
     if (source.kind == SourceKind.webdav) {
       return source.username.isEmpty && secret.isEmpty
@@ -168,7 +169,7 @@ class SourceScanner {
     }
     final normalized = base.path.endsWith('/')
         ? base
-        : base.replace(path: base.path + '/');
+        : base.replace(path: '${base.path}/');
     final password = await _readSecret(sourceSecretKey(source)) ?? '';
     final client = WebDavClient(
       normalized,

@@ -32,7 +32,7 @@ class _CoverGenerationSettingsState extends State<CoverGenerationSettings> {
     super.initState();
     CoverGenerationConfig.load()
         .then((c) {
-          if (mounted)
+          if (mounted) {
             setState(() {
               _endpoint.text = c.endpoint;
               _model.text = c.model;
@@ -41,13 +41,15 @@ class _CoverGenerationSettingsState extends State<CoverGenerationSettings> {
               _lan = c.allowLan;
               _busy = false;
             });
+          }
         })
         .catchError((Object _) {
-          if (mounted)
+          if (mounted) {
             setState(() {
               _busy = false;
               _error = '配置读取失败，可重新填写';
             });
+          }
         });
   }
 
@@ -74,10 +76,11 @@ class _CoverGenerationSettingsState extends State<CoverGenerationSettings> {
       ).save(token: _token.text.trim(), clearToken: _clear);
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
-          () => _error = e is FormatException ? '${e.message}' : '配置保存失败',
+          () => _error = e is FormatException ? e.message : '配置保存失败',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -234,8 +237,9 @@ class _CoverGenerationDialogState extends State<CoverGenerationDialog> {
   Future<void> _describeService() async {
     try {
       final config = await CoverGenerationConfig.load();
-      if (mounted)
+      if (mounted) {
         setState(() => _destination = Uri.tryParse(config.endpoint)?.host);
+      }
     } catch (_) {}
   }
 
@@ -279,12 +283,13 @@ class _CoverGenerationDialogState extends State<CoverGenerationDialog> {
     } on MetadataCancelled {
       if (mounted) setState(() => _error = '已停止生成；远程服务可能已经计费');
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = e is FormatException
-              ? '${e.message}'
+              ? e.message
               : '封面生成失败，请检查模型、接口或额度',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -294,8 +299,9 @@ class _CoverGenerationDialogState extends State<CoverGenerationDialog> {
     final current = widget.store.items
         .where((i) => i.id == widget.item.id)
         .firstOrNull;
-    if (current == null || metadataSnapshot(current) != _before)
+    if (current == null || metadataSnapshot(current) != _before) {
       throw const FormatException('媒体资料或来源已改变，请关闭后重新打开');
+    }
     if (!current.aiAllowed) throw const FormatException('此来源不允许 AI 处理');
   }
 
@@ -315,10 +321,11 @@ class _CoverGenerationDialogState extends State<CoverGenerationDialog> {
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
-          () => _error = e is FormatException ? '${e.message}' : '封面保存失败，请重试',
+          () => _error = e is FormatException ? e.message : '封面保存失败，请重试',
         );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

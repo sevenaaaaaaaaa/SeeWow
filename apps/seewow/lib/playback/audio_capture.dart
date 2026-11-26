@@ -24,8 +24,9 @@ class WavAudio {
     if (bytes.length < 44 ||
         bytes.length > 2 * 1024 * 1024 ||
         String.fromCharCodes(bytes.sublist(0, 4)) != 'RIFF' ||
-        String.fromCharCodes(bytes.sublist(8, 12)) != 'WAVE')
+        String.fromCharCodes(bytes.sublist(8, 12)) != 'WAVE') {
       throw const FormatException('需要不超过 2 MiB 的 PCM WAV 音频');
+    }
     final data = ByteData.sublistView(bytes);
     int? rate, channels, offset, length;
     var cursor = 12, chunks = 0;
@@ -33,8 +34,9 @@ class WavAudio {
       final tag = String.fromCharCodes(bytes.sublist(cursor, cursor + 4));
       final count = data.getUint32(cursor + 4, Endian.little),
           start = cursor + 8;
-      if (count > bytes.length - start)
+      if (count > bytes.length - start) {
         throw const FormatException('WAV 数据长度无效');
+      }
       if (tag == 'fmt ') {
         if (count < 16) throw const FormatException('WAV 格式头无效');
         final format = data.getUint16(start, Endian.little),
@@ -52,8 +54,9 @@ class WavAudio {
             channels > 2 ||
             rate < 8000 ||
             rate > 48000 ||
-            data.getUint16(start + 12, Endian.little) != channels * 2)
+            data.getUint16(start + 12, Endian.little) != channels * 2) {
           throw const FormatException('WAV 需为 8–48 kHz、16 位、单／双声道 PCM');
+        }
       }
       if (tag == 'data') {
         offset = start;
@@ -66,11 +69,13 @@ class WavAudio {
         offset == null ||
         length == null ||
         length == 0 ||
-        length % (channels * 2) != 0)
+        length % (channels * 2) != 0) {
       throw const FormatException('WAV 缺少有效音频数据');
+    }
     final result = WavAudio._(bytes, offset, length, rate, channels);
-    if (result.duration > maxSeconds || result.duration < .05)
+    if (result.duration > maxSeconds || result.duration < .05) {
       throw const FormatException('音频时长超出单段范围');
+    }
     return result;
   }
 
@@ -107,8 +112,9 @@ class AudioCapture {
     _revision++;
     final pending = _pending;
     _pending = null;
-    if (pending != null && !pending.isCompleted)
+    if (pending != null && !pending.isCompleted) {
       pending.completeError(MetadataCancelled());
+    }
     final close = _closeActive;
     _closeActive = null;
     await close?.call();
@@ -119,8 +125,9 @@ class AudioCapture {
         at < 0 ||
         !seconds.isFinite ||
         seconds < .5 ||
-        seconds > 8)
+        seconds > 8) {
       throw const FormatException('音频采样范围无效');
+    }
     await cancel();
     final ticket = _revision;
     final dir = await Directory.systemTemp.createTemp('seewow-audio-');
@@ -141,12 +148,14 @@ class AudioCapture {
       if (v && !done.isCompleted) done.complete();
     });
     final errors = player.stream.error.listen((_) {
-      if (!done.isCompleted)
+      if (!done.isCompleted) {
         done.completeError(const FormatException('此音频暂不能采样，请检查格式或来源连接'));
+      }
     });
     try {
-      if (native is! NativePlayer)
+      if (native is! NativePlayer) {
         throw const FormatException('当前播放器不支持本机音频采样');
+      }
       await native.setProperty('vid', 'no');
       await native.setProperty('ao', 'pcm');
       await native.setProperty('ao-pcm-file', file.path);
@@ -165,12 +174,14 @@ class AudioCapture {
       if (failure != null) throw failure;
       await close();
       if (ticket != _revision) throw MetadataCancelled();
-      if (!await file.exists() || await file.length() > 2 * 1024 * 1024)
+      if (!await file.exists() || await file.length() > 2 * 1024 * 1024) {
         throw const FormatException('当前解码器未提供有界的 PCM 音频');
+      }
       return WavAudio.parse(await file.readAsBytes(), maxSeconds: seconds + .5);
     } catch (e) {
-      if (ticket != _revision || e is MetadataCancelled)
+      if (ticket != _revision || e is MetadataCancelled) {
         throw MetadataCancelled();
+      }
       if (e is FormatException) rethrow;
       throw const FormatException('音频采样失败或超时，原片播放未改变');
     } finally {

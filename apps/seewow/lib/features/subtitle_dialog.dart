@@ -53,12 +53,13 @@ class _SubtitleConfigState extends State<_SubtitleConfig> {
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = e is FormatException
               ? e.message.toString()
               : '配置或登录失败，请检查凭据、网络和服务额度',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -189,19 +190,21 @@ class _SubtitleSearchState extends State<_SubtitleSearch> {
         languages: _languages.text.trim(),
         page: targetPage,
       );
-      if (mounted)
+      if (mounted) {
         setState(() {
           _page = targetPage;
           _results = next ? [..._results, ...results] : results;
           _searched = true;
         });
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = e is FormatException
               ? e.message.toString()
               : '字幕搜索失败，请检查配置、网络或账号权限',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -214,11 +217,12 @@ class _SubtitleSearchState extends State<_SubtitleSearch> {
     });
     try {
       final text = await _client!.download(result);
-      if (mounted)
+      if (mounted) {
         Navigator.pop(
           context,
           DownloadedSubtitle(text, result.filename, result.language),
         );
+      }
     } catch (_) {
       if (mounted) setState(() => _error = '下载失败，请检查账号额度、会话或选择其他字幕版本');
     } finally {

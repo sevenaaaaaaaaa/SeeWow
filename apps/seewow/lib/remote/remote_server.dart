@@ -126,7 +126,7 @@ class RemoteServer {
     final offer = jsonEncode({'name': _name, 'port': _httpPort, 'id': _id});
     try {
       udp.send(
-        utf8.encode('SEEWOW1 ' + offer),
+        utf8.encode('SEEWOW1 $offer'),
         datagram.address,
         datagram.port,
       );

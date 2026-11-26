@@ -40,8 +40,9 @@ class LocalScanner {
 
   Future<List<MediaItem>> scan(MediaSource source) async {
     final root = Directory(source.location);
-    if (!await root.exists())
+    if (!await root.exists()) {
       throw FileSystemException('文件夹不存在或未挂载', source.location);
+    }
     final results = <MediaItem>[];
     final files = <File>[];
     final dirs = <Directory>[root];
@@ -49,10 +50,11 @@ class LocalScanner {
       final dir = dirs.removeLast();
       try {
         for (final entry in await dir.list(followLinks: false).toList()) {
-          if (entry is Directory)
+          if (entry is Directory) {
             dirs.add(entry);
-          else if (entry is File)
+          } else if (entry is File) {
             files.add(entry);
+          }
         }
       } on FileSystemException {
         // A protected or disconnected subfolder must not abort the scan.

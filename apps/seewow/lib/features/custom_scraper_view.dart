@@ -89,12 +89,13 @@ class _CustomScraperSettingsState extends State<CustomScraperSettings> {
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = e is FormatException && e.source == null
-              ? '${e.message}'
+              ? e.message
               : 'JSON 配置格式或字段类型有误，请检查后重试',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -107,11 +108,12 @@ class _CustomScraperSettingsState extends State<CustomScraperSettings> {
       await widget.repository.remove(_selected!);
       await _load();
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _error = '移除失败，请重试';
           _busy = false;
         });
+      }
     }
   }
 
@@ -274,13 +276,14 @@ class _CustomScraperMatchState extends State<CustomScraperMatch> {
   Future<void> _load() async {
     try {
       final list = await widget.repository.load();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _profiles = list
               .where((p) => p.kinds.contains(widget.item.kind.name))
               .toList();
           _profile = _profiles.firstOrNull;
         });
+      }
     } catch (_) {
       if (mounted) setState(() => _error = '读取 API 配置失败');
     } finally {
@@ -325,19 +328,21 @@ class _CustomScraperMatchState extends State<CustomScraperMatch> {
         language: _language.text.trim(),
       );
       if (revision != _revision) throw MetadataCancelled();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _results = results;
           _searched = true;
         });
+      }
     } on MetadataCancelled {
       if (mounted) setState(() => _error = '查询已停止');
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () =>
-              _error = e is FormatException ? '${e.message}' : '查询失败，请检查适配与服务',
+              _error = e is FormatException ? e.message : '查询失败，请检查适配与服务',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -357,10 +362,11 @@ class _CustomScraperMatchState extends State<CustomScraperMatch> {
     } on MetadataCancelled {
       if (mounted) setState(() => _error = '预览已停止');
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
-          () => _error = e is FormatException ? '${e.message}' : '详情格式或字段映射无效',
+          () => _error = e is FormatException ? e.message : '详情格式或字段映射无效',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -373,24 +379,27 @@ class _CustomScraperMatchState extends State<CustomScraperMatch> {
       _error = null;
     });
     try {
-      if (metadataSnapshot(widget.store.current(widget.item)) != _before)
+      if (metadataSnapshot(widget.store.current(widget.item)) != _before) {
         throw const FormatException('媒体资料已改变，请关闭后重新匹配');
+      }
       await widget.store.applyMetadata(
         widget.item.id,
         _preview!.withArtwork(_replace),
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
-          () => _error = e is FormatException ? '${e.message}' : '保存失败，请重试',
+          () => _error = e is FormatException ? e.message : '保存失败，请重试',
         );
+      }
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _busy = false;
           _saving = false;
         });
+      }
     }
   }
 

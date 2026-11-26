@@ -22,8 +22,9 @@ Uint8List wavFixture({
   final count = (rate * seconds).round();
   final bytes = Uint8List(44 + count * 2), data = ByteData(44 + count * 2);
   void tag(int offset, String text) {
-    for (var i = 0; i < text.length; i++)
+    for (var i = 0; i < text.length; i++) {
       data.setUint8(offset + i, text.codeUnitAt(i));
+    }
   }
 
   tag(0, 'RIFF');
@@ -39,12 +40,13 @@ Uint8List wavFixture({
   data.setUint16(34, 16, Endian.little);
   tag(36, 'data');
   data.setUint32(40, count * 2, Endian.little);
-  for (var i = 0; i < count; i++)
+  for (var i = 0; i < count; i++) {
     data.setInt16(
       44 + i * 2,
       (math.sin(i * 440 * 2 * math.pi / rate) * 32767 * amplitude).round(),
       Endian.little,
     );
+  }
   bytes.setAll(0, data.buffer.asUint8List());
   return bytes;
 }
@@ -223,11 +225,12 @@ void main() {
       ),
     );
     addTearDown(client.close);
-    for (mode = 0; mode < 4; mode++)
+    for (mode = 0; mode < 4; mode++) {
       await expectLater(
         client.translate(media(), WavAudio.parse(wav), 0),
         throwsFormatException,
       );
+    }
   });
   test('cancel voice request invalidates its pending result', () async {
     final server = await HttpServer.bind('127.0.0.1', 0);
@@ -262,16 +265,18 @@ void main() {
             call,
           ) async {
             calls.add(call);
-            if (call.method == 'getBounds')
+            if (call.method == 'getBounds') {
               return {'x': 10.0, 'y': 20.0, 'width': 1000.0, 'height': 700.0};
+            }
             if (call.method == 'isFullScreen') return full;
             if (call.method == 'isAlwaysOnTop') return false;
             if (call.method == 'setFullScreen') {
               full = call.arguments['isFullScreen'];
-              if (full)
+              if (full) {
                 window.onWindowEnterFullScreen();
-              else
+              } else {
                 window.onWindowLeaveFullScreen();
+              }
             }
             return null;
           });

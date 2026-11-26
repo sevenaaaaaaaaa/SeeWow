@@ -103,8 +103,9 @@ class _EditorState extends State<_Editor> {
         allowedExtensions: ['nfo'],
       );
       if (file == null || !mounted) return;
-      if ((await file.length() ?? 2097153) > 2 * 1024 * 1024)
+      if ((await file.length() ?? 2097153) > 2 * 1024 * 1024) {
         throw const FormatException('NFO 文件不能超过 2 MiB');
+      }
       final data = NfoInfo.parse(
         NfoInfo.decode(await file.readAsBytes()),
         directory: file.path == null ? null : File(file.path!).parent.uri,
@@ -119,12 +120,13 @@ class _EditorState extends State<_Editor> {
         );
       });
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = e is FormatException
               ? e.message.toString()
               : '无法读取 NFO 文件',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -143,8 +145,9 @@ class _EditorState extends State<_Editor> {
               .convert(field('people').text)
               .where((s) => s.trim().isNotEmpty)) {
         final parts = line.split('|').map((s) => s.trim()).toList();
-        if (parts.first.isEmpty || parts.length > 3)
+        if (parts.first.isEmpty || parts.length > 3) {
           throw const FormatException('人员格式：姓名|角色|部门，每人一行');
+        }
         people.add(
           MediaPerson(
             name: parts.first,
@@ -162,8 +165,9 @@ class _EditorState extends State<_Editor> {
         if (p.length < 2 ||
             p.length > 4 ||
             p.first.isEmpty ||
-            double.tryParse(p[1]) == null)
+            double.tryParse(p[1]) == null) {
           throw const FormatException('评分格式：来源|分数|满分|票数，每项一行');
+        }
         final r = MediaRating(
           source: p.first,
           value: double.parse(p[1]),
@@ -204,12 +208,13 @@ class _EditorState extends State<_Editor> {
       await widget.store.applyMetadata(widget.item.id, match);
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = e is FormatException
               ? e.message.toString()
               : '保存失败，请稍后重试',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -264,22 +269,25 @@ class _EditorState extends State<_Editor> {
                       decoration: InputDecoration(labelText: entry.value),
                       validator: (v) {
                         final text = v?.trim() ?? '';
-                        if (entry.key == 'title' && text.isEmpty)
+                        if (entry.key == 'title' && text.isEmpty) {
                           return '请填写标题';
+                        }
                         if (entry.key == 'year' &&
                             text.isNotEmpty &&
                             (int.tryParse(text) == null ||
                                 int.parse(text) < 1 ||
-                                int.parse(text) > 9999))
+                                int.parse(text) > 9999)) {
                           return '年份需要为 1 到 9999';
+                        }
                         if (['poster', 'backdrop'].contains(entry.key) &&
                             text.isNotEmpty) {
                           final u = Uri.tryParse(text);
                           if (u == null ||
                               u.userInfo.isNotEmpty ||
                               (!['http', 'https'].contains(u.scheme) &&
-                                  !File(text).isAbsolute))
+                                  !File(text).isAbsolute)) {
                             return '使用 HTTP(S) 地址或本机绝对路径';
+                          }
                         }
                         return null;
                       },

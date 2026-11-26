@@ -64,8 +64,9 @@ class TmdbClient extends MetadataSource {
         headers: {'Authorization': 'Bearer ${token.trim()}'},
         maxBytes: 4 * 1024 * 1024,
       ) {
-    if (token.trim().isEmpty)
+    if (token.trim().isEmpty) {
       throw const FormatException('请先配置 TMDB API Read Access Token');
+    }
     locale.validate();
   }
   final JsonApi _api;
@@ -98,15 +99,18 @@ class TmdbClient extends MetadataSource {
   static Future<void> configure(String token, {MetadataLocale? locale}) async {
     locale?.validate();
     if (token.trim().isEmpty &&
-        (await NativeBridge.secretRead(tokenKey) ?? '').isEmpty)
+        (await NativeBridge.secretRead(tokenKey) ?? '').isEmpty) {
       throw const FormatException('请填写 TMDB API Read Access Token');
-    if (token.trim().isNotEmpty)
+    }
+    if (token.trim().isNotEmpty) {
       await NativeBridge.secretWrite(tokenKey, token.trim());
-    if (locale != null)
+    }
+    if (locale != null) {
       await NativeBridge.secretWrite(
         preferencesKey,
         jsonEncode(locale.toJson()),
       );
+    }
   }
 
   static String? imageUrl(Object? path, {bool backdrop = false}) =>
@@ -146,8 +150,9 @@ class TmdbClient extends MetadataSource {
 
   @override
   Future<MediaMetadata> details(MediaMetadata candidate) async {
-    if (!['movie', 'tv'].contains(candidate.mediaType) || candidate.id <= 0)
+    if (!['movie', 'tv'].contains(candidate.mediaType) || candidate.id <= 0) {
       throw const FormatException('此条目不是有效的 TMDB 电影或剧集');
+    }
     final j = await _api.get('${candidate.mediaType}/${candidate.id}', {
       'language': locale.language,
       'append_to_response':
@@ -168,8 +173,9 @@ class TmdbClient extends MetadataSource {
         '${candidate.mediaType}/${candidate.id}',
         {'language': locale.fallback},
       );
-      if (fallback['id'] != candidate.id)
+      if (fallback['id'] != candidate.id) {
         throw const FormatException('回退资料与所选条目不一致');
+      }
       final other = _parse(fallback, candidate.mediaType);
       result = MediaMetadata.fromJson({
         ...result.toJson(),
@@ -186,8 +192,9 @@ class TmdbClient extends MetadataSource {
     int season,
     int episode,
   ) async {
-    if (series.mediaType != 'tv' || season < 0 || episode < 1)
+    if (series.mediaType != 'tv' || season < 0 || episode < 1) {
       throw const FormatException('请先选择剧集，并提供有效季数与集数；特别篇可使用第 0 季');
+    }
     final json = await _api.get(
       'tv/${series.id}/season/$season/episode/$episode',
       {
@@ -197,8 +204,9 @@ class TmdbClient extends MetadataSource {
     );
     if (json['id'] is! num ||
         json['season_number'] != season ||
-        json['episode_number'] != episode)
+        json['episode_number'] != episode) {
       throw const FormatException('返回的分集与所选季集不一致');
+    }
     final result = _parse(json, 'episode');
     return MediaMetadata.fromJson({
       ...result.toJson(),
@@ -258,8 +266,9 @@ class TmdbClient extends MetadataSource {
   }) async {
     String path;
     if (metadata.mediaType == 'episode') {
-      if (seriesId == null || season == null || episode == null)
+      if (seriesId == null || season == null || episode == null) {
         throw const FormatException('分集缺少剧集 ID 或季集信息，请先确认匹配');
+      }
       path = 'tv/$seriesId/season/$season/episode/$episode';
     } else if (['movie', 'tv'].contains(metadata.mediaType) &&
         metadata.id > 0) {
@@ -268,8 +277,9 @@ class TmdbClient extends MetadataSource {
       throw const FormatException('需要已确认的电影或剧集 ID');
     }
     final json = await _api.get('$path/translations');
-    if (json['id'] != metadata.id || json['translations'] is! List)
+    if (json['id'] != metadata.id || json['translations'] is! List) {
       throw const FormatException('译文集合与所选作品不一致');
+    }
     final texts = {...metadata.localized};
     for (final entry in _translations(json).entries) {
       texts[entry.key] = (texts[entry.key] ?? const LocalizedMetadata())
@@ -287,19 +297,21 @@ class TmdbClient extends MetadataSource {
       final data = raw['data'];
       if (language is! String ||
           !RegExp(r'^[a-z]{2}$').hasMatch(language) ||
-          data is! Map)
+          data is! Map) {
         continue;
+      }
       final tag = country is String && RegExp(r'^[A-Z]{2}$').hasMatch(country)
           ? '$language-$country'
           : language;
       final title = (data['title'] ?? data['name'] ?? '').toString().trim();
       final overview = (data['overview'] ?? '').toString().trim();
-      if (title.isNotEmpty || overview.isNotEmpty)
+      if (title.isNotEmpty || overview.isNotEmpty) {
         result[tag] = LocalizedMetadata(
           title: title,
           overview: overview,
           provider: 'tmdb',
         );
+      }
     }
     return result;
   }
@@ -332,7 +344,7 @@ class TmdbClient extends MetadataSource {
         60,
       )) {
         final url = imageUrl(raw['file_path'], backdrop: type == 'backdrops');
-        if (url != null)
+        if (url != null) {
           art.add(
             MediaArtwork(
               url: url,
@@ -342,6 +354,7 @@ class TmdbClient extends MetadataSource {
               height: raw['height'] as int?,
             ),
           );
+        }
       }
     }
     final score = (j['vote_average'] as num?)?.toDouble();
@@ -374,15 +387,17 @@ class TmdbClient extends MetadataSource {
             .take(150)) {
       if (title['iso_3166_1'] is String &&
           title['title'] is String &&
-          title['title'].toString().trim().isNotEmpty)
+          title['title'].toString().trim().isNotEmpty) {
         alternatives
             .putIfAbsent(title['iso_3166_1'], () => [])
             .add(title['title']);
+      }
     }
     for (final entry in (j['external_ids'] as Map? ?? {}).entries) {
-      if (entry.value != null && entry.value.toString().isNotEmpty)
+      if (entry.value != null && entry.value.toString().isNotEmpty) {
         ids[entry.key.toString().replaceFirst('_id', '')] = entry.value
             .toString();
+      }
     }
     return MediaMetadata(
       id: (j['id'] as num).toInt(),

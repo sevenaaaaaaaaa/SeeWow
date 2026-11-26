@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -70,11 +69,12 @@ void main() {
       )..addFont(rootBundle.load('assets/fonts/$family-Variable.ttf'))).load();
     }
     final file = File('/System/Library/Fonts/Supplemental/Arial Unicode.ttf');
-    if (file.existsSync())
+    if (file.existsSync()) {
       await (FontLoader('CinemaTest')..addFont(
             Future.value(ByteData.sublistView(await file.readAsBytes())),
           ))
           .load();
+    }
   });
   late Directory dir;
   late LibraryStore store;
@@ -261,7 +261,7 @@ void main() {
       expect(tester.getSize(arabicTitle).width, greaterThan(350));
       expect(tibetan.style!.fontFamily, 'NotoSerifTibetan');
       expect(tester.takeException(), isNull);
-      if (Platform.environment['SEEWOW_SHOTS'] == '1')
+      if (Platform.environment['SEEWOW_SHOTS'] == '1') {
         await tester.runAsync(() async {
           final shot = await tester
               .renderObject<RenderRepaintBoundary>(
@@ -273,6 +273,7 @@ void main() {
               .writeAsBytes(bytes!.buffer.asUint8List());
           shot.dispose();
         });
+      }
     },
   );
 }

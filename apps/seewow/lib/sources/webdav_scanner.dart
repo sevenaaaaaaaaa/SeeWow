@@ -33,8 +33,9 @@ class WebDavScanner {
       DavEntry? parentArt,
       NfoInfo? inheritedShow,
     ) async {
-      if (depth > maxDepth || visited > maxFiles)
+      if (depth > maxDepth || visited > maxFiles) {
         throw WebDavException('扫描范围超过限制，请缩小目录；原片库保留');
+      }
       List<DavEntry> entries;
       try {
         entries = await client.list(dir);

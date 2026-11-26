@@ -94,8 +94,9 @@ class WebDavClient {
     request.add(utf8.encode(_propfindBody));
     final response = await request.close().timeout(const Duration(seconds: 30));
     final body = await response.transform(utf8.decoder).join();
-    if (response.statusCode == 401)
+    if (response.statusCode == 401) {
       throw WebDavException('用户名或密码不正确', statusCode: 401);
+    }
     if (response.statusCode >= 400) {
       throw WebDavException(
         '服务器返回 ${response.statusCode}',
@@ -113,8 +114,9 @@ class WebDavClient {
     request.followRedirects = false;
     authHeaders.forEach(request.headers.set);
     final response = await request.close().timeout(const Duration(seconds: 20));
-    if (response.statusCode != 200)
+    if (response.statusCode != 200) {
       throw WebDavException('旁车读取失败', statusCode: response.statusCode);
+    }
     final bytes = <int>[];
     await for (final chunk in response.timeout(const Duration(seconds: 20))) {
       bytes.addAll(chunk);

@@ -57,11 +57,12 @@ class _FrameBookmarksViewState extends State<FrameBookmarksView> {
       for (final frame in frames) {
         _paths[frame.id] = await widget.store.path(frame);
       }
-      if (mounted)
+      if (mounted) {
         setState(() {
           _frames = frames;
           _error = null;
         });
+      }
     } catch (_) {
       if (mounted) setState(() => _error = '精彩帧读取失败，请检查本机文件');
     }

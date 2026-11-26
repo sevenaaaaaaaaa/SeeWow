@@ -383,10 +383,11 @@ class DetailView extends StatelessWidget {
                                   context,
                                   initial: current.libraryTitle,
                                 );
-                                if (name != null)
+                                if (name != null) {
                                   await store.createCollection(name, [
                                     current.id,
                                   ]);
+                                }
                               },
                               icon: const Icon(Icons.playlist_add, size: 17),
                               label: const Text('保存为片单'),

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -19,11 +18,12 @@ void main() {
   setUpAll(() async {
     if (Platform.environment['SEEWOW_SHOTS'] == '1') {
       final font = File('/System/Library/Fonts/Supplemental/Arial Unicode.ttf');
-      if (await font.exists())
+      if (await font.exists()) {
         await (FontLoader('CinemaTest')..addFont(
               Future.value(ByteData.sublistView(await font.readAsBytes())),
             ))
             .load();
+      }
     }
   });
   setUp(() async {
